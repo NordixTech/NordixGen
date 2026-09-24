@@ -3,6 +3,7 @@
 > **Motor declarativo y determinista de generación de arquitectura y scaffolding para proyectos de software completos.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node: >=22.0.0](https://img.shields.io/badge/Node-%3E%3D22.0.0%20LTS-brightgreen.svg)](https://nodejs.org/)
 [![Architecture: Decoupled](https://img.shields.io/badge/Architecture-Decoupled%20%26%20Modular-brightgreen.svg)](#arquitectura-y-desacoplamiento)
 [![Engine: Deterministic](https://img.shields.io/badge/Generation-Algorithmic%20%28No%20LLM%20in%20Core%29-orange.svg)](#filosofía-de-generación)
 
@@ -14,63 +15,75 @@
 
 ### Filosofía de Generación
 1. **100% Algorítmico y Determinista:** El núcleo de generación no utiliza modelos de lenguaje (LLMs) para escribir el código fuente. Esto garantiza **reproducibilidad absoluta**, velocidad instantánea, cero alucinaciones de sintaxis y costo cero de ejecución.
-2. **Asistencia de IA en la Capa Externa (Skill):** Los LLMs se aprovechan exclusivamente como interfaz de usuario / asistente de diseño mediante una *Skill* que ayuda al desarrollador a modelar y redactar el archivo `YAML` de configuración.
+2. **Asistencia de IA en la Capa Externa (Skill):** Los LLMs se aprovechan exclusivamente como asistente de diseño mediante una *Skill* que ayuda al desarrollador a modelar y redactar el archivo `YAML` de configuración a partir de requerimientos de negocio.
 3. **Producción desde el Minuto Cero:** Un proyecto generado por NordixGen cuenta con la configuración mínima y rigurosa para desarrollo local con Docker, pruebas, validación de variables de entorno y despliegue continuo.
 
 ---
 
-## 🎯 Objetivo del Sistema
-
-Construir una herramienta modular y extensible que permita:
-- Modelar dominios ricos (entidades, tipos, enums, relaciones y casos de uso) en un único contrato.
-- Materializar arquitecturas limpias y mantenibles (Hexagonal, Clean Architecture, Feature-Driven).
-- Generar aplicaciones desacopladas donde cualquier frontend pueda interoperar con cualquier backend.
-- Evolucionar progresivamente a través de un roadmap incremental según el esfuerzo y adopción de la comunidad.
-
----
-
-## 🌟 The Golden Path (Ruta Dorada)
-
-Para maximizar el impacto y garantizar una calidad de código de nivel de producción sin sufrir el problema de la **explosión combinatoria** (mantener docenas de combinaciones de frameworks simultáneamente), el desarrollo de NordixGen se enfoca inicialmente en una **Ruta Dorada (Golden Path)**:
-
-* **Frontend Principal:** *(⏳ Por definir)*
-* **Backend Principal:** *(⏳ Por definir)*
-* **Base de Datos / ORM Principal:** *(⏳ Por definir)*
-* **Estrategia de Repositorio:** *(⏳ Por definir)*
+## 📦 Instalación y Uso
 
 > [!NOTE]
-> La definición formal de este Golden Path se establecerá tras evaluar el balance óptimo entre rendimiento, facilidad de desarrollo y costos de infraestructura de despliegue (proveedores gratuitos / ultra-baratos).
+> *(Sección reservada)*: Esta sección contendrá las instrucciones finales una vez publicado el primer release en el registro público de `npm`.
 
-### Extensibilidad para Nuevos Frameworks
-El sistema está diseñado bajo un patrón de **adaptadores de generación**. Aunque el equipo de Nordix enfoque su esfuerzo inicial en el Golden Path, la arquitectura de NordixGen permite que cualquier desarrollador de la comunidad agregue generadores para nuevos frameworks (como `.NET`, `Django`, `Hono`, `NestJS`, `Angular`, `React Native`, etc.) simplemente implementando los contratos del motor central (`IR - Intermediate Representation`).
+```bash
+# Ejecución directa sin instalación previa (recomendado)
+npx nordixgen init
+
+# O instalación global vía npm
+npm install -g nordixgen
+```
 
 ---
 
-## 🧩 Principio de Modularidad Extrema y Advertencia de Incompatibilidades
+## 🌟 The Golden Path (Ruta Dorada Oficial)
 
-La modularidad es una regla estricta en NordixGen:
+Para garantizar un código de nivel de producción sin sufrir el problema de la **explosión combinatoria** (mantener decenas de combinaciones de frameworks simultáneamente), el desarrollo de NordixGen centra su esfuerzo inicial en una **Ruta Dorada optimizada para máximo rendimiento y costo de nube $0 / ultra-bajo**:
+
+* **Frontend:** **Next.js (App Router)** con **Tailwind CSS v4** (compilación nativa ultrarrápida con Lightning CSS, cero runtime overhead y diseño atómico preconfigurado).
+* **Backend:** **Hono** (TypeScript) optimizado para **Cloudflare Workers** (arranque en frío de 0 ms, consumo mínimo de CPU <1 ms y latencia global en más de 300 ciudades).
+* **Base de Datos:** **PostgreSQL en Neon** (Serverless Postgres con conexión pooling instantánea y branching gratuito).
+* **ORM:** **Drizzle ORM** (Edge-native, bundle footprint <30 KB, cero dependencias pesadas de WASM o binarios, tipado estricto e inferido).
+* **Almacenamiento de Archivos:** **Cloudflare R2** (Compatible con la API de AWS S3, con 10 GB gratis al mes y **$0 costo de transferencia / egress**).
+* **Despliegue & Edge:** **Cloudflare Pages + Workers** (despliegue unificado con latencia mínima entre front y back).
+
+---
+
+## 🧩 Principio de Modularidad Extrema y Matriz de Incompatibilidad
+
+NordixGen no es un generador rígido; está diseñado para ser una plataforma abierta y extensible:
 
 1. **Desacoplamiento Front/Back por Contrato:**
-   - La comunicación entre cualquier frontend y backend generado se rige por un **contrato formal agnóstico** (especificación OpenAPI 3.1 / Schemas tipados).
+   - La comunicación entre cualquier frontend y backend generado se rige por un **contrato formal agnóstico** (OpenAPI 3.1 / Schemas tipados).
    - Un frontend generado en Framework **X** puede conectarse de inmediato a un backend generado en Framework **Y** sin modificaciones estructurales en su lógica de consumo de API.
-2. **Matriz de Incompatibilidad Explícita:**
-   - Cuando una combinación particular presente limitaciones técnicas (por ejemplo: un ORM específico no disponible en el lenguaje de un backend, o un tipo de arquitectura no aplicable a un frontend móvil), el CLI y el validador de NordixGen emitirán advertencias preventivas o errores de compatibilidad en tiempo de validación antes de generar archivos.
+2. **Arquitectura de Plugins para la Comunidad:**
+   - Nuevos contribuidores pueden agregar generadores para otros frameworks (`.NET`, `NestJS`, `Django`, `Angular`, `React Native`, etc.) simplemente implementando los contratos del motor central (`Nordix IR - Intermediate Representation`).
+3. **Matriz de Incompatibilidad Explícita:**
+   - El validador semántico analiza la combinación seleccionada antes de emitir archivos. Si una combinación presenta limitaciones técnicas (por ejemplo, un ORM no compatible con cierto backend o una configuración de despliegue no soportada), el CLI emite advertencias preventivas o errores detallados explicando la incompatibilidad.
 
 ---
 
-## 🚀 Características Principales
+## ⚙️ Integración con Herramientas Upstream y Control de Versiones
+
+NordixGen no reinventa la rueda de los empaquetadores base:
+- **Scaffolding Inteligente:** Puede orquestar y parametrizar las herramientas oficiales de los frameworks (como `create-next-app` o plantillas base curadas), inyectando de forma determinista la arquitectura limpia, capas de servicios y modelos.
+- **Control Estricto de Versiones:** Trabaja siempre con las versiones más modernas y estables del ecosistema (Node.js 22+ LTS, TypeScript 5.5+, Next.js más reciente, Tailwind v4, Hono v4+).
+- **Formatters y Linters Integrados:** Todo código generado se procesa con formateadores de alta velocidad (Biome / Prettier) para asegurar sintaxis impecable y estilo uniforme.
+
+---
+
+## 🚀 Características del Sistema
 
 ### 1. Modelado de Dominio y Persistencia
-- **Entidades Ricas:** Atributos, tipos de datos primitivos, enums, relaciones (`1:1`, `1:N`, `N:M`).
+- **Entidades Ricas:** Atributos, tipos primitivos, enums y relaciones (`1:1`, `1:N`, `N:M`).
 - **Políticas de Eliminación:** Configuración de cascadas (`CASCADE`, `SET NULL`) y soporte nativo para **Soft Delete** y auditoría (`createdAt`, `updatedAt`, `deletedAt`).
-- **Seeders & Mock Data:** Generación automática de sembradores de base de datos con datos sintéticos realistas (`faker`) para poder probar la aplicación inmediatamente tras levantar el entorno.
+- **Seeders & Mock Data:** Generación automática de sembradores de base de datos con datos sintéticos realistas (`@faker-js/faker`) para poder interactuar con la aplicación inmediatamente.
 
 ### 2. Capa de API y Casos de Uso
 - **Endpoints CRUD Estándar:** Generación de controladores, DTOs con validación estricta y casos de uso del dominio.
 - **Endpoints Complejos:** Capacidad de definir consultas con agregaciones, JOINs y transacciones desacopladas en adaptadores de infraestructura.
 - **Protección de Endpoints:** Autenticación (JWT, Refresh Tokens, OAuth con Google/GitHub), control de acceso basado en roles o permisos (RBAC / PBAC) y middlewares de seguridad.
 
-### 3. Manejo Estandarizado de Errores (Error Handling)
+### 3. Manejo Estandarizado de Errores (RFC 7807)
 - Implementación del estándar **RFC 7807 (Problem Details for HTTP APIs)** en todos los backends generados.
 - Catálogo de excepciones de dominio unificado: respuestas HTTP con estructura consistente, códigos de error legibles y trazabilidad de fallos sin exponer detalles sensibles de infraestructura.
 
@@ -80,10 +93,10 @@ La modularidad es una regla estricta en NordixGen:
 
 ### 5. Entorno Local de Desarrollo (Docker)
 - Orquestación lista para correr con `docker compose`:
-  - Motor de Base de Datos relacional o documental.
+  - Motor de Base de Datos PostgreSQL local.
   - Servidor de correo ficticio local (**Mailpit**) para previsualizar flujos de verificación de cuenta y recuperación de contraseñas.
   - Emulador de almacenamiento de objetos S3 local (**MinIO**) para subida y procesamiento de archivos.
-  - Servidor de caché en memoria (**Redis**) para sesiones, colas o rate limiting.
+  - Servidor de caché en memoria (**Redis**) para sesiones o rate limiting.
 
 ### 6. Integración con Git y Versionamiento
 - Inicialización automática del repositorio local (`git init`).
@@ -92,31 +105,9 @@ La modularidad es una regla estricta en NordixGen:
 - Commit inicial semántico y estandarizado.
 
 ### 7. CI/CD y Documentación
-- Generación de flujos de trabajo de **GitHub Actions** (pruebas, linting, build, despliegue).
-- Infraestructura como Código (IaC) opcional (Terraform).
-- Documentación viva autogenerada: Swagger / OpenAPI UI interactivo, diagramas arquitectónicos y manuales de arranque.
-
----
-
-## 🗺️ Roadmap de Evolución Progresiva
-
-El desarrollo de NordixGen se organiza en fases incrementales:
-
-- [ ] **Fase 1: Motor Central & Esquema Declarativo**
-  - Definición del esquema `nordix.schema.json` y validador semántico.
-  - CLI interactivo base (`npx nordixgen`).
-  - Generador del Golden Path V1 (Full-stack básico con Docker local y Git init).
-- [ ] **Fase 2: Dominio Avanzado, Seeders y RFC 7807**
-  - Generación de seeders con Faker.
-  - Manejador global de excepciones estandarizado.
-  - Módulo base de integración con LLM para ejecución de casos de uso.
-- [ ] **Fase 3: Multi-Framework & Arquitecturas Alternativas**
-  - Desacoplamiento total del generador mediante plugins.
-  - Incorporación de frameworks adicionales de back y front.
-  - Validaciones de incompatibilidad en tiempo real.
-- [ ] **Fase 4: Cloud & Despliegue Automatizado**
-  - Generadores de IaC (Terraform) y presets para proveedores serverless / edge económicos.
-  - Skill oficial de LLM para modelado de proyectos desde lenguaje natural.
+- Flujos de trabajo automatizados en **GitHub Actions** para testing, linting y publicación a `npm` / `npx`.
+- Infraestructura como Código (IaC) opcional y configuración de `wrangler.jsonc` para Cloudflare.
+- Documentación viva autogenerada: Swagger / OpenAPI UI interactivo y manuales de arranque.
 
 ---
 
