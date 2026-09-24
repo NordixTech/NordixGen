@@ -1,0 +1,527 @@
+{
+  "$ref": "#/definitions/NordixConfig",
+  "definitions": {
+    "NordixConfig": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9-_]+$"
+        },
+        "version": {
+          "type": "string",
+          "default": "0.1.0"
+        },
+        "description": {
+          "type": "string"
+        },
+        "structure": {
+          "type": "string",
+          "enum": [
+            "monorepo",
+            "polyrepo"
+          ],
+          "default": "monorepo"
+        },
+        "frontend": {
+          "type": "object",
+          "properties": {
+            "framework": {
+              "type": "string",
+              "enum": [
+                "nextjs",
+                "angular",
+                "react-native",
+                "none"
+              ],
+              "default": "nextjs"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "web",
+                "pwa",
+                "mobile"
+              ],
+              "default": "web"
+            },
+            "styling": {
+              "type": "string",
+              "enum": [
+                "tailwind",
+                "css"
+              ],
+              "default": "tailwind"
+            },
+            "stateManagement": {
+              "type": "string",
+              "enum": [
+                "zustand",
+                "redux",
+                "none"
+              ],
+              "default": "zustand"
+            },
+            "authUI": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "backend": {
+          "type": "object",
+          "properties": {
+            "framework": {
+              "type": "string",
+              "enum": [
+                "hono",
+                "nestjs",
+                "dotnet",
+                "django"
+              ],
+              "default": "hono"
+            },
+            "architecture": {
+              "type": "string",
+              "enum": [
+                "clean",
+                "hexagonal",
+                "modular"
+              ],
+              "default": "clean"
+            },
+            "auth": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "jwt",
+                    "session",
+                    "none"
+                  ],
+                  "default": "jwt"
+                },
+                "providers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "credentials",
+                      "google",
+                      "github"
+                    ]
+                  },
+                  "default": [
+                    "credentials"
+                  ]
+                },
+                "twoFactor": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "passwordRecovery": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": [
+                    "admin",
+                    "user"
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "default": {}
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "database": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "string",
+              "enum": [
+                "postgres",
+                "mongodb",
+                "sqlite"
+              ],
+              "default": "postgres"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "neon",
+                "cloudflare-d1",
+                "supabase",
+                "self-hosted"
+              ],
+              "default": "neon"
+            },
+            "orm": {
+              "type": "string",
+              "enum": [
+                "drizzle",
+                "prisma",
+                "efcore"
+              ],
+              "default": "drizzle"
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "docker": {
+          "type": "object",
+          "properties": {
+            "postgres": {
+              "type": "boolean",
+              "default": true
+            },
+            "mailpit": {
+              "type": "boolean",
+              "default": true
+            },
+            "minio": {
+              "type": "boolean",
+              "default": true
+            },
+            "redis": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "llm": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "exposeUseCases": {
+              "type": "boolean",
+              "default": true
+            },
+            "endpoint": {
+              "type": "string",
+              "default": "/api/agent"
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "deployment": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": [
+                "cloudflare",
+                "vercel",
+                "vps",
+                "none"
+              ],
+              "default": "cloudflare"
+            },
+            "ci": {
+              "type": "string",
+              "enum": [
+                "github-actions",
+                "none"
+              ],
+              "default": "github-actions"
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "enums": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {}
+        },
+        "entities": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "tableName": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "date",
+                        "uuid",
+                        "json",
+                        "enum"
+                      ]
+                    },
+                    "enumName": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "unique": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "default": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": {}
+              },
+              "relations": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "one-to-one",
+                        "one-to-many",
+                        "many-to-one",
+                        "many-to-many"
+                      ]
+                    },
+                    "target": {
+                      "type": "string"
+                    },
+                    "foreignKey": {
+                      "type": "string"
+                    },
+                    "onDelete": {
+                      "type": "string",
+                      "enum": [
+                        "cascade",
+                        "soft-delete",
+                        "restrict",
+                        "set-null"
+                      ],
+                      "default": "cascade"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "target"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": {}
+              },
+              "softDelete": {
+                "type": "boolean",
+                "default": true
+              },
+              "timestamps": {
+                "type": "boolean",
+                "default": true
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "default": {}
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^\\/"
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE"
+                ]
+              },
+              "summary": {
+                "type": "string"
+              },
+              "entity": {
+                "type": "string"
+              },
+              "authRequired": {
+                "type": "boolean",
+                "default": false
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "queryParams": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "uuid"
+                      ]
+                    },
+                    "required": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": []
+              },
+              "pathParams": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "uuid"
+                      ]
+                    },
+                    "required": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": []
+              },
+              "joins": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "entity": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "inner",
+                        "left"
+                      ],
+                      "default": "left"
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "default": []
+                    }
+                  },
+                  "required": [
+                    "entity"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": []
+              }
+            },
+            "required": [
+              "path",
+              "method"
+            ],
+            "additionalProperties": false
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
