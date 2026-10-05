@@ -1,0 +1,37 @@
+{
+  "name": "nordixgen-monorepo",
+  "private": true,
+  "description": "Enterprise Declarative Architecture & Scaffolding Platform for Full-Stack Projects",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "packageManager": "pnpm@10.5.2",
+  "scripts": {
+    "build": "pnpm --filter \"./packages/*\" build",
+    "test": "pnpm --filter \"./packages/*\" test",
+    "lint": "pnpm --filter \"./packages/*\" lint",
+    "typecheck": "pnpm --filter \"./packages/*\" typecheck"
+  },
+  "keywords": [
+    "nordixgen",
+    "cli",
+    "scaffolding",
+    "clean-architecture",
+    "monorepo",
+    "hono",
+    "nextjs",
+    "drizzle",
+    "cloudflare"
+  ],
+  "author": "Nordix",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NordixTech/NordixGen.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NordixTech/NordixGen/issues"
+  },
+  "homepage": "https://github.com/NordixTech/NordixGen#readme"
+}

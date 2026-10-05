@@ -1,0 +1,701 @@
+# NordixGen: Especificación Integral de Requisitos, Arquitectura y Capacidades
+
+> **Documento de Consolidación de Requisitos y Capacidades del Sistema**  
+> **Estado:** Documento de Especificación Oficial (No comiteado a Git).  
+> **Alcance Inicial:** Foco exclusivo en el **Golden Path** (Next.js + Tailwind CSS v4 + Hono + Drizzle ORM + Neon PostgreSQL + Cloudflare), con arquitectura modular extensible a múltiples frontends/backends y despliegues con IaC.
+
+---
+
+## 🎯 1. Filosofía y Principios Rectores
+
+1. **Generación 100% Algorítmica y Determinista:**
+   - El motor generador **no utiliza LLMs para escribir código**. No hay alucinaciones de sintaxis ni variabilidad entre ejecuciones.
+   - Si el archivo YAML no cambia, el proyecto generado es exactamente idéntico.
+2. **Rol de la Inteligencia Artificial (Capa Externa / Skill):**
+   - La IA interviene únicamente antes de la generación mediante una **Skill de Asistencia**.
+   - Guía al desarrollador en lenguaje natural para modelar su negocio y producir un archivo `nordix.config.yaml` válido, estructurado y optimizado.
+3. **El Golden Path (Ruta Dorada Oficial):**
+   - Aunque la plataforma admite definir múltiples aplicaciones y frameworks, el esfuerzo de ingeniería inicial se concentra en una combinación insignia de máximo rendimiento y coste de nube $0 / ultrabajo:
+     - **Frontend:** Next.js 15 (App Router) + Tailwind CSS v4 + Feature-Driven Architecture.
+     - **Backend:** Hono (TypeScript) + Clean Architecture (Ports & Adapters) + Cloudflare Workers.
+     - **Persistencia & ORM:** PostgreSQL en Neon (Serverless) + Drizzle ORM (<30 KB bundle).
+     - **Despliegue & Edge:** Cloudflare Pages + Workers + R2 (Almacenamiento compatible S3, $0 egress).
+     - **CI/CD:** **Nativo de Cloudflare (Cloudflare Workers Builds & Pages Git Integration)**: Cero configuración de secretos externos, builds automáticos en el edge, preview deployments por PR y rollbacks instantáneos.
+     - **Aceleración de Base de Datos:** Cloudflare Hyperdrive para pooling y caché global de PostgreSQL.
+     - **Desarrollo Local:** Docker Compose (PostgreSQL 16, Mailpit, MinIO, Redis).
+
+---
+
+## 📦 2. Modelo de Distribución Open Source y Paquetes NPX / NPM
+
+NordixGen se diseña y publica como un ecosistema open-source modular en el registro público de `npm`:
+
+```mermaid
+flowchart TD
+    User["Desarrollador en Terminal"] -->|npx nordixgen| CLI["@nordixgen/cli (Binario ejecutable)"]
+    CLI --> Core["@nordixgen/core (Parser YAML, AST-IR, Matriz, VFS)"]
+    
+    subgraph Plugins ["Generadores y Adaptadores (Monorepo de Paquetes)"]
+        Core --> PluginHono["@nordixgen/plugin-hono"]
+        Core --> PluginNext["@nordixgen/plugin-nextjs"]
+        Core --> PluginDocker["@nordixgen/plugin-docker"]
+        Core --> PluginIaC["@nordixgen/plugin-terraform"]
+    end
+    
+    Core --> Upstream["Upstream Template Orchestrator (create-next-app, wrangler)"]
+    Upstream --> OutDir["Proyecto Final Generado (Monorepo pnpm)"]
+```
+
+### Formas de Consumo:
+1. **Ejecución Instantánea sin Instalación (Recomendada):**
+   ```bash
+   npx nordixgen init
+   npx nordixgen generate -f nordix.config.yaml -o ./mi-proyecto
+   ```
+2. **Instalación Global:**
+   ```bash
+   npm install -g nordixgen
+   nordixgen generate -f nordix.config.yaml
+   ```
+
+### Arquitectura de Paquetes en el Monorepo del CLI:
+- **`nordixgen` / `@nordixgen/cli`:** Interfaz de línea de comandos, comandos interactivos (`init`, `generate`, `validate`), spinners y formateo de terminal con `@clack/prompts`.
+- **`@nordixgen/core`:** Motor de esquemas Zod, validador de YAML, constructor del Grafo Semántico (Nordix-IR), Virtual File System (VFS), motor de ordenamiento topológico y Matriz de Incompatibilidad.
+- **Plugins Especializados:** Cada generador de framework vive como un módulo independiente que implementa el contrato del IR, permitiendo a la comunidad agregar soporte para `.NET`, `NestJS`, `Django`, `Angular` o `React Native` sin tocar el núcleo.
+
+### Estrategia de Ramas Git y Pipeline de Publicación Automática a NPM:
+Para el desarrollo propio de NordixGen como herramienta CLI open-source, se establece el siguiente flujo de trabajo estricto de Git:
+
+```mermaid
+gitGraph
+   commit id: "Initial Release"
+   branch develop
+   checkout develop
+   commit id: "Dev Setup"
+   branch feature/yaml-parser
+   checkout feature/yaml-parser
+   commit id: "Zod Schema"
+   commit id: "IR Builder"
+   checkout develop
+   merge feature/yaml-parser id: "Merge PR #1"
+   checkout main
+   merge develop id: "Release v0.1.0" tag: "v0.1.0"
+   checkout develop
+   branch feature/hono-plugin
+   checkout feature/hono-plugin
+   commit id: "Hono Generator"
+   checkout develop
+   merge feature/hono-plugin id: "Merge PR #2"
+   checkout main
+   merge develop id: "Release v0.2.0" tag: "v0.2.0"
+```
+
+1. **Ramas Principales:**
+   - **`main` (Producción & Distribución):** Representa el código estable liberado al mundo. **Cada commit o pull request mergeado a `main` dispara automáticamente el pipeline de release continuo a NPM**.
+   - **`develop` (Integración Continua):** Rama central donde convergen todas las características probadas. Los desarrolladores integran aquí sus cambios mediante Pull Requests antes de preparar una liberación a `main`.
+   - **`feature/<nombre-feature>` (Trabajo Aislado):** Ramas cortas creadas desde `develop` para desarrollar una capacidad específica (ej. `feature/parser-yaml`, `feature/hono-generator`, `feature/cloudflare-iac`). Una vez completada y testeada, se abre un PR hacia `develop`.
+   - **`hotfix/<nombre-fix>` (Parche Crítico):** Se ramifica directamente de `main` en caso de bug crítico en producción y se mergea de vuelta tanto a `main` (disparando release) como a `develop`.
+
+2. **Pipeline Automatizado de Publicación en `main`:**
+   - Al detectar un push en `main`:
+     - Valida la suite completa de pruebas (`test:unit`, `test:integration`, `lint`, `typecheck`) bajo la versión de **Node.js Active LTS (Node 24)**.
+     - Determina la nueva versión mediante **Semantic Release / Changesets** analizando los commits convencionales (`feat:`, `fix:`, `chore:`).
+     - Compila los paquetes (`pnpm build`).
+     - Publica automáticamente los paquetes actualizados (`@nordixgen/cli`, `@nordixgen/core`, etc.) al registro oficial de `npm` con **Provenance OIDC** y etiqueta `@latest`.
+     - Genera automáticamente el Git Tag y la GitHub Release con su Changelog detallado.
+   - De este modo, cualquier usuario en cualquier parte del mundo ejecuta inmediatamente `npx nordixgen@latest` y recibe la versión recién publicada.
+
+3. **Requisitos de Runtime y Compatibilidad con Node.js:**
+   - **Node.js Runtime Oficial:** Node.js **v24 (Active LTS)**.
+   - Todo paquete publicado en el ecosistema NordixGen declara en su `package.json`:
+     ```json
+     "engines": {
+       "node": ">=24.0.0"
+     }
+     ```
+   - Al ejecutar `npx nordixgen`, el CLI valida activamente la versión de Node del usuario anfitrión (`process.version`). Si detecta una versión inferior a v24, muestra una alerta explicativa y guía al usuario para actualizar con su gestor de versiones preferido (`fnm` / `nvm`).
+   - Los desarrolladores del proyecto gestionan sus versiones fácilmente con **`fnm` (Fast Node Manager)**:
+     - `fnm install 24`: Instala Node 24.
+     - `fnm default 24`: Fija Node 24 como la versión predeterminada del sistema.
+     - `fnm use 24`: Cambia al instante de versión.
+     - Archivo `.node-version` / `.nvmrc` en la raíz del repositorio con contenido `24` para auto-switch instantáneo con `fnm env --use-on-cd`.
+
+---
+
+## 🧩 3. Soporte para Múltiples Frontends y Múltiples Backends
+
+Un sistema de software moderno rara vez consiste en un solo frontend y un solo backend. NordixGen permite declarar **múltiples aplicaciones cliente y múltiples servicios de backend** dentro de un mismo monorepo:
+
+### Casos de Uso Multi-App:
+- **E-commerce:** Frontend Web Tienda (`apps/web-store`), Panel de Administración Web (`apps/web-admin`), App Móvil (`apps/mobile-app`), Backend API Core (`apps/api-core`), Worker de Procesamiento Asíncrono de Pagos (`apps/worker-payments`).
+- **SaaS B2B:** Portal de Clientes, Landing Page de Marketing, Microservicios de Auth y Facturación.
+
+### Declaración en YAML:
+El esquema soporta tanto la forma simplificada (`frontend:` / `backend:`) como la forma plural de alta escala:
+
+```yaml
+# Múltiples Frontends
+frontends:
+  - name: store-web
+    framework: nextjs
+    type: web
+    styling: tailwind
+    stateManagement: zustand
+    path: apps/store-web
+  - name: admin-portal
+    framework: nextjs
+    type: web
+    styling: tailwind
+    stateManagement: zustand
+    path: apps/admin-portal
+
+# Múltiples Backends
+backends:
+  - name: core-api
+    framework: hono
+    architecture: clean
+    path: apps/api-core
+    auth:
+      type: jwt
+      roles: [admin, customer]
+  - name: notifications-worker
+    framework: hono
+    architecture: modular
+    path: apps/worker-notifications
+```
+
+### Orquestación en Monorepo:
+- **Espacio de Trabajo pnpm (`pnpm-workspace.yaml`):** Agrupa `apps/*` y `packages/*`.
+- **Scripts Paralelos en Root `package.json`:**
+  - `pnpm dev`: Inicia todas las apps en paralelo con prefijos de consola coloreados.
+  - `pnpm dev:store-web`, `pnpm dev:admin-portal`, `pnpm dev:core-api`.
+- **Puertos Locales Asignados Automáticamente:**
+  - Frontend 1: `http://localhost:3000`
+  - Frontend 2: `http://localhost:3001`
+  - Backend 1 (Hono Core): `http://localhost:8787`
+  - Backend 2 (Worker Notificaciones): `http://localhost:8788`
+
+---
+
+## 🛠️ 4. Orquestación de Upstream Starter Templates & Version Tracking
+
+NordixGen **no genera archivos de inicialización desde strings crudos** cuando la comunidad oficial del framework ofrece herramientas canónicas de scaffolding.
+
+### Enfoque: Scaffolding Upstream Oficial + Inyección de Arquitectura
+1. **Fase 1: Scaffolding Upstream:**
+   - Para Next.js: NordixGen orquesta y parametriza `create-next-app` (o desempaqueta una plantilla canónica oficial curada) con flags estrictos:
+     ```bash
+     npx create-next-app@15.1.7 [app-name] --typescript --tailwind --app --no-src-dir --import-alias "@/*" --use-pnpm
+     ```
+   - Para Cloudflare / Hono: Utiliza los templates base oficiales validados de Cloudflare Workers (`npm create cloudflare@latest`).
+2. **Fase 2: Inyección de Arquitectura y Dominio (El Valor Real de NordixGen):**
+   - Una vez instanciado el esqueleto oficial en el Virtual File System (VFS), NordixGen inyecta de forma algorítmica y determinista:
+     - La Clean Architecture (capas de dominio, aplicación, infraestructura).
+     - Los modelos y esquemas relacionales de Drizzle ORM.
+     - Los endpoints y controladores tipados con validación Zod.
+     - El módulo de autenticación Web Crypto y middlewares RBAC/PBAC.
+     - El cliente de API tipado para el frontend.
+     - Las vistas completas de tablas, filtros y modales por entidad.
+3. **Matriz de Fijación y Seguimiento de Versiones (Version Matrix & Node.js Binding):**
+   - **Enlace Estricto de Node.js:** Cada paquete generado por NordixGen y el propio CLI vinculan explícitamente en `package.json` su motor compatible (`engines: { "node": ">=24.0.0" }` o `>=26.0.0`).
+   - **Líneas de Node.js Oficiales:**
+     - **Node.js 26 (Current / Próximo LTS):** Versión de última generación con soporte para las APIs más recientes de ECMAScript y V8.
+     - **Node.js 24 (Active LTS):** Línea recomendada para entornos de producción de máxima estabilidad empresarial.
+   - **Archivo `.nvmrc` y `.node-version`:** Se generan automáticamente en la raíz del proyecto para asegurar que cualquier desarrollador o runner de CI use la versión exacta.
+   - **Package Manager:** `pnpm >= 10.0.0` (con enforcement estricto vía `packageManager` en `package.json`).
+   - **Frameworks Principales Fijados:**
+     - Next.js: `^15.1.7` (React 19, App Router).
+     - Tailwind CSS: `^4.0.0` (Lightning CSS, `@theme`).
+     - Hono: `^4.7.0` (Edge native).
+     - Drizzle ORM: `^0.39.0` + Drizzle Kit `^0.30.0`.
+     - Neon Serverless Driver: `@neondatabase/serverless ^0.10.4`.
+
+---
+
+## 📋 5. Matriz Completa de Capacidades Especificables en el YAML
+
+A continuación se detalla cada sección, campo y capacidad que puede declararse en la especificación central `nordix.config.yaml`.
+
+### A. Modelado de Datos y Entidades (`entities` & `enums`)
+
+#### 1. Enums Globales (`enums`)
+- Listas de valores reutilizables entre frontend y backend (ej. `OrderStatus: [PENDING, PAID, SHIPPED, CANCELLED]`).
+- Mapeados a `pgEnum` en Drizzle y a tipos TypeScript estrictos.
+
+#### 2. Campos de Entidad (`fields`)
+- **Tipos de datos soportados:**
+  - `string`: Cadenas con longitud configurable (`varchar` o `text`).
+  - `number`: Números enteros o de coma flotante (`integer`, `doublePrecision`, `decimal`).
+  - `boolean`: Valores verdadero/falso.
+  - `date`: Fechas y timestamps con zona horaria (`timestamp with time zone`).
+  - `uuid`: Identificadores únicos universales.
+  - `json`: Estructuras flexibles (`jsonb`).
+  - `enum`: Referencia a un enum definido globalmente.
+- **Restricciones y Modificadores:**
+  - `required`: Booleano (default: `true`).
+  - `unique`: Booleano (default: `false`).
+  - `default`: Valor por defecto literal.
+  - `description`: Comentario para OpenAPI/Swagger.
+
+#### 3. Llaves Primarias y Auditoría
+- **Primary Key:** Inyección automática de `id: uuid().defaultRandom().primaryKey()`.
+- **Timestamps:** (`timestamps: true`): Inyecta `createdAt` y `updatedAt`.
+- **Soft Delete:** (`softDelete: true`): Inyecta `deletedAt`. Todas las consultas de lectura filtran registros eliminados de forma transparente.
+- **Políticas de Cascada (`onDelete`):** `cascade`, `set-null`, `restrict`, `no-action`.
+
+#### 4. Relaciones entre Entidades (`relations`)
+- Cardinalidades: `many-to-one`, `one-to-many`, `one-to-one`, `many-to-many` (tabla intermedia autogenerada).
+- Ordenamiento topológico automático (Algoritmo de Kahn) para sembradores y migraciones.
+
+---
+
+### B. Sistema de API y Endpoints
+
+1. **Endpoints CRUD Estándar:** 5 endpoints RESTful por entidad (`List` paginado, `GetById`, `Create`, `Update`, `Delete`).
+2. **Endpoints Complejos con JOINs Declarativos:**
+   - Proyecciones relacionales que cruzan múltiples entidades (`inner` o `left`).
+   - Parámetros tipados: `queryParams`, `pathParams`, `requestBody` (DTOs de Zod).
+   - Consultas emitidas mediante la Relational Query API de Drizzle (`db.query.*.findMany`).
+
+---
+
+### C. Seguridad, Autenticación y Autorización
+
+1. **Mecanismos de Autenticación:**
+   - **Correo y Contraseña:** Hashing con **Web Crypto PBKDF2 / SHA-256** (100% nativo de Cloudflare Workers, 0 ms cold starts).
+   - **Usuario y PIN:** Para terminales POS o apps móviles rápidas.
+   - **OAuth 2.0:** Google y GitHub out-of-the-box.
+   - **2FA / TOTP:** Códigos temporales de 6 dígitos compatibles con Google Authenticator.
+2. **Flujos de Correo Electrónico:**
+   - Confirmación de cuenta con tokens temporales firmados.
+   - Restablecimiento de contraseña.
+   - **Local:** Captura SMTP con **Mailpit** (puerto 1025) y consola web (`http://localhost:8025`).
+   - **Producción:** Resend, SendGrid o Cloudflare Email Routing.
+3. **Manejo de Tokens y Sesión:**
+   - Access Tokens JWT de corta duración + Refresh Tokens en base de datos.
+4. **Autorización Granular (RBAC & PBAC):**
+   - Definición de Roles (`admin`, `manager`, `customer`).
+   - Definición de Permisos (`products:create`, `orders:cancel`).
+   - Protección de endpoints por roles o permisos específicos.
+
+---
+
+### D. Entorno Local de Desarrollo (Docker Compose)
+
+Un solo comando (`pnpm docker:up`) levanta:
+1. **PostgreSQL 16 Alpine (Puerto 5432):** Base de datos con volumen persistente y healthcheck.
+2. **Mailpit (Puertos 1025 y 8025):** Servidor SMTP para capturar y visualizar emails en desarrollo.
+3. **MinIO (Puertos 9000 y 9001):** Almacenamiento compatible con S3 / Cloudflare R2 con consola web.
+4. **Redis 7 Alpine (Puerto 6379):** Caché, sesiones y colas.
+
+---
+
+### E. Seeders y Datos Sintéticos (`faker`)
+- Script autoejecutable (`pnpm db:seed`) que puebla la base de datos con datos realistas generados por `@faker-js/faker`, respetando el orden de dependencias de claves foráneas.
+
+---
+
+### F. Formato de Errores Estandarizado (RFC 7807 Problem Details)
+- Respuestas uniformes con cabecera `Content-Type: application/problem+json` (`type`, `title`, `status`, `detail`, `instance`, `invalidParams`).
+- Catálogo de excepciones: `NotFoundError`, `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`.
+
+---
+
+### G. Manejo de Estado en Frontend, Caché de Datos y Clientes API Autogenerados
+
+Para garantizar que los frontends no solo reciban vistas estáticas sino una **integración viva, reactiva y de máximo rendimiento** con el backend especificado, NordixGen implementa un modelo de **Estado Dual (Server State + Client State)** altamente eficiente:
+
+```mermaid
+flowchart TD
+    subgraph Frontend_App ["Frontend (Next.js 15 App Router / React)"]
+        subgraph Server_State ["1. Server State (Caché & Sincronización Remota)"]
+            TanStack["TanStack Query (React Query v5)"]
+            Hooks["Hooks Autogenerados (useUsers, useUserById, useCreateUser, useOrdersSummary)"]
+            Cache["Query Cache Global (Deduplicación, Stale-While-Revalidate, Invalidation)"]
+            TanStack --> Hooks
+            Hooks --> Cache
+        end
+        
+        subgraph Client_State ["2. Client State (Memoria UI & Sesión Local)"]
+            Zustand["Zustand Store (Ultra-ligero, <2 KB, sin re-renders innecesarios)"]
+            UIStore["UI Stores: authStore, sidebarStore, cartStore, filterStore"]
+            Zustand --> UIStore
+        end
+        
+        ApiClient["3. SDK Cliente API Tipado End-to-End (@/lib/api-client)"]
+        FetchWrapper["Fetch Wrapper Seguro con Reintentos y RFC 7807 Error Interceptor"]
+        
+        Hooks --> ApiClient
+        ApiClient --> FetchWrapper
+    end
+    
+    subgraph Backend_App ["Backend (Hono Clean Architecture)"]
+        HonoRoutes["Endpoints REST (/api/users, /api/orders, /api/orders/summary)"]
+    end
+    
+    FetchWrapper -->|HTTP / JSON Tipado| HonoRoutes
+```
+
+#### 1. Arquitectura de Estado Dual: ¿Por qué es la más eficiente?
+- **Server State (TanStack Query v5):**
+  - **El Problema:** Almacenar datos de servidor en stores globales clásicos (Redux o Zustand puro) genera datos desincronizados, re-fetching manual caótico y complejidad de caché.
+  - **La Solución:** TanStack Query maneja automáticamente la caché de peticiones, revalidación en segundo plano (`stale-while-revalidate`), deduplicación de llamadas idénticas, reintentos exponenciales y mutaciones optimistas.
+- **Client State (Zustand v5):**
+  - Manejo exclusivo del estado de la interfaz de usuario: usuario autenticado en sesión, tema (dark/light), modales abiertos, estado del sidebar, filtros seleccionados o carrito temporal.
+  - Cero boilerplate, selectors atómicos para evitar renderizados innecesarios y soporte de persistencia local (`persist` middleware para `localStorage`).
+
+#### 2. Código Autogenerado por Entidad y Endpoint:
+Para cada entidad declarada en el YAML (ej. `User`, `Order`) y cada endpoint complejo (`/api/orders/summary`), NordixGen genera automáticamente en el frontend:
+1. **Cliente de Servicios (`apps/web/src/services/<entity>.service.ts`):**
+   - Métodos tipados listos para invocar:
+     - `userService.getAll(params?: UserQueryParams): Promise<PaginatedResponse<User>>`
+     - `userService.getById(id: string): Promise<User>`
+     - `userService.create(dto: CreateUserDto): Promise<User>`
+     - `userService.update(id: string, dto: UpdateUserDto): Promise<User>`
+     - `userService.delete(id: string): Promise<void>`
+     - `orderService.getSummary(params: OrderSummaryParams): Promise<OrderSummaryResult>`
+2. **Hooks React Query Listos para Usar (`apps/web/src/hooks/queries/use<Entity>.ts`):**
+   - `useUsersQuery(filters)`: Query hook con estados reactivos (`data`, `isLoading`, `isError`, `error`).
+   - `useCreateUserMutation()`: Con invalidación automática de la caché de listas al crearse un usuario (`queryClient.invalidateQueries({ queryKey: ['users'] })`).
+   - `useUpdateUserMutation()` y `useDeleteUserMutation()` con soporte para **Mutaciones Optimistas** opcionales.
+3. **Stores de Zustand Especializados (`apps/web/src/stores/`):**
+   - `useAuthStore`: Token JWT, usuario activo, permisos computados `hasPermission('users:create')`, login/logout.
+   - `useUIStore`: Alertas globales, toast notifications, control de modales.
+
+#### 3. Parámetros del YAML para Configuración de Estado en Frontends:
+Cada frontend puede personalizar o seleccionar su estrategia de estado:
+
+```yaml
+frontends:
+  - name: store-web
+    framework: nextjs
+    type: web
+    styling: tailwind
+    stateManagement:
+      client: zustand            # zustand (default) | context | none
+      server: tanstack-query     # tanstack-query (default) | swr | native-fetch
+      generateHooks: true        # Genera automáticamente useEntityQueries y useEntityMutations
+      optimisticUpdates: true    # Genera lógica de actualización instantánea en UI
+    connectsTo: core-api         # Enlace explícito al backend para generar el SDK de endpoints
+    path: apps/store-web
+```
+
+---
+
+### H. Módulo de Integración con LLM (AI Agentic Tooling)
+- Exposición automática de todos los Casos de Uso de la aplicación como herramientas para agentes inteligentes:
+  - `GET /api/agent/tools`: Catálogo JSON Schema compatible con OpenAI, Anthropic y Gemini.
+  - `POST /api/agent/execute`: Despacho seguro de acciones con validación Zod y auditoría.
+
+---
+
+## 🚀 6. CI/CD Nativo en Cloudflare (Workers Builds & Pages Git Integration)
+
+Para nuestro **Golden Path**, el pipeline de integración y despliegue continuo se ejecuta **nativamente dentro de la propia infraestructura de Cloudflare**, eliminando por completo la necesidad de runners externos como GitHub Actions:
+
+```mermaid
+flowchart LR
+    A["Push a GitHub / GitLab"] --> B["Cloudflare Git Webhook"]
+    
+    subgraph Cloudflare_Native_Builds ["Cloudflare Edge Build Engine"]
+        B --> C["Cloudflare Workers Builds (Backend APIs)"]
+        B --> D["Cloudflare Pages Builds (Frontend Next.js)"]
+        C --> E["Build Command: pnpm db:migrate && pnpm build"]
+        D --> F["Build Command: pnpm build"]
+    end
+    
+    E --> G["Deploy Automático a Workers (.workers.dev / Dominio)"]
+    F --> H["Deploy Automático a Pages (.pages.dev / Dominio)"]
+    B --> I["Preview URLs instantáneas por cada Pull Request"]
+```
+
+### ¿Por qué Cloudflare Native CI/CD es superior para el Golden Path?
+1. **Cero Secretos que Mantener en GitHub:**
+   - No necesitas crear `CLOUDFLARE_API_TOKEN` ni `CLOUDFLARE_ACCOUNT_ID` en GitHub Secrets.
+   - La conexión se autentica de forma segura mediante la aplicación oficial de Cloudflare para GitHub/GitLab.
+2. **Soporte Nativo de Monorepo (Root Directory):**
+   - Cloudflare permite configurar el directorio raíz (`Root Directory`) de cada proyecto:
+     - Frontend Tienda: `apps/store-web`
+     - Frontend Admin: `apps/admin-portal`
+     - Backend API: `apps/api-core`
+   - **Smart Builds:** Cloudflare detecta qué archivos cambiaron en el commit y solo recompila y despliega la aplicación que tuvo modificaciones, ahorrando tiempo y evitando builds innecesarios.
+3. **Migraciones y Pruebas en el Build Command:**
+   - En el backend, el comando de build se configura como:
+     ```bash
+     pnpm db:migrate && pnpm build
+     ```
+   - Las migraciones de Drizzle sobre Neon se ejecutan antes del despliegue del worker, asegurando que la base de datos esté sincronizada.
+4. **Preview Deployments Automáticas por Pull Request:**
+   - Al abrir un PR, Cloudflare Pages y Workers Builds generan automáticamente enlaces únicos de staging (ej. `pr-14.quantum-store.pages.dev`), comentando el link de previsualización directamente en el Pull Request.
+5. **Rollbacks Instantáneos en 1 Clic:**
+   - Si una versión en producción presenta errores, se puede revertir a cualquier despliegue anterior de forma instantánea desde la interfaz de Cloudflare o CLI sin necesidad de realizar commits de reversión.
+6. **Pipelines Durables Avanzados con `@cloudflare/ci` (Cloudflare Workflows):**
+   - Para flujos con lógica de aprobación, tests E2E o pasos complejos, Cloudflare soporta pipelines definidos en TypeScript ejecutados sobre **Cloudflare Workflows**, donde cada paso es persistente y con reintentos automáticos.
+7. **GitHub Actions (Solo como Fallback Opcional):**
+   - Se mantiene únicamente como alternativa para proyectos que decidan usar proveedores fuera de Cloudflare (ej. despliegue en VPS propio con Docker).
+
+---
+
+## ☁️ 7. Infrastructure as Code (IaC) para Cloudflare & Neon
+
+NordixGen integra un módulo de **Infraestructura como Código (IaC)** en la carpeta `infra/terraform/` basado en **Terraform / OpenTofu** para aprovisionar toda la topología cloud con un solo comando (`terraform apply`):
+
+```mermaid
+flowchart TD
+    TF["Terraform / OpenTofu (infra/terraform/)"] --> CF_Pages["Cloudflare Pages (Proyectos Frontend)"]
+    TF --> CF_Workers["Cloudflare Workers (APIs Backend)"]
+    TF --> CF_R2["Cloudflare R2 (Buckets de Almacenamiento con CORS)"]
+    TF --> CF_Hyperdrive["Cloudflare Hyperdrive (Acelerador Global Postgres)"]
+    TF --> Neon_DB["Neon Serverless PostgreSQL (Proyecto + Rama)"]
+    TF --> CF_DNS["Cloudflare DNS & Dominios Personalizados"]
+```
+
+### Recursos Gestionados por el Módulo de IaC:
+1. **Cloudflare Hyperdrive:**
+   - **El arma secreta del Golden Path.**
+   - Cloudflare Hyperdrive mantiene un pool de conexiones persistentes cerca del servidor de Neon y cachea consultas SQL en más de 300 centros de datos mundiales.
+   - **Resultado:** Reduce la latencia de conexión a PostgreSQL de ~150ms a **menos de 15ms** en Cloudflare Workers.
+2. **Cloudflare R2 Buckets:**
+   - Creación de buckets para subida de archivos (imágenes, documentos) con políticas de ciclo de vida y cabeceras CORS preconfiguradas.
+3. **Cloudflare D1 & KV:**
+   - Bases de datos SQLite distribuidas y almacenamiento clave-valor para sesiones ultrarrápidas.
+4. **Cloudflare Workers & Pages Projects:**
+   - Configuración de variables de entorno y bindings automáticos (R2, Hyperdrive, D1) vinculados a cada Worker.
+5. **DNS & Custom Domains:**
+   - Creación de registros DNS y vinculación de dominios personalizados con certificados SSL automáticos.
+
+---
+
+## 🔬 8. Ejemplo del YAML Más Avanzado Soportado
+
+```yaml
+# yaml-language-server: $schema=./nordix.schema.json
+# ==============================================================================
+# NORDIXGEN ENTERPRISE MULTI-APP & IAC SHOWCASE
+# ==============================================================================
+
+name: nexus-enterprise
+version: 1.0.0
+description: "Plataforma SaaS E-commerce en Cloudflare Edge con Hono, Next.js y Terraform IaC"
+structure: monorepo
+
+# Múltiples Frontends
+frontends:
+  - name: store-web
+    framework: nextjs
+    type: web
+    styling: tailwind
+    stateManagement:
+      client: zustand
+      server: tanstack-query
+      generateHooks: true
+      optimisticUpdates: true
+    connectsTo: core-api
+    authUI: true
+    path: apps/store-web
+  - name: admin-portal
+    framework: nextjs
+    type: web
+    styling: tailwind
+    stateManagement:
+      client: zustand
+      server: tanstack-query
+      generateHooks: true
+      optimisticUpdates: true
+    connectsTo: core-api
+    authUI: true
+    path: apps/admin-portal
+
+# Múltiples Backends
+backends:
+  - name: core-api
+    framework: hono
+    architecture: clean
+    path: apps/api-core
+    auth:
+      type: jwt
+      providers: [credentials, google, github]
+      twoFactor: true
+      passwordRecovery: true
+      roles: [admin, manager, customer]
+  - name: worker-notifications
+    framework: hono
+    architecture: modular
+    path: apps/worker-notifications
+    auth:
+      type: none
+
+# Base de datos y ORM
+database:
+  engine: postgres
+  provider: neon
+  orm: drizzle
+
+# Entorno local Docker
+docker:
+  postgres: true
+  mailpit: true
+  minio: true
+  redis: true
+
+# Módulo de Agentes Inteligentes
+llm:
+  enabled: true
+  exposeUseCases: true
+  endpoint: /api/agent
+
+# Nube, CI/CD e IaC
+deployment:
+  provider: cloudflare
+  ci: cloudflare-native                 # CI/CD nativo en el Edge (Workers Builds & Pages)
+  iac: terraform                       # Genera infra/terraform/ con R2, Hyperdrive y Workers
+
+# Enums Globales
+enums:
+  UserRole: [ADMIN, MANAGER, CUSTOMER]
+  UserStatus: [ACTIVE, INACTIVE, SUSPENDED]
+  ProductStatus: [DRAFT, PUBLISHED, ARCHIVED]
+  OrderStatus: [PENDING, PAID, SHIPPED, DELIVERED, CANCELLED]
+
+# Entidades del Dominio
+entities:
+  User:
+    description: "Usuarios del sistema con roles y estado"
+    fields:
+      email:
+        type: string
+        required: true
+        unique: true
+      name:
+        type: string
+        required: true
+      role:
+        type: enum
+        enumName: UserRole
+        default: CUSTOMER
+      status:
+        type: enum
+        enumName: UserStatus
+        default: ACTIVE
+    softDelete: true
+    timestamps: true
+
+  Category:
+    description: "Categorías de productos"
+    fields:
+      name:
+        type: string
+        required: true
+        unique: true
+      slug:
+        type: string
+        required: true
+        unique: true
+      description:
+        type: string
+        required: false
+    softDelete: true
+    timestamps: true
+
+  Product:
+    description: "Catálogo de productos de la tienda"
+    fields:
+      name:
+        type: string
+        required: true
+      sku:
+        type: string
+        required: true
+        unique: true
+      price:
+        type: number
+        required: true
+      stock:
+        type: number
+        required: true
+        default: 0
+      description:
+        type: string
+        required: false
+      status:
+        type: enum
+        enumName: ProductStatus
+        default: DRAFT
+    relations:
+      category:
+        type: many-to-one
+        target: Category
+        foreignKey: category_id
+        onDelete: set-null
+    softDelete: true
+    timestamps: true
+
+  Order:
+    description: "Órdenes de compra de clientes"
+    fields:
+      orderNumber:
+        type: string
+        required: true
+        unique: true
+      totalAmount:
+        type: number
+        required: true
+      status:
+        type: enum
+        enumName: OrderStatus
+        default: PENDING
+    relations:
+      customer:
+        type: many-to-one
+        target: User
+        foreignKey: user_id
+        onDelete: restrict
+    softDelete: true
+    timestamps: true
+
+  OrderItem:
+    description: "Líneas de detalle por orden"
+    fields:
+      quantity:
+        type: number
+        required: true
+      unitPrice:
+        type: number
+        required: true
+    relations:
+      order:
+        type: many-to-one
+        target: Order
+        foreignKey: order_id
+        onDelete: cascade
+      product:
+        type: many-to-one
+        target: Product
+        foreignKey: product_id
+        onDelete: restrict
+    softDelete: false
+    timestamps: true
+
+# Endpoints Complejos y Joins
+endpoints:
+  - path: /api/orders/summary
+    method: GET
+    summary: "Consulta agregada de órdenes con datos de clientes y detalle"
+    entity: Order
+    authRequired: true
+    roles: [admin, manager]
+    queryParams:
+      - name: startDate
+        type: string
+        required: false
+      - name: status
+        type: string
+        required: false
+    joins:
+      - entity: User
+        type: inner
+        fields: [id, name, email]
+      - entity: OrderItem
+        type: left
+        fields: [id, quantity, unitPrice]
+```
