@@ -168,3 +168,35 @@ flowchart LR
   - Generación de un proyecto SaaS E-commerce completo a partir del archivo YAML más avanzado.
   - Verificación de compilación TypeScript en todos los frontends y backends generados.
   - Verificación de ejecución de tests unitarios del proyecto generado.
+
+---
+
+### 🌐 Fase 8: Revisión y Transición Total del Repositorio a Inglés (Open Source Readiness)
+**Objetivo:** Asegurar que todo el código fuente, la documentación técnica y las salidas del CLI estén 100% en inglés estándar para la distribución global en npm y la comunidad open source.
+
+- [ ] **8.1 Traducción Integral de Documentación Markdown:**
+  - `README.md`
+  - `docs/SPECIFICATION.md`
+  - `docs/IMPLEMENTATION_PLAN.md`
+  - `packages/README.md`
+- [ ] **8.2 Auditoría de Código y Salidas:**
+  - Nombres de interfaces, clases, funciones y variables en inglés.
+  - Comentarios, docstrings y JSDocs en inglés.
+  - Textos de ayuda y errores en la interfaz del CLI en inglés.
+  - Mensajes de commits y changelogs en formato Conventional Commits en inglés.
+
+---
+
+## 📋 Mapeo con el Backlog de GitHub (Epic #39 en NordixCompass / NordixCore)
+
+| Fase | Sub-Issue en GitHub | Size | Iteración |
+| :--- | :--- | :--- | :--- |
+| **Fase 1** | [#44: Phase 1: Monorepo Foundations, Tooling & NPM Continuous Release](https://github.com/NordixTech/NordixCore/issues/44) | M | Month-01 |
+| **Fase 2** | [#45: Phase 2: Core Engine (@nordixgen/core) - Zod Schemas, IR Graph & Deterministic VFS](https://github.com/NordixTech/NordixCore/issues/45) | L | Month-01 |
+| **Fase 3** | [#46: Phase 3: Upstream Scaffolding Orchestrator & CLI (@nordixgen/cli)](https://github.com/NordixTech/NordixCore/issues/46) | M | Month-01 |
+| **Fase 4** | [#48: Phase 4: Plugin Hono + Drizzle ORM (Golden Path Backend)](https://github.com/NordixTech/NordixCore/issues/48) | XL | Month-01 |
+| **Fase 5** | [#49: Phase 5: Plugin Next.js 15 & Dual-State Management (Golden Path Frontend)](https://github.com/NordixTech/NordixCore/issues/49) | XL | Month-01 |
+| **Fase 6** | [#51: Phase 6: Local Docker Environment & Cloudflare Native CI/CD + IaC](https://github.com/NordixTech/NordixCore/issues/51) | L | Month-01 |
+| **Fase 7** | [#52: Phase 7: AI Agentic Tooling & End-to-End Validation](https://github.com/NordixTech/NordixCore/issues/52) | M | Month-01 |
+| **Fase 8** | [#54: Phase 8: Comprehensive English Localization & Documentation Review](https://github.com/NordixTech/NordixCore/issues/54) | S | Month-01 |
+

@@ -96,6 +96,14 @@ NordixGen implementa un modelo de desarrollo profesional y publicación continua
 
 ---
 
+## 🌐 Idioma y Estándares de Código (Language & Localization)
+
+- **Código Fuente y CLI:** Todo el código fuente (TypeScript), interfaces, variables, funciones, commits y comentarios deben escribirse **estrictamente en inglés**.
+- **Documentación:** La documentación inicial de diseño se encuentra en español durante las primeras iteraciones y será migrada formalmente a inglés en la **Fase 8** previo al lanzamiento público del paquete en NPM.
+
+---
+
 ## 📄 Licencia
 
 Este proyecto está bajo la Licencia [MIT](LICENSE).
+
