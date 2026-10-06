@@ -10,8 +10,13 @@
   "scripts": {
     "build": "pnpm --filter \"./packages/*\" build",
     "test": "pnpm --filter \"./packages/*\" test",
-    "lint": "pnpm --filter \"./packages/*\" lint",
-    "typecheck": "pnpm --filter \"./packages/*\" typecheck"
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "typescript": "^5.8.2"
   },
   "keywords": [
     "nordixgen",
