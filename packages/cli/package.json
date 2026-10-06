@@ -2,6 +2,11 @@
   "name": "@nordixgen/cli",
   "version": "0.1.0",
   "description": "Command line interface and interactive project generator for NordixGen",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NordixTech/NordixGen.git",
+    "directory": "packages/cli"
+  },
   "type": "module",
   "bin": {
     "nordixgen": "./dist/index.js"

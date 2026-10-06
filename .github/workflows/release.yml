@@ -12,9 +12,8 @@ jobs:
     name: Build & Publish to NPM (Provenance OIDC)
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       id-token: write
-      packages: write
 
     steps:
       - name: Checkout repository
@@ -34,6 +33,9 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 
+      - name: Ensure npm supports trusted publishing
+        run: npm install --global 'npm@^11.5.1'
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -46,8 +48,13 @@ jobs:
       - name: Build production packages
         run: pnpm build
 
-      - name: Publish packages to NPM with Provenance
+      - name: Pack workspace packages
         run: |
-          pnpm -r publish --access public --no-git-checks --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          mkdir -p "$RUNNER_TEMP/nordixgen-core" "$RUNNER_TEMP/nordixgen-cli"
+          pnpm --dir packages/core pack --pack-destination "$RUNNER_TEMP/nordixgen-core"
+          pnpm --dir packages/cli pack --pack-destination "$RUNNER_TEMP/nordixgen-cli"
+
+      - name: Publish packages to npm with Trusted Publishing
+        run: |
+          npm publish "$RUNNER_TEMP/nordixgen-core"/*.tgz --access public
+          npm publish "$RUNNER_TEMP/nordixgen-cli"/*.tgz --access public
