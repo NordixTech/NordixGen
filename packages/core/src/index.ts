@@ -25,6 +25,7 @@ export * from "./plugins/composer.js";
 export * from "./plugins/contracts.js";
 export * from "./plugins/registry.js";
 export * from "./plugins/architecture/clean.js";
+export * from "./plugins/architecture/domain-files.js";
 export * from "./plugins/frameworks/hono.js";
 export * from "./plugins/orms/drizzle.js";
 export * from "./configuration/schema.js";

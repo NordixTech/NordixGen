@@ -104,6 +104,20 @@ function canonicalEntity(name: string, entity: EntityDefinition): NordixEntityRe
   };
 }
 
+/** Creates the deterministic domain input for one backend without validating unrelated config. */
+export function buildBackendDomainModel(
+  config: NordixConfig,
+  backendName: string,
+): Pick<NordixIntermediateRepresentation, "enums" | "entities"> {
+  const entities = Object.fromEntries(
+    Object.entries(config.entities)
+      .filter(([, entity]) => entity.backend === backendName)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, entity]) => [name, canonicalEntity(name, entity)]),
+  );
+  return { enums: sortedRecord(config.enums), entities };
+}
+
 function relationEdgeOrder(entities: Record<string, EntityDefinition>): NordixDependencyEdge[] {
   const edges: NordixDependencyEdge[] = [];
   for (const [sourceName, entity] of Object.entries(entities)) {

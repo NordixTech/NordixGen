@@ -1,6 +1,7 @@
 import type { NordixConfig } from "../configuration/schema.js";
 import { normalizeBackends } from "../configuration/schema.js";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
+import { buildBackendDomainModel } from "../intermediate-representation.js";
 import { VirtualFileSystem, normalizeVirtualPath } from "../virtual-file-system.js";
 import { ARCHITECTURE_FILE_ROLES } from "./contracts.js";
 import type {
@@ -31,6 +32,7 @@ export interface ComposePluginsOptions {
   requiredRoles?: readonly PluginRole[];
   externalCapabilities?: readonly string[];
   persistence?: Omit<PersistenceContext, "directories">;
+  domainModel?: PluginContributionContext["domainModel"];
 }
 
 function fail(diagnostics: ConfigDiagnostic[]): PluginCompositionResult {
@@ -328,6 +330,7 @@ export function composePlugins(options: ComposePluginsOptions): PluginCompositio
       framework: frameworkContext,
       architecture: architectureLayout,
       availableCapabilities: new Set(availableCapabilities),
+      ...(options.domainModel ? { domainModel: options.domainModel } : {}),
       ...(persistence ? { persistence } : {}),
     };
     let files: readonly GeneratedFile[];
@@ -431,6 +434,7 @@ export function composeBackendPlugins(
     { pluginId: backend.architecture },
   ];
   const externalCapabilities: string[] = [];
+  const domainModel = buildBackendDomainModel(config, backendName);
   let persistence: Omit<PersistenceContext, "directories"> | undefined;
   if (backend.persistence) {
     const database = config.databases[backend.persistence.database];
@@ -455,5 +459,5 @@ export function composeBackendPlugins(
     };
   }
 
-  return composePlugins({ selections, registry, externalCapabilities, persistence });
+  return composePlugins({ selections, registry, externalCapabilities, persistence, domainModel });
 }
