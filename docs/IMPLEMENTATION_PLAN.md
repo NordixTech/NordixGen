@@ -80,9 +80,11 @@ flowchart LR
   - `nordixgen init`: Asistente interactivo en terminal para crear un `nordix.config.yaml` inicial.
   - `nordixgen generate -f <file.yaml> -o <targetDir>`: Orquestación completa de generación.
 - [ ] **3.2 Upstream Scaffolder:**
+  - Usar las herramientas upstream oficiales como fuente del scaffold: `create-next-app` para Next.js y Cloudflare C3 para Hono; NordixGen las orquesta con versiones y opciones controladas, sin mantener forks de sus plantillas.
   - Invocación no-interactiva de `create-next-app` o desempaquetado de plantilla canónica curada.
   - Invocación de templates base Cloudflare Workers (`npm create cloudflare`).
   - Ensamblaje del Monorepo con `pnpm-workspace.yaml` raíz y scripts `pnpm dev`.
+  - Aplicar identidad NordixGen al README de cada repositorio generado y a la portada de cada frontend Next.js, preservando el contenido de referencia upstream cuando aporte instrucciones del framework.
   - **Preflight de repositorios remotos:** antes de generar archivos o crear remotos, comprobar la autenticación activa de GitHub CLI, verificar que la cuenta personal coincide con el handle configurado o que puede crear repositorios en la organización, y confirmar que el nombre remoto no esté ocupado.
   - Para repositorios inicializados, comprobar que Git tiene una identidad configurada; después de crear el remoto, verificar el URL y ejecutar `git push --dry-run` antes del primer push real. La autorización de push depende de reglas del repositorio nuevo y no puede comprobarse por completo antes de crearlo.
   - Si faltan credenciales o permisos, detenerse con instrucciones para corregir `gh auth login`, cambiar la cuenta activa o pedir acceso. Nunca guardar ni imprimir tokens. El primer adaptador remoto implementado es GitHub; GitLab y Bitbucket quedan pendientes.
