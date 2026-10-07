@@ -19,7 +19,7 @@ A partir de un archivo declarativo `nordix.config.yaml`, NordixGen construye:
 - **Manejo de Estado Dual de Alto Rendimiento:** **TanStack Query v5** para caché remota y sincronización automática del servidor + **Zustand v5** para estado atómico de UI.
 - **SDKs y Hooks Tipados End-to-End** generados automáticamente para cada entidad y endpoint.
 - **Modelos y Esquemas ORM** con Drizzle ORM sobre PostgreSQL (Neon).
-- **Authentication and Authorization:** Mature authentication libraries and standard identity protocols, with application-level role and permission checks (RBAC/PBAC).
+- **Authentication and Authorization:** Better Auth is the planned first authentication plugin (Golden Path), composed with framework, architecture, and persistence plugins; application roles and permissions (RBAC/PBAC) are enforced separately by the backend.
 - **CI/CD Nativo en el Edge con Cloudflare** (Workers Builds & Pages Git Integration) + Infraestructura como Código (Terraform/OpenTofu).
 - **Entorno Local con Docker Compose:** PostgreSQL, Mailpit, MinIO y Redis en un solo comando.
 
@@ -40,7 +40,9 @@ NordixGen composes **specialized plugins** instead of maintaining one monolithic
 
 The framework provides project context; the architecture strategy resolves where each file role belongs in that context; and the framework and ORM plugins generate code at the resolved paths. Before writing files, NordixGen verifies that every plugin exists and that their capabilities are compatible. An unsupported combination, such as Hono with Entity Framework, produces a clear diagnostic instead of an incomplete project.
 
-The first planned combination is Hono + Clean + Drizzle + PostgreSQL/Neon. The generator architecture allows additional strategies, frameworks, and ORMs without duplicating a generator for every combination. See [Phase 4](docs/IMPLEMENTATION_PLAN.md#phase-4-composable-backend-generation-golden-path) and the [detailed specification](docs/SPECIFICATION.md#modular-backend-generation-contract).
+The first planned combination is Hono + Clean + Drizzle + PostgreSQL/Neon, with Better Auth as the first authentication plugin. The generator architecture allows additional strategies, frameworks, ORMs, and authentication plugins without duplicating a generator for every combination. See [Phase 4](docs/IMPLEMENTATION_PLAN.md#phase-4-composable-backend-generation-golden-path) and the [detailed specification](docs/SPECIFICATION.md#modular-backend-generation-contract).
+
+Authentication follows the same composable model. **Better Auth is the first planned authentication plugin and the Golden Path**: it integrates a maintained authentication library into a backend, while the framework plugin supplies HTTP/runtime integration, the architecture plugin supplies file locations, and the ORM/database plugins supply persistence capabilities. This plugin is generated into the backend by default; it is not a separate deployed authentication service. External identity providers such as Google or GitHub are optional Better Auth integrations and require provider configuration and secrets outside the YAML. Application authorization (RBAC/PBAC) remains a separate server-enforced concern. See the [authentication requirements](docs/SPECIFICATION.md#c-authentication-and-authorization).
 
 ```yaml
 databases:
