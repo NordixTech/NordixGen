@@ -19,7 +19,7 @@ A partir de un archivo declarativo `nordix.config.yaml`, NordixGen construye:
 - **Manejo de Estado Dual de Alto Rendimiento:** **TanStack Query v5** para caché remota y sincronización automática del servidor + **Zustand v5** para estado atómico de UI.
 - **SDKs y Hooks Tipados End-to-End** generados automáticamente para cada entidad y endpoint.
 - **Modelos y Esquemas ORM** con Drizzle ORM sobre PostgreSQL (Neon).
-- **Seguridad y Autorización:** Web Crypto nativo, JWT, Refresh Tokens, y control granular de acceso basado en Roles y Permisos (RBAC/PBAC).
+- **Authentication and Authorization:** Mature authentication libraries and standard identity protocols, with application-level role and permission checks (RBAC/PBAC).
 - **CI/CD Nativo en el Edge con Cloudflare** (Workers Builds & Pages Git Integration) + Infraestructura como Código (Terraform/OpenTofu).
 - **Entorno Local con Docker Compose:** PostgreSQL, Mailpit, MinIO y Redis en un solo comando.
 
@@ -28,6 +28,35 @@ A partir de un archivo declarativo `nordix.config.yaml`, NordixGen construye:
 ## Scaffolding oficial de frameworks
 
 NordixGen parte de las herramientas oficiales de cada framework para crear la estructura inicial, en vez de mantener copias propias que envejecen. `generate` coordina `create-next-app` para Next.js y Cloudflare C3 para Hono, les pasa opciones no interactivas y seguras, y después ensambla los repositorios definidos en el YAML. NordixGen personaliza el README generado y la portada del frontend con su identidad de producto; las entidades, endpoints y lógica de negocio se incorporarán en las fases de generación posteriores.
+
+## Backend Generation
+
+NordixGen composes **specialized plugins** instead of maintaining one monolithic generator for every technology combination. The core validates the configuration and coordinates generation; each plugin has a clear responsibility:
+
+- **Architecture** decides which layers and paths contain entities, use cases, ports, adapters, and controllers. Clean and Hexagonal are separate strategies.
+- **Framework** translates project specifications into framework conventions and language, such as Hono/TypeScript or .NET/C#. It also provides the code root, import conventions, and, where applicable, namespace rules.
+- **ORM** generates concrete persistence code, such as Drizzle or Entity Framework, and declares the languages, databases, and runtimes it supports.
+- **Database** identifies the storage engine and provider, such as PostgreSQL on Neon. Each backend selects its ORM and references the database it uses.
+
+The framework provides project context; the architecture strategy resolves where each file role belongs in that context; and the framework and ORM plugins generate code at the resolved paths. Before writing files, NordixGen verifies that every plugin exists and that their capabilities are compatible. An unsupported combination, such as Hono with Entity Framework, produces a clear diagnostic instead of an incomplete project.
+
+The first planned combination is Hono + Clean + Drizzle + PostgreSQL/Neon. The generator architecture allows additional strategies, frameworks, and ORMs without duplicating a generator for every combination. See [Phase 4](docs/IMPLEMENTATION_PLAN.md#phase-4-composable-backend-generation-golden-path) and the [detailed specification](docs/SPECIFICATION.md#modular-backend-generation-contract).
+
+```yaml
+databases:
+  commerce-db:
+    engine: postgres
+    provider: neon
+
+backends:
+  - name: core-api
+    framework: hono
+    architecture: clean
+    persistence:
+      database: commerce-db
+      orm: drizzle
+```
+
 ## 🏆 El Golden Path Oficial
 
 NordixGen está diseñado de forma modular para que la comunidad pueda extenderlo a cualquier framework (.NET, NestJS, Django, Angular, etc.). Sin embargo, la **Ruta Dorada Oficial** de máxima eficiencia y coste cero o ultrabajo es:
@@ -105,10 +134,10 @@ NordixGen implementa un modelo de desarrollo profesional y publicación continua
 
 ---
 
-## 🌐 Idioma y Estándares de Código (Language & Localization)
+## Project Language and Code Standards
 
-- **Código Fuente y CLI:** Todo el código fuente (TypeScript), interfaces, variables, funciones, commits y comentarios deben escribirse **estrictamente en inglés**.
-- **Documentación:** La documentación inicial de diseño se encuentra en español durante las primeras iteraciones y será migrada formalmente a inglés en la **Fase 8** previo al lanzamiento público del paquete en NPM.
+- Source code, CLI output, identifiers, comments, commits, pull requests, issues, and all new or updated project documentation must be written in **English**.
+- Conversations and collaboration may be in Spanish. Existing Spanish documentation will be translated incrementally during Phase 8; any documentation changed before then must still be written in English.
 
 ---
 
