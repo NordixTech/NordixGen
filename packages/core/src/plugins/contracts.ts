@@ -73,6 +73,23 @@ export interface PluginContributionContext {
   framework: FrameworkContext;
   architecture: ArchitectureLayout;
   availableCapabilities: ReadonlySet<string>;
+  persistence?: PersistenceContext;
+}
+
+/** Backend persistence details made available to ORM plugins during generation. */
+export interface PersistenceContext {
+  readonly database: {
+    readonly name: string;
+    readonly engine: string;
+    readonly provider: string;
+  };
+  readonly directories: {
+    /** Paths are repository-relative POSIX paths resolved from the architecture layout. */
+    readonly infrastructure: string;
+    readonly adapter: string;
+  };
+  /** Environment variable name only; credentials never enter the YAML or generated source. */
+  readonly connectionStringEnvironmentVariable: string;
 }
 
 export interface GeneratorPlugin {
