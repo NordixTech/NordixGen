@@ -136,6 +136,32 @@ describe("Clean Architecture domain artifacts", () => {
       },
     ]);
   });
+
+  it("rejects an entity name with no corresponding normalized entity", () => {
+    const { framework, architecture } = createContributionContext({
+      enums: {},
+      entities: {},
+    });
+    expect(() =>
+      generateDomainFiles({
+        selection: { pluginId: "clean" },
+        framework,
+        architecture,
+        availableCapabilities: new Set(),
+        domainModel: {
+          enums: {},
+          entities: new Proxy(
+            {},
+            {
+              ownKeys: () => ["Missing"],
+              get: () => undefined,
+              getOwnPropertyDescriptor: () => ({ configurable: true, enumerable: true }),
+            },
+          ) as DomainModelContext["entities"],
+        },
+      }),
+    ).toThrow('Domain model is missing entity "Missing".');
+  });
 });
 
 function createContributionContext(domainModel: DomainModelContext) {
