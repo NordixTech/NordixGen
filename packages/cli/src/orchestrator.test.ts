@@ -86,6 +86,12 @@ describe("generate command orchestration", () => {
 
     expect(calls).toHaveLength(2);
     expect(calls[0]).toContain("--disable-git");
+    expect(calls[0]).toContain("--src-dir");
+    expect(await readFile(join(output, "README.md"), "utf8")).toContain("# ✦ NordixGen");
+    expect(await readFile(join(output, "README.md"), "utf8")).toContain("test-project");
+    const homepage = await readFile(join(output, "apps", "web", "src", "app", "page.tsx"), "utf8");
+    expect(homepage).toContain("BUILT WITH NORDIXGEN");
+    expect(homepage).toContain("for test-project.");
     expect(calls[1]).toContain("--no-deploy");
     expect(calls[1]).toContain("--no-git");
     expect(await readFile(join(output, "pnpm-workspace.yaml"), "utf8")).toContain("apps/web");
@@ -240,7 +246,13 @@ entities:
     await runGenerate(configPath, output, runner);
 
     expect(await readFile(join(output, "web-repo", "README.md"), "utf8")).toContain(
+      "# ✦ NordixGen",
+    );
+    expect(await readFile(join(output, "web-repo", "README.md"), "utf8")).toContain(
       "upstream app README",
+    );
+    expect(await readFile(join(output, "api-repo", "README.md"), "utf8")).toContain(
+      "# ✦ NordixGen",
     );
     expect(await readFile(join(output, "api-repo", "README.md"), "utf8")).toContain(
       "upstream app README",

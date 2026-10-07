@@ -252,6 +252,7 @@ async function scaffold(
         "--yes",
         "--typescript",
         "--app",
+        "--src-dir",
         "--tailwind",
         "--use-pnpm",
         "--skip-install",
@@ -283,6 +284,116 @@ async function scaffold(
   );
 }
 
+async function writeNordixReadme(
+  repositoryRoot: string,
+  projectName: string,
+  repositoryName: string,
+  applications: Array<{ name: string; framework: string; path: string }>,
+): Promise<void> {
+  const readmePath = join(repositoryRoot, "README.md");
+  let frameworkReadme = "";
+  try {
+    frameworkReadme = await readFile(readmePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const appList = applications.length
+    ? applications
+        .map(
+          (application) =>
+            `| ${application.name} | ${application.framework} | \`${application.path}\` |`,
+        )
+        .join("\n")
+    : "| No applications assigned | — | — |";
+  const quickStart = applications.length
+    ? "\n## Start developing\n\n```sh\npnpm install\npnpm dev\n```\n"
+    : "";
+  const frameworkSection = frameworkReadme.trim()
+    ? `\n<details>\n<summary>Original framework starter guide</summary>\n\n${frameworkReadme.trim()}\n\n</details>\n`
+    : "";
+
+  const content = `# ✦ NordixGen\n\n> **${projectName}** — a full-stack foundation shaped by your architecture.\n\nGenerated with **NordixGen**. Your apps are scaffolded from the official framework tools and organized in the \`${repositoryName}\` repository.\n\n## Applications\n\n| App | Framework | Path |\n| --- | --- | --- |\n${appList}\n${quickStart}${frameworkSection}\n`;
+  await writeFile(readmePath, content, "utf8");
+}
+
+async function writeBrandedNextHomepage(
+  applicationRoot: string,
+  projectName: string,
+  frontendName: string,
+): Promise<void> {
+  const appDirectory = join(applicationRoot, "src", "app");
+  await mkdir(appDirectory, { recursive: true });
+  const source = `export const metadata = {
+  title: "${projectName} | NordixGen",
+  description: "A full-stack foundation for ${projectName}, generated with NordixGen.",
+};
+
+export default function Home() {
+  return (
+    <main className="relative isolate min-h-screen overflow-hidden bg-[#080b12] text-slate-100">
+      <div aria-hidden="true" className="pointer-events-none absolute -left-40 -top-40 h-96 w-96 rounded-full bg-cyan-400/10 blur-3xl" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-48 right-0 h-[32rem] w-[32rem] rounded-full bg-indigo-500/10 blur-3xl" />
+      <header className="relative mx-auto flex max-w-7xl items-center justify-between px-6 py-7 lg:px-10">
+        <a aria-label="NordixGen home" className="flex items-center gap-3" href="#top">
+          <span className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-200/20 bg-cyan-300/10 text-lg font-semibold text-cyan-200">N</span>
+          <span className="text-lg font-semibold tracking-tight">Nordix<span className="text-cyan-300">Gen</span></span>
+        </a>
+        <span className="hidden rounded-full border border-white/10 px-4 py-2 text-xs font-medium tracking-[0.2em] text-slate-400 sm:inline-flex">PROJECT STARTER</span>
+      </header>
+
+      <section id="top" className="relative mx-auto grid min-h-[78vh] max-w-7xl items-center gap-16 px-6 py-16 lg:grid-cols-[1.2fr_0.8fr] lg:px-10">
+        <div>
+          <p className="mb-7 flex items-center gap-3 text-xs font-semibold tracking-[0.24em] text-cyan-200">
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
+            BUILT WITH NORDIXGEN
+          </p>
+          <h1 className="max-w-3xl text-5xl font-semibold leading-[1.05] tracking-tight sm:text-7xl">
+            A new foundation<br />
+            <span className="bg-gradient-to-r from-cyan-200 via-sky-300 to-indigo-300 bg-clip-text text-transparent">for ${projectName}.</span>
+          </h1>
+          <p className="mt-7 max-w-xl text-lg leading-8 text-slate-400">Your architecture is ready to become a product. Start with a clean foundation, then make it unmistakably yours.</p>
+          <a className="mt-10 inline-flex items-center gap-3 rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 transition hover:bg-white" href="#project">
+            Explore your project <span aria-hidden="true">↓</span>
+          </a>
+        </div>
+
+        <aside id="project" className="rounded-3xl border border-white/10 bg-white/[0.035] p-7 shadow-2xl shadow-cyan-950/20 backdrop-blur sm:p-9">
+          <div className="flex items-center justify-between border-b border-white/10 pb-6">
+            <div>
+              <p className="text-xs font-semibold tracking-[0.2em] text-slate-500">PROJECT OVERVIEW</p>
+              <p className="mt-2 text-xl font-semibold">Your next chapter starts here.</p>
+            </div>
+            <span aria-hidden="true" className="text-2xl text-cyan-200">✦</span>
+          </div>
+          <dl className="divide-y divide-white/10">
+            <div className="flex items-center justify-between gap-4 py-5">
+              <dt className="text-sm text-slate-500">Project</dt>
+              <dd className="font-medium">${projectName}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-5">
+              <dt className="text-sm text-slate-500">Frontend</dt>
+              <dd className="font-medium">${frontendName}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-5">
+              <dt className="text-sm text-slate-500">Created with</dt>
+              <dd className="font-medium text-cyan-200">NordixGen</dd>
+            </div>
+          </dl>
+          <p className="mt-2 rounded-2xl bg-black/20 px-4 py-3 text-sm leading-6 text-slate-400">This is your starting point. The next phases will generate features from your entities and endpoints.</p>
+        </aside>
+      </section>
+
+      <footer className="relative mx-auto flex max-w-7xl flex-col gap-2 border-t border-white/10 px-6 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-10">
+        <span>Made with care by NordixGen.</span>
+        <span className="tracking-[0.16em]">BUILD SOMETHING GREAT</span>
+      </footer>
+    </main>
+  );
+}
+`;
+  await writeFile(join(appDirectory, "page.tsx"), source, "utf8");
+}
 export async function runGenerate(
   file: string,
   output: string,
@@ -339,6 +450,9 @@ export async function runGenerate(
     const appTarget = safeResolve(repo.root, app.path);
     await mkdir(dirname(appTarget), { recursive: true });
     await scaffold(app, appTarget, runner);
+    if (app.kind === "frontend" && ["nextjs", "next.js"].includes(app.framework.toLowerCase())) {
+      await writeBrandedNextHomepage(appTarget, config.name, app.name);
+    }
   }
 
   for (const repository of repositories) {
@@ -374,13 +488,7 @@ export async function runGenerate(
       }
     }
 
-    if (!hasRootApplication) {
-      await writeFile(
-        join(repository.root, "README.md"),
-        `# ${repository.name}\n\nGenerated by NordixGen.\n`,
-        "utf8",
-      );
-    }
+    await writeNordixReadme(repository.root, config.name, repository.name, apps);
 
     if (repository.initializeGit) {
       await runner("git", ["init"], repository.root);
