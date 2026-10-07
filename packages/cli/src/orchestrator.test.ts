@@ -92,12 +92,59 @@ describe("generate command orchestration", () => {
     const homepage = await readFile(join(output, "apps", "web", "src", "app", "page.tsx"), "utf8");
     expect(homepage).toContain("BUILT WITH NORDIXGEN");
     expect(homepage).toContain("for test-project.");
-    expect(calls[1]).toContain("--no-deploy");
-    expect(calls[1]).toContain("--no-git");
+    expect(calls[1]).toEqual([
+      "create",
+      "hono@0.19.4",
+      "api",
+      "--template",
+      "cloudflare-workers",
+      "--pm",
+      "pnpm",
+      "--install",
+    ]);
+    expect(
+      await readFile(
+        join(output, "apps", "api", "src", "presentation", "controllers", "routes.ts"),
+        "utf8",
+      ),
+    ).toContain('routes.route("/health", healthController);');
+    expect(await readFile(join(output, "apps", "api", "src", "index.ts"), "utf8")).toContain(
+      'from "./presentation/controllers/routes.js"',
+    );
     expect(await readFile(join(output, "pnpm-workspace.yaml"), "utf8")).toContain("apps/web");
     const rootPackage = JSON.parse(await readFile(join(output, "package.json"), "utf8"));
     expect(rootPackage.scripts.dev).toContain("--parallel");
     expect(await readFile(join(output, "README.md"), "utf8")).toContain("workspace");
+  });
+
+  it("writes Hono plugin files beneath a repository subdirectory with valid relative imports", async () => {
+    const root = await makeTempDirectory();
+    const configPath = join(root, "nordix.config.yaml");
+    const output = join(root, "generated");
+    const nestedConfiguration = configuration
+      .replace("path: .\n    initializeGit", "path: repositories/platform\n    initializeGit")
+      .replace("framework: nextjs", "framework: nextjs");
+    await writeFile(configPath, nestedConfiguration, "utf8");
+
+    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
+      const directoryName = args[2];
+      if (directoryName && (args.includes("create-next-app@15.1.7") || args[0] === "create")) {
+        const appDirectory = resolve(cwd, basename(directoryName));
+        await mkdir(appDirectory, { recursive: true });
+        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
+      }
+      return "";
+    });
+
+    await runGenerate(configPath, output, runner);
+
+    const sourceRoot = join(output, "repositories", "platform", "apps", "api", "src");
+    expect(await readFile(join(sourceRoot, "index.ts"), "utf8")).toContain(
+      'from "./presentation/controllers/routes.js"',
+    );
+    expect(
+      await readFile(join(sourceRoot, "presentation", "controllers", "routes.ts"), "utf8"),
+    ).toContain('from "./health.controller.js"');
   });
 
   it("refuses a non-empty destination before running any generator", async () => {

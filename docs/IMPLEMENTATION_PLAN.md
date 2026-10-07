@@ -80,7 +80,7 @@ flowchart LR
   - `nordixgen init`: Asistente interactivo en terminal para crear un `nordix.config.yaml` inicial.
   - `nordixgen generate -f <file.yaml> -o <targetDir>`: Orquestación completa de generación.
 - [ ] **3.2 Upstream Scaffolder:**
-  - Usar las herramientas upstream oficiales como fuente del scaffold: `create-next-app` para Next.js y Cloudflare C3 para Hono; NordixGen las orquesta con versiones y opciones controladas, sin mantener forks de sus plantillas.
+  - Usar las herramientas upstream oficiales como fuente del scaffold: `create-next-app` para Next.js y el template `cloudflare-workers` de `create-hono` para Hono; NordixGen las orquesta con versiones y opciones controladas, sin mantener forks de sus plantillas.
   - Invocación no-interactiva de `create-next-app` o desempaquetado de plantilla canónica curada.
   - Invocación de templates base Cloudflare Workers (`npm create cloudflare`).
   - Ensamblaje del Monorepo con `pnpm-workspace.yaml` raíz y scripts `pnpm dev`.

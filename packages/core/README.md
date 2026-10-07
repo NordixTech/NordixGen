@@ -48,6 +48,8 @@ if (!result.success) {
 
 Use `composeBackendPlugins(config, backendName, registry)` to resolve the framework, architecture, and optional ORM declared by a backend. It checks that each selected plugin is registered and that its declared capability requirements match the configured database engine and provider before any plugin contributes files.
 
+The Hono framework plugin describes the pinned official `create-hono` Cloudflare Workers scaffold and runtime conventions. It consumes the selected architecture layout to generate the Worker entry point, route registration, and a health controller with imports derived from the final paths. Hono HTTP code stays in this framework plugin; architecture plugins only define semantic locations and dependency direction.
+
 ## Backend generator plugins
 
 The core exposes contracts for architecture, framework, ORM, and authentication plugins. Hosts register plugin implementations; the core package does not hard-code Hono, Clean Architecture, Drizzle, or Better Auth. A plugin declares a stable identifier/version, role, provided capabilities, and required capabilities. The compatibility resolver checks the complete selection before calling any plugin.

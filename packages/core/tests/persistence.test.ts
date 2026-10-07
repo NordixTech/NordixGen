@@ -19,6 +19,7 @@ const honoContext: FrameworkContext = {
   language: "typescript",
   runtime: "cloudflare-workers",
   moduleSystem: "esm",
+  scaffold: { executable: "pnpm", argumentsBeforeTarget: [], argumentsAfterTarget: [] },
   entryPoints: { worker: "apps/api-core/src/index.ts" },
   conventions: { importExtension: ".js" },
 };
