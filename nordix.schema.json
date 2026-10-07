@@ -375,6 +375,24 @@
           "default": {
             "type": "none"
           }
+        },
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "database": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "orm": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          },
+          "required": [
+            "database",
+            "orm"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -493,6 +511,24 @@
             "default": {
               "type": "none"
             }
+          },
+          "persistence": {
+            "type": "object",
+            "properties": {
+              "database": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "orm": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              }
+            },
+            "required": [
+              "database",
+              "orm"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -505,28 +541,30 @@
       },
       "default": []
     },
-    "database": {
+    "databases": {
       "type": "object",
-      "properties": {
-        "engine": {
-          "type": "string",
-          "minLength": 1
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "engine": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "provider": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
         },
-        "provider": {
-          "type": "string",
-          "minLength": 1
-        },
-        "orm": {
-          "type": "string",
-          "minLength": 1
-        }
+        "required": [
+          "engine",
+          "provider"
+        ],
+        "additionalProperties": false
       },
-      "required": [
-        "engine",
-        "provider",
-        "orm"
-      ],
-      "additionalProperties": false
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "default": {}
     },
     "docker": {
       "type": "object",

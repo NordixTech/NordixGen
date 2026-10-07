@@ -89,6 +89,12 @@ describe("Nordix configuration schemas", () => {
     expect(NordixConfigSchema.safeParse({ ...createValidConfig(), unexpected: true }).success).toBe(
       false,
     );
+    expect(
+      NordixConfigSchema.safeParse({
+        ...createValidConfig(),
+        database: { engine: "postgres", provider: "local", orm: "drizzle" },
+      }).success,
+    ).toBe(false);
   });
 
   it("normalizes singular and plural application forms into stable name order", () => {

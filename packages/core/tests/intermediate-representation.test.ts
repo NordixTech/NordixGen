@@ -10,7 +10,7 @@ import { createValidConfig } from "./fixtures.js";
 describe("Nordix Intermediate Representation", () => {
   it("normalizes project configuration, injects generated fields, and orders dependencies", () => {
     const ir = buildIntermediateRepresentation(createValidConfig());
-    expect(ir.formatVersion).toBe(2);
+    expect(ir.formatVersion).toBe(3);
     expect(ir.entityOrder).toEqual(["User", "Order", "OrderItem"]);
     expect(Object.keys(ir.entities)).toEqual(["Order", "OrderItem", "User"]);
     expect(ir.entities.User?.fields).toHaveProperty("id", {
@@ -79,12 +79,12 @@ describe("Nordix Intermediate Representation", () => {
       entities: { User: { backend: "api" } },
     };
     const bareRepresentation = buildIntermediateRepresentation(sparse);
-    expect(bareRepresentation).not.toHaveProperty("database");
+    expect(bareRepresentation.databases).toEqual({});
     expect(bareRepresentation.project).not.toHaveProperty("description");
     const full = {
       ...sparse,
       description: "Full project",
-      database: { engine: "postgres", provider: "local", orm: "drizzle" },
+      databases: { primary: { engine: "postgres", provider: "local" } },
       docker: { postgres: true },
       llm: { enabled: true, endpoint: "/ai" },
       deployment: { provider: "cloudflare", ci: "github-actions" },
@@ -96,6 +96,7 @@ describe("Nordix Intermediate Representation", () => {
     expect(fullRepresentation).toHaveProperty("docker");
     expect(fullRepresentation).toHaveProperty("llm");
     expect(fullRepresentation).toHaveProperty("deployment");
+    expect(fullRepresentation.databases).toEqual({ primary: { engine: "postgres", provider: "local" } });
   });
 
   it("sorts independent entities deterministically and ignores many-to-many dependencies", () => {

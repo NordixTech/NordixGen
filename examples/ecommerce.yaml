@@ -42,6 +42,9 @@ backends:
       permissions: [products:create, orders:cancel, orders:read]
       twoFactor: true
       passwordRecovery: true
+    persistence:
+      database: commerce-db
+      orm: drizzle
   - name: worker-notifications
     framework: hono
     architecture: modular
@@ -50,10 +53,10 @@ backends:
     auth:
       type: none
 
-database:
-  engine: postgres
-  provider: neon
-  orm: drizzle
+databases:
+  commerce-db:
+    engine: postgres
+    provider: neon
 
 docker:
   postgres: true

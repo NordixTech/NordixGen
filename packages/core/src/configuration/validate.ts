@@ -6,6 +6,7 @@ import { type NordixConfig, NordixConfigSchema } from "./schema.js";
 import { validateApplications } from "./validation/applications.js";
 import { validateEndpoints } from "./validation/endpoints.js";
 import { validateEntities } from "./validation/entities.js";
+import { validatePersistence } from "./validation/persistence.js";
 
 export type ConfigValidationResult =
   | { success: true; config: NordixConfig; diagnostics: ConfigDiagnostic[] }
@@ -28,6 +29,7 @@ export function validateNordixConfig(input: unknown): ConfigValidationResult {
     ...validateEntities(config),
     ...validateApplications(config),
     ...validateEndpoints(config),
+    ...validatePersistence(config),
     ...validateCompatibility(config),
   ];
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {

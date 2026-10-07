@@ -37,7 +37,7 @@ describe("incompatibility matrix", () => {
           auth: { type: "none" },
         },
       ],
-      database: { engine: "mysql", provider: "neon", orm: "drizzle" },
+      databases: { "commerce-db": { engine: "mysql", provider: "neon" } },
       deployment: { provider: "aws", ci: "cloudflare-native" },
       endpoints: [
         { path: "/api/secure", method: "GET", backend: "api", entity: "User", authRequired: true },
