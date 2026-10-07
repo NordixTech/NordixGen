@@ -33,7 +33,7 @@ NordixGen se diseña y publica como un ecosistema open-source modular en el regi
 ```mermaid
 flowchart TD
     User["Desarrollador en Terminal"] -->|npx nordixgen| CLI["@nordixgen/cli (Binario ejecutable)"]
-    CLI --> Core["@nordixgen/core (Parser YAML, AST-IR, Matriz, VFS)"]
+    CLI --> Core["@nordixgen/core (YAML Parser, Configuration Validation, Intermediate Representation, Virtual File System)"]
     
     subgraph Plugins ["Generadores y Adaptadores (Monorepo de Paquetes)"]
         Core --> PluginHono["@nordixgen/plugin-hono"]
@@ -60,8 +60,8 @@ flowchart TD
 
 ### Arquitectura de Paquetes en el Monorepo del CLI:
 - **`nordixgen` / `@nordixgen/cli`:** Interfaz de línea de comandos, comandos interactivos (`init`, `generate`, `validate`), spinners y formateo de terminal con `@clack/prompts`.
-- **`@nordixgen/core`:** Motor de esquemas Zod, validador de YAML, constructor del Grafo Semántico (Nordix-IR), Virtual File System (VFS), motor de ordenamiento topológico y Matriz de Incompatibilidad.
-- **Plugins Especializados:** Cada generador de framework vive como un módulo independiente que implementa el contrato del IR, permitiendo a la comunidad agregar soporte para `.NET`, `NestJS`, `Django`, `Angular` o `React Native` sin tocar el núcleo.
+- **`@nordixgen/core`:** Motor de esquemas Zod, validador YAML, constructor de la representación intermedia, sistema de archivos virtual, ordenamiento topológico y matriz de incompatibilidad.
+- **Plugins Especializados:** Cada generador de framework vive como un módulo independiente que implementa el contrato de la representación intermedia, permitiendo a la comunidad agregar soporte para `.NET`, `NestJS`, `Django`, `Angular` o `React Native` sin tocar el núcleo.
 
 ### Estrategia de Ramas Git y Pipeline de Publicación Automática a NPM:
 Para el desarrollo propio de NordixGen como herramienta CLI open-source, se establece el siguiente flujo de trabajo estricto de Git:
@@ -75,7 +75,7 @@ gitGraph
    branch feature/yaml-parser
    checkout feature/yaml-parser
    commit id: "Zod Schema"
-   commit id: "IR Builder"
+   commit id: "Intermediate Representation Builder"
    checkout develop
    merge feature/yaml-parser id: "Merge PR #1"
    checkout main
@@ -189,7 +189,7 @@ NordixGen **no genera archivos de inicialización desde strings crudos** cuando 
      ```
    - Para Cloudflare / Hono: Utiliza los templates base oficiales validados de Cloudflare Workers (`npm create cloudflare@latest`).
 2. **Fase 2: Inyección de Arquitectura y Dominio (El Valor Real de NordixGen):**
-   - Una vez instanciado el esqueleto oficial en el Virtual File System (VFS), NordixGen inyecta de forma algorítmica y determinista:
+   - Una vez instanciado el esqueleto oficial en el sistema de archivos virtual, NordixGen inyecta de forma algorítmica y determinista:
      - La Clean Architecture (capas de dominio, aplicación, infraestructura).
      - Los modelos y esquemas relacionales de Drizzle ORM.
      - Los endpoints y controladores tipados con validación Zod.

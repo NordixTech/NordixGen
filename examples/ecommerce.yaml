@@ -1,0 +1,183 @@
+# yaml-language-server: $schema=../nordix.schema.json
+name: nordix-shop
+version: 1.0.0
+description: Example SaaS commerce configuration for NordixGen.
+structure: monorepo
+
+frontends:
+  - name: store-web
+    framework: nextjs
+    type: web
+    styling: tailwind
+    stateManagement:
+      client: zustand
+      server: tanstack-query
+      generateHooks: true
+      optimisticUpdates: true
+    connectsTo: core-api
+    authUI: true
+    path: apps/store-web
+
+backends:
+  - name: core-api
+    framework: hono
+    architecture: clean
+    path: apps/api-core
+    auth:
+      type: jwt
+      providers: [credentials, google, github]
+      roles: [admin, manager, customer]
+      permissions: [products:create, orders:cancel, orders:read]
+      twoFactor: true
+      passwordRecovery: true
+  - name: worker-notifications
+    framework: hono
+    architecture: modular
+    path: apps/worker-notifications
+    auth:
+      type: none
+
+database:
+  engine: postgres
+  provider: neon
+  orm: drizzle
+
+docker:
+  postgres: true
+  mailpit: true
+  minio: true
+  redis: true
+
+llm:
+  enabled: true
+  exposeUseCases: true
+  endpoint: /api/agent
+
+deployment:
+  provider: cloudflare
+  ci: cloudflare-native
+  iac: terraform
+
+enums:
+  UserRole: [ADMIN, MANAGER, CUSTOMER]
+  ProductStatus: [DRAFT, PUBLISHED, ARCHIVED]
+  OrderStatus: [PENDING, PAID, SHIPPED, CANCELLED]
+
+entities:
+  User:
+    description: User account and access profile.
+    fields:
+      email:
+        type: string
+        required: true
+        unique: true
+      role:
+        type: enum
+        enumName: UserRole
+        default: CUSTOMER
+    timestamps: true
+    softDelete: true
+
+  Product:
+    description: Catalog item.
+    fields:
+      name:
+        type: string
+        required: true
+        maxLength: 180
+      sku:
+        type: string
+        required: true
+        unique: true
+      price:
+        type: number
+        format: decimal
+        required: true
+      status:
+        type: enum
+        enumName: ProductStatus
+        default: DRAFT
+    relations:
+      category:
+        type: many-to-one
+        target: Category
+        foreignKey: category_id
+        onDelete: set-null
+    timestamps: true
+    softDelete: true
+
+  Category:
+    fields:
+      name:
+        type: string
+        required: true
+        unique: true
+    timestamps: true
+    softDelete: true
+
+  Order:
+    fields:
+      orderNumber:
+        type: string
+        required: true
+        unique: true
+      status:
+        type: enum
+        enumName: OrderStatus
+        default: PENDING
+    relations:
+      customer:
+        type: many-to-one
+        target: User
+        foreignKey: user_id
+        onDelete: restrict
+      items:
+        type: one-to-many
+        target: OrderItem
+        foreignKey: order_id
+    timestamps: true
+    softDelete: true
+
+  OrderItem:
+    fields:
+      quantity:
+        type: number
+        format: integer
+        default: 1
+      unitPrice:
+        type: number
+        format: decimal
+        required: true
+    relations:
+      order:
+        type: many-to-one
+        target: Order
+        foreignKey: order_id
+        onDelete: cascade
+      product:
+        type: many-to-one
+        target: Product
+        foreignKey: product_id
+        onDelete: restrict
+    timestamps: true
+
+endpoints:
+  - path: /api/orders/summary
+    method: GET
+    summary: List orders with their customer and line items.
+    entity: Order
+    authRequired: true
+    roles: [admin, manager]
+    permissions: [orders:read]
+    queryParams:
+      - name: status
+        type: enum
+        enumName: OrderStatus
+        required: false
+    joins:
+      - entity: User
+        type: inner
+        fields: [id, email]
+      - entity: OrderItem
+        type: left
+        fields: [id, quantity, unitPrice]

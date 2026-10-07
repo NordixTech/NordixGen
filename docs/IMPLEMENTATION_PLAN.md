@@ -9,7 +9,7 @@
 
 ```mermaid
 flowchart LR
-    Fase1["Fase 1: Infra Monorepo & CI/CD NPM"] --> Fase2["Fase 2: Core & AST-IR Engine"]
+    Fase1["Fase 1: Infra Monorepo & CI/CD NPM"] --> Fase2["Fase 2: Core Configuration & Intermediate Representation Engine"]
     Fase2 --> Fase3["Fase 3: Upstream Orchestrator & CLI"]
     Fase3 --> Fase4["Fase 4: Plugin Hono + Drizzle"]
     Fase4 --> Fase5["Fase 5: Plugin Next.js 15 & Dual-State"]
@@ -42,10 +42,10 @@ flowchart LR
 
 ---
 
-### 🧠 Fase 2: Motor `@nordixgen/core` (Esquemas Zod, Grafo IR & VFS)
+### 🧠 Fase 2: Motor `@nordixgen/core` (Esquemas Zod, Representación Intermedia y Sistema de Archivos Virtual)
 **Objetivo:** Crear el cerebro del generador, responsable de parsear el YAML, validar la coherencia del negocio, calcular dependencias topológicas y escribir en un sistema de archivos virtual antes de tocar el disco.
 
-- [ ] **2.1 Esquema Zod Exhaustivo (`nordix.config.yaml`):**
+- [x] **2.1 Esquema Zod Exhaustivo (`nordix.config.yaml`):**
   - Definición de tipos de campos: `string`, `number`, `boolean`, `date`, `uuid`, `json`, `enum`.
   - Modificadores: `required`, `unique`, `default`, `description`.
   - Relaciones: `many-to-one`, `one-to-many`, `one-to-one`, `many-to-many`.
@@ -53,18 +53,18 @@ flowchart LR
   - Definición de endpoints CRUD y endpoints complejos con `joins`.
   - Múltiples frontends y múltiples backends con su enlace (`connectsTo`).
   - Configuración de State Management (`client: zustand`, `server: tanstack-query`).
-- [ ] **2.2 Generador de JSON Schema:**
+- [x] **2.2 Generador de JSON Schema:**
   - Script para emitir `nordix.schema.json` para auto-completado y validación en VSCode / IDEs con `# yaml-language-server`.
-- [ ] **2.3 Resolvedor del Grafo Semántico (Nordix Intermediate Representation - IR):**
+- [x] **2.3 Resolvedor del Grafo Semántico (Nordix Intermediate Representation):**
   - Normalización de datos sin ambigüedades.
   - Algoritmo de Kahn (ordenamiento topológico de entidades según dependencias de Foreign Keys) para migraciones y seeders sin deadlocks.
-- [ ] **2.4 Matriz de Validación de Compatibilidades:**
+- [x] **2.4 Matriz de Validación de Compatibilidades:**
   - Detección de incompatibilidades declarativas y emisión de errores amigables antes de generar nada.
-- [ ] **2.5 Virtual File System (VFS) Determinista:**
+- [x] **2.5 Virtual File System Determinista:**
   - Sistema de árbol de archivos en memoria con operaciones idempotentes, orden de claves determinista y formateo automático.
 
 *Criterio de Aceptación / Hito Verificable:*
-- Tests unitarios con Vitest cubriendo 100% de esquemas válidos y casos límite (errores de ciclos circulares, tipos inexistentes, syntax errors).
+- Tests unitarios con Vitest con 100% de cobertura de líneas, funciones, sentencias y ramas; incluye ciclos circulares, tipos inexistentes, errores de sintaxis y el ejemplo `examples/ecommerce.yaml`.
 
 ---
 
@@ -199,4 +199,3 @@ flowchart LR
 | **Fase 6** | [#51: Phase 6: Local Docker Environment & Cloudflare Native CI/CD + IaC](https://github.com/NordixTech/NordixCore/issues/51) | L | Month-01 |
 | **Fase 7** | [#52: Phase 7: AI Agentic Tooling & End-to-End Validation](https://github.com/NordixTech/NordixCore/issues/52) | M | Month-01 |
 | **Fase 8** | [#54: Phase 8: Comprehensive English Localization & Documentation Review](https://github.com/NordixTech/NordixCore/issues/54) | S | Month-01 |
-

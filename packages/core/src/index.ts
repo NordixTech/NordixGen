@@ -13,6 +13,14 @@ export interface NordixCoreInfo {
 export function getCoreInfo(): NordixCoreInfo {
   return {
     version: CORE_VERSION,
-    engine: "NordixGen Deterministic IR & AST Engine",
+    engine: "NordixGen Deterministic Intermediate Representation Engine",
   };
 }
+
+export * from "./compatibility.js";
+export * from "./diagnostics.js";
+export * from "./intermediate-representation.js";
+export * from "./json-schema.js";
+export * from "./configuration/schema.js";
+export * from "./configuration/validate.js";
+export * from "./virtual-file-system.js";
