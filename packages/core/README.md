@@ -56,6 +56,7 @@ Framework plugins resolve a `FrameworkContext` containing application/code roots
 
 ```ts
 import {
+  cleanArchitecturePlugin,
   composePlugins,
   formatDiagnostic,
   PluginRegistry,
@@ -64,7 +65,6 @@ import {
 
 // Plugin instances are supplied by the host's installed plugin packages.
 declare const honoPlugin: GeneratorPlugin;
-declare const cleanArchitecturePlugin: GeneratorPlugin;
 declare const drizzlePlugin: GeneratorPlugin;
 
 const registry = new PluginRegistry();
@@ -89,3 +89,5 @@ if (!result.success) {
 ```
 
 Each backend composition requires one framework and one architecture plugin. Other roles are selected only when needed. Capability identifiers are declared by plugins (for example, `runtime:cloudflare-workers` or `orm:drizzle`); incompatible or missing required capabilities produce diagnostics before contribution begins. Every contributing plugin receives the set of capabilities available in that composition. Optional capability requirements produce warnings and let the plugin choose a fallback based on that set.
+
+`cleanArchitecturePlugin` is a framework-independent strategy exported by the core. It resolves semantic directories and dependency directions from the selected framework's code root. New architecture strategies can implement the same plugin contract and be registered alongside it; core does not need to change.
