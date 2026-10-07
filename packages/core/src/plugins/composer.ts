@@ -8,6 +8,7 @@ import type {
   FrameworkContext,
   GeneratedFile,
   GeneratorPlugin,
+  PersistenceContext,
   PluginContributionContext,
   PluginRole,
   PluginSelection,
@@ -29,6 +30,7 @@ export interface ComposePluginsOptions {
   registry: PluginRegistry;
   requiredRoles?: readonly PluginRole[];
   externalCapabilities?: readonly string[];
+  persistence?: Omit<PersistenceContext, "directories">;
 }
 
 function fail(diagnostics: ConfigDiagnostic[]): PluginCompositionResult {
@@ -304,6 +306,20 @@ export function composePlugins(options: ComposePluginsOptions): PluginCompositio
   const orderedPlugins = [...plugins].sort((left, right) =>
     left.descriptor.role.localeCompare(right.descriptor.role),
   );
+  const persistence: PersistenceContext | undefined = options.persistence
+    ? Object.freeze({
+        ...options.persistence,
+        database: Object.freeze({ ...options.persistence.database }),
+        directories: Object.freeze({
+          infrastructure: normalizeVirtualPath(
+            `${frameworkContext.codeRoot}/${architectureLayout.directories.infrastructure}`,
+          ),
+          adapter: normalizeVirtualPath(
+            `${frameworkContext.codeRoot}/${architectureLayout.directories.adapter}`,
+          ),
+        }),
+      })
+    : undefined;
 
   for (const plugin of orderedPlugins) {
     const selection = selectionById.get(plugin.descriptor.id) as PluginSelection;
@@ -312,6 +328,7 @@ export function composePlugins(options: ComposePluginsOptions): PluginCompositio
       framework: frameworkContext,
       architecture: architectureLayout,
       availableCapabilities: new Set(availableCapabilities),
+      ...(persistence ? { persistence } : {}),
     };
     let files: readonly GeneratedFile[];
     try {
@@ -414,6 +431,7 @@ export function composeBackendPlugins(
     { pluginId: backend.architecture },
   ];
   const externalCapabilities: string[] = [];
+  let persistence: Omit<PersistenceContext, "directories"> | undefined;
   if (backend.persistence) {
     const database = config.databases[backend.persistence.database];
     if (!database) {
@@ -427,7 +445,15 @@ export function composeBackendPlugins(
     }
     selections.push({ pluginId: backend.persistence.orm });
     externalCapabilities.push(`database:${database.engine}`, `provider:${database.provider}`);
+    persistence = {
+      database: {
+        name: backend.persistence.database,
+        engine: database.engine,
+        provider: database.provider,
+      },
+      connectionStringEnvironmentVariable: "DATABASE_URL",
+    };
   }
 
-  return composePlugins({ selections, registry, externalCapabilities });
+  return composePlugins({ selections, registry, externalCapabilities, persistence });
 }

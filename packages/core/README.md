@@ -46,13 +46,13 @@ if (!result.success) {
 
 `parseNordixYaml` returns structured diagnostics for YAML syntax, schema, semantic, and compatibility errors. `buildIntermediateRepresentation` sorts entities by their foreign-key dependencies, reports cycles, injects generated IDs and audit fields, and normalizes object ordering. The virtual file system writes files only when their contents change.
 
-Use `composeBackendPlugins(config, backendName, registry)` to resolve the framework, architecture, and optional ORM declared by a backend. It checks that each selected plugin is registered and that its declared capability requirements match the configured database engine and provider before any plugin contributes files.
+Use `composeBackendPlugins(config, backendName, registry)` to resolve the framework, architecture, and optional ORM declared by a backend. It checks that each selected plugin is registered and that its declared capability requirements match the configured database engine and provider before any plugin contributes files. ORM plugins receive a typed persistence context with the named database, architecture-resolved infrastructure and adapter paths, and the environment variable name used for credentials.
 
 The Hono framework plugin describes the pinned official `create-hono` Cloudflare Workers scaffold and runtime conventions. It consumes the selected architecture layout to generate the Worker entry point, route registration, and a health controller with imports derived from the final paths. Hono HTTP code stays in this framework plugin; architecture plugins only define semantic locations and dependency direction.
 
 ## Backend generator plugins
 
-The core exposes contracts for architecture, framework, ORM, and authentication plugins. Hosts register plugin implementations; the core package does not hard-code Hono, Clean Architecture, Drizzle, or Better Auth. A plugin declares a stable identifier/version, role, provided capabilities, and required capabilities. The compatibility resolver checks the complete selection before calling any plugin.
+The core exposes contracts for architecture, framework, ORM, and authentication plugins, along with first-party Hono, Clean Architecture, and Drizzle integrations. Each integration implements the same public plugin contract and can be replaced by another registered implementation. A plugin declares a stable identifier/version, role, provided capabilities, and required capabilities. The compatibility resolver checks the complete selection before calling any plugin.
 
 Framework plugins resolve a `FrameworkContext` containing application/code roots, language, runtime, module system, entry points, and conventions. Architecture plugins receive that context and return an `ArchitectureLayout` with semantic file-role directories and dependency rules. Every plugin then contributes a list of relative POSIX file paths and contents. The composer normalizes paths, rejects collisions and unsafe paths, and returns a `VirtualFileSystem` only when the whole composition succeeds.
 
@@ -60,19 +60,16 @@ Framework plugins resolve a `FrameworkContext` containing application/code roots
 import {
   cleanArchitecturePlugin,
   composePlugins,
+  drizzleOrmPlugin,
   formatDiagnostic,
+  honoFrameworkPlugin,
   PluginRegistry,
-  type GeneratorPlugin,
 } from "@nordixgen/core";
 
-// Plugin instances are supplied by the host's installed plugin packages.
-declare const honoPlugin: GeneratorPlugin;
-declare const drizzlePlugin: GeneratorPlugin;
-
 const registry = new PluginRegistry();
-registry.register(honoPlugin);
+registry.register(honoFrameworkPlugin);
 registry.register(cleanArchitecturePlugin);
-registry.register(drizzlePlugin);
+registry.register(drizzleOrmPlugin);
 
 const result = composePlugins({
   registry,
@@ -81,6 +78,10 @@ const result = composePlugins({
     { pluginId: "clean" },
     { pluginId: "drizzle" },
   ],
+  persistence: {
+    database: { name: "commerce-db", engine: "postgres", provider: "neon" },
+    connectionStringEnvironmentVariable: "DATABASE_URL",
+  },
 });
 
 if (!result.success) {
@@ -91,5 +92,7 @@ if (!result.success) {
 ```
 
 Each backend composition requires one framework and one architecture plugin. Other roles are selected only when needed. Capability identifiers are declared by plugins (for example, `runtime:cloudflare-workers` or `orm:drizzle`); incompatible or missing required capabilities produce diagnostics before contribution begins. Every contributing plugin receives the set of capabilities available in that composition. Optional capability requirements produce warnings and let the plugin choose a fallback based on that set.
+
+The Drizzle integration currently supports TypeScript on Cloudflare Workers with PostgreSQL hosted by Neon through the Neon HTTP driver. It generates a Drizzle Kit configuration whose schema path is resolved from the selected architecture's infrastructure directory. `DATABASE_URL` is read from the environment; credentials are never embedded in generated YAML or source files. Schema and repository generation are handled by later Phase 4 issues.
 
 `cleanArchitecturePlugin` is a framework-independent strategy exported by the core. It resolves semantic directories and dependency directions from the selected framework's code root. New architecture strategies can implement the same plugin contract and be registered alongside it; core does not need to change.
