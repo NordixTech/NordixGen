@@ -43,3 +43,45 @@ if (!result.success) {
 ```
 
 `parseNordixYaml` returns structured diagnostics for YAML syntax, schema, semantic, and compatibility errors. `buildIntermediateRepresentation` sorts entities by their foreign-key dependencies, reports cycles, injects generated IDs and audit fields, and normalizes object ordering. The virtual file system writes files only when their contents change.
+
+## Backend generator plugins
+
+The core exposes contracts for architecture, framework, ORM, and authentication plugins. Hosts register plugin implementations; the core package does not hard-code Hono, Clean Architecture, Drizzle, or Better Auth. A plugin declares a stable identifier/version, role, provided capabilities, and required capabilities. The compatibility resolver checks the complete selection before calling any plugin.
+
+Framework plugins resolve a `FrameworkContext` containing application/code roots, language, runtime, module system, entry points, and conventions. Architecture plugins receive that context and return an `ArchitectureLayout` with semantic file-role directories and dependency rules. Every plugin then contributes a list of relative POSIX file paths and contents. The composer normalizes paths, rejects collisions and unsafe paths, and returns a `VirtualFileSystem` only when the whole composition succeeds.
+
+```ts
+import {
+  composePlugins,
+  formatDiagnostic,
+  PluginRegistry,
+  type GeneratorPlugin,
+} from "@nordixgen/core";
+
+// Plugin instances are supplied by the host's installed plugin packages.
+declare const honoPlugin: GeneratorPlugin;
+declare const cleanArchitecturePlugin: GeneratorPlugin;
+declare const drizzlePlugin: GeneratorPlugin;
+
+const registry = new PluginRegistry();
+registry.register(honoPlugin);
+registry.register(cleanArchitecturePlugin);
+registry.register(drizzlePlugin);
+
+const result = composePlugins({
+  registry,
+  selections: [
+    { pluginId: "hono", configuration: { applicationRoot: "apps/api" } },
+    { pluginId: "clean" },
+    { pluginId: "drizzle" },
+  ],
+});
+
+if (!result.success) {
+  for (const diagnostic of result.diagnostics) console.error(formatDiagnostic(diagnostic));
+} else {
+  await result.virtualFileSystem.emit("./generated");
+}
+```
+
+Each backend composition requires one framework and one architecture plugin. Other roles are selected only when needed. Capability identifiers are declared by plugins (for example, `runtime:cloudflare-workers` or `orm:drizzle`); incompatible or missing required capabilities produce diagnostics before contribution begins. Every contributing plugin receives the set of capabilities available in that composition. Optional capability requirements produce warnings and let the plugin choose a fallback based on that set.
