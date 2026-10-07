@@ -28,6 +28,35 @@ A partir de un archivo declarativo `nordix.config.yaml`, NordixGen construye:
 ## Scaffolding oficial de frameworks
 
 NordixGen parte de las herramientas oficiales de cada framework para crear la estructura inicial, en vez de mantener copias propias que envejecen. `generate` coordina `create-next-app` para Next.js y Cloudflare C3 para Hono, les pasa opciones no interactivas y seguras, y después ensambla los repositorios definidos en el YAML. NordixGen personaliza el README generado y la portada del frontend con su identidad de producto; las entidades, endpoints y lógica de negocio se incorporarán en las fases de generación posteriores.
+
+## Cómo se genera un backend
+
+NordixGen compone **plugins especializados** en lugar de mantener un generador monolítico por cada combinación tecnológica. El núcleo valida la configuración y coordina el proceso; cada plugin tiene una responsabilidad clara:
+
+- **Arquitectura** decide en qué capas y rutas viven entidades, casos de uso, puertos, adaptadores y controladores. Clean y Hexagonal serán estrategias independientes.
+- **Framework** traduce las especificaciones del proyecto a las convenciones y el lenguaje del framework, por ejemplo Hono/TypeScript o .NET/C#. También informa la raíz de código, convenciones de imports y, cuando aplique, namespaces.
+- **ORM** genera la persistencia concreta, por ejemplo Drizzle o Entity Framework, y declara los lenguajes, bases de datos y entornos que soporta.
+- **Base de datos** identifica el recurso y proveedor, por ejemplo PostgreSQL en Neon. Cada backend elige su ORM y referencia la base que utilizará.
+
+El framework aporta el contexto de proyecto; la estrategia de arquitectura resuelve la ubicación de cada tipo de archivo dentro de ese contexto; y framework y ORM generan código en las rutas resueltas. Antes de escribir archivos, NordixGen comprueba que todos los plugins existan y que sus capacidades sean compatibles. Así, una combinación sin soporte —por ejemplo Hono con Entity Framework— produce un diagnóstico claro en vez de generar un proyecto incompleto.
+
+La primera combinación planificada es Hono + Clean + Drizzle + PostgreSQL/Neon. La arquitectura del generador permite agregar después otras estrategias, frameworks y ORMs sin que cada combinación requiera un generador duplicado. El plan de trabajo está en [Fase 4](docs/IMPLEMENTATION_PLAN.md#fase-4-generación-backend-modular-golden-path) y los requisitos detallados en [la especificación](docs/SPECIFICATION.md#contrato-de-generación-backend-modular).
+
+```yaml
+databases:
+  commerce-db:
+    engine: postgres
+    provider: neon
+
+backends:
+  - name: core-api
+    framework: hono
+    architecture: clean
+    persistence:
+      database: commerce-db
+      orm: drizzle
+```
+
 ## 🏆 El Golden Path Oficial
 
 NordixGen está diseñado de forma modular para que la comunidad pueda extenderlo a cualquier framework (.NET, NestJS, Django, Angular, etc.). Sin embargo, la **Ruta Dorada Oficial** de máxima eficiencia y coste cero o ultrabajo es:

@@ -1,7 +1,7 @@
 # NordixGen: Especificación Integral de Requisitos, Arquitectura y Capacidades
 
 > **Documento de Consolidación de Requisitos y Capacidades del Sistema**  
-> **Estado:** Documento de Especificación Oficial (No comiteado a Git).  
+> **Estado:** Documento de especificación oficial versionado en el repositorio.
 > **Alcance Inicial:** Foco exclusivo en el **Golden Path** (Next.js + Tailwind CSS v4 + Hono + Drizzle ORM + Neon PostgreSQL + Cloudflare), con arquitectura modular extensible a múltiples frontends/backends y despliegues con IaC.
 
 ---
@@ -61,7 +61,69 @@ flowchart TD
 ### Arquitectura de Paquetes en el Monorepo del CLI:
 - **`nordixgen` / `@nordixgen/cli`:** Interfaz de línea de comandos, comandos interactivos (`init`, `generate`, `validate`), spinners y formateo de terminal con `@clack/prompts`.
 - **`@nordixgen/core`:** Motor de esquemas Zod, validador YAML, constructor de la representación intermedia, sistema de archivos virtual, ordenamiento topológico y matriz de incompatibilidad.
-- **Plugins Especializados:** Cada generador de framework vive como un módulo independiente que implementa el contrato de la representación intermedia, permitiendo a la comunidad agregar soporte para `.NET`, `NestJS`, `Django`, `Angular` o `React Native` sin tocar el núcleo.
+- **Plugins Especializados:** Los plugins de arquitectura, framework y persistencia implementan contratos separados sobre la representación intermedia. Esto permite agregar, por ejemplo, una arquitectura Hexagonal, un framework `.NET` o un ORM adicional sin convertir el núcleo en un generador monolítico.
+
+### Contrato de Generación Backend Modular
+
+NordixGen construye cada backend como una composición validada de plugins con responsabilidades independientes. En documentación y código se usará **plugin** para la unidad extensible seleccionable; **motor de generación** se reserva para el coordinador del núcleo que descubre, valida y ejecuta plugins. Un plugin puede tener módulos internos, pero «módulo» no es el término del contrato público.
+
+#### Responsabilidades
+
+- **Core / compositor:** consume la representación intermedia (IR), resuelve plugins, valida requisitos/capacidades, prepara el contexto de generación y coordina las contribuciones al sistema de archivos virtual (VFS). Debe detectar errores antes de emitir archivos.
+- **Plugin de arquitectura:** define las capas, límites y rutas semánticas de los artefactos: entidades, casos de uso, puertos, adaptadores, controladores y configuración. Clean, Hexagonal y Onion son estrategias distintas seleccionables. La arquitectura no emite sintaxis específica de Hono, C# u otro framework.
+- **Plugin de framework:** define lenguaje, scaffold/upstream, raíz de código dentro de la aplicación, convenciones de imports, puntos de entrada y reglas de namespace cuando apliquen. Recibe la ubicación resuelta por arquitectura y genera la sintaxis concreta del framework. Por ejemplo, el generador `.NET` calcula namespaces a partir de las rutas finales; Hono genera módulos TypeScript.
+- **Plugin de ORM/persistencia:** implementa la persistencia concreta (esquemas, mapeos, repositorios, queries y migraciones) y declara los lenguajes, motores de base de datos y entornos compatibles. Coloca sus artefactos en el espacio de infraestructura definido por la estrategia de arquitectura.
+- **Recurso de base de datos:** describe el motor y proveedor de almacenamiento, no el ORM. El mismo recurso puede ser referenciado por varios backends cuando la configuración lo permita.
+
+#### Acuerdo entre framework y arquitectura
+
+La dependencia se resuelve mediante un contexto compartido, no haciendo que un plugin importe internamente a otro:
+
+1. El framework aporta `BackendProjectContext`: lenguaje, raíz de la aplicación, raíz de código (por ejemplo `src`), formato de archivo, convenciones de imports/namespaces y restricciones del runtime.
+2. Arquitectura recibe ese contexto y el backend de la IR, y devuelve un `ArchitectureLayout`: rutas relativas para los roles semánticos (entidad, caso de uso, puerto, adaptador, controlador, etc.) y reglas de dependencia entre capas.
+3. Los plugins de framework y ORM reciben el contexto y el layout resuelto para emitir código en las ubicaciones correctas. El framework es responsable de producir imports y namespaces coherentes con esas rutas.
+4. El compositor comprueba colisiones de rutas y dependencias antes de escribir al disco.
+
+La raíz de la aplicación procede de la ruta del backend en YAML; la raíz de código y las convenciones específicas del proyecto las aporta el framework. Arquitectura resuelve debajo de esa raíz. Esto evita colocar archivos por accidente en la raíz del repositorio y permite que, por ejemplo, un mismo perfil Clean se use tanto con `src/` de Hono como con los proyectos/directorios y namespaces de .NET.
+
+#### Compatibilidad extensible
+
+El registro no debe enumerar manualmente todas las combinaciones posibles —eso crecería como un producto cartesiano al agregar arquitecturas, frameworks y ORMs—. Cada plugin declara un identificador/versionado, sus capacidades provistas y sus requisitos/restricciones. El resolver comprueba el conjunto seleccionado antes de generar:
+
+- plugin desconocido o no instalado: error accionable, como «no hay plugin ORM registrado para `orm: prisma`»;
+- combinación conocida pero incompatible: error que identifica qué requisito no se satisface, por ejemplo Entity Framework requiere C# y no es compatible con el contexto TypeScript de Hono;
+- capacidad solicitada explícitamente pero no soportada: error bloqueante antes de generar; las advertencias se reservan para recomendaciones no bloqueantes;
+- combinación válida: generación determinista por VFS y validación de rutas, imports y dependencias.
+
+El sistema debe permitir a terceros registrar nuevos plugins mediante el contrato público, sin modificar el core. La primera entrega no necesita implementar decenas de plugins: debe probar el contrato con la estrategia Clean, Hono/TypeScript y Drizzle/PostgreSQL, y demostrar que una combinación incompatible se rechaza antes de generar.
+
+#### ORM y base de datos en YAML
+
+La configuración de bases de datos se declara como recursos nombrados. El ORM pertenece a la persistencia de cada backend porque el backend determina el lenguaje/runtime y la compatibilidad del ORM. No se debe usar un ORM global:
+
+```yaml
+databases:
+  commerce-db:
+    engine: postgres
+    provider: neon
+
+backends:
+  - name: core-api
+    framework: hono
+    architecture: clean
+    persistence:
+      database: commerce-db
+      orm: drizzle
+
+  - name: inventory-api
+    framework: dotnet
+    architecture: hexagonal
+    persistence:
+      database: commerce-db
+      orm: entity-framework
+```
+
+`persistence` es opcional para backends sin almacenamiento. La validación semántica comprueba que la referencia `database` exista y que el plugin ORM admita el framework/runtime y el motor de base de datos seleccionados. Secretos y cadenas de conexión no se guardan en el YAML; se resuelven en el entorno generado.
 
 ### Estrategia de Scaffolding Upstream
 
@@ -168,6 +230,9 @@ backends:
     architecture: clean
     repository: commerce
     path: apps/api-core
+    persistence:
+      database: commerce-db
+      orm: drizzle
     auth:
       type: jwt
       roles: [admin, customer]
@@ -176,6 +241,11 @@ backends:
     architecture: modular
     repository: commerce
     path: apps/worker-notifications
+
+databases:
+  commerce-db:
+    engine: postgres
+    provider: neon
 ```
 
 ### Orquestación en Monorepo:
@@ -565,6 +635,9 @@ backends:
     architecture: clean
     repository: commerce
     path: apps/api-core
+    persistence:
+      database: commerce-db
+      orm: drizzle
     auth:
       type: jwt
       providers: [credentials, google, github]
@@ -579,11 +652,11 @@ backends:
     auth:
       type: none
 
-# Base de datos y ORM
-database:
-  engine: postgres
-  provider: neon
-  orm: drizzle
+# Base de datos como recurso; el ORM se selecciona en cada backend.
+databases:
+  commerce-db:
+    engine: postgres
+    provider: neon
 
 # Entorno local Docker
 docker:
