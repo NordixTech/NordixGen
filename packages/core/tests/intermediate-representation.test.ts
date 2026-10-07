@@ -96,7 +96,9 @@ describe("Nordix Intermediate Representation", () => {
     expect(fullRepresentation).toHaveProperty("docker");
     expect(fullRepresentation).toHaveProperty("llm");
     expect(fullRepresentation).toHaveProperty("deployment");
-    expect(fullRepresentation.databases).toEqual({ primary: { engine: "postgres", provider: "local" } });
+    expect(fullRepresentation.databases).toEqual({
+      primary: { engine: "postgres", provider: "local" },
+    });
   });
 
   it("sorts independent entities deterministically and ignores many-to-many dependencies", () => {
