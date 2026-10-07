@@ -24,6 +24,7 @@ export * from "./json-schema.js";
 export * from "./plugins/composer.js";
 export * from "./plugins/contracts.js";
 export * from "./plugins/registry.js";
+export * from "./plugins/architecture/clean.js";
 export * from "./configuration/schema.js";
 export * from "./configuration/validate.js";
 export * from "./virtual-file-system.js";
