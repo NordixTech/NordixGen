@@ -53,17 +53,23 @@ npx nordixgen init
 # Validar tu archivo YAML
 npx nordixgen validate -f nordix.config.yaml
 
-# Generar el proyecto completo en un monorepo
+# Generar scaffolds base Next.js/Hono en el destino
 npx nordixgen generate -f nordix.config.yaml -o ./mi-nuevo-proyecto
+
+# Luego, instala las dependencias del workspace generado
+cd ./mi-nuevo-proyecto
+pnpm install
 ```
 
 ### 2. Instalación Global
 ```bash
 npm install -g nordixgen
-nordixgen generate -f nordix.config.yaml
+nordixgen generate -f nordix.config.yaml -o ./mi-nuevo-proyecto
 ```
 
 ---
+
+> `generate` actualmente prepara scaffolds upstream de Next.js y Hono; la generación de entidades, endpoints, arquitectura de negocio y estado del frontend corresponde a las fases siguientes. La creación remota está disponible para GitHub y requiere GitHub CLI autenticado (`gh auth login`). Después de crear un remoto con Git inicializado, NordixGen verifica su URL y ejecuta `git push --dry-run` antes del primer push real.
 
 ## 🌿 Flujo de Trabajo Git y Publicación de Paquetes
 
@@ -106,4 +112,3 @@ NordixGen implementa un modelo de desarrollo profesional y publicación continua
 ## 📄 Licencia
 
 Este proyecto está bajo la Licencia [MIT](LICENSE).
-

@@ -1,22 +1,22 @@
-import { intro, outro } from "@clack/prompts";
-import { getCoreInfo } from "@nordixgen/core";
+import { readFile } from "node:fs/promises";
+import { intro, outro, spinner } from "@clack/prompts";
+import {
+  formatDiagnostic,
+  getCoreInfo,
+  normalizeBackends,
+  normalizeFrontends,
+  parseNordixYaml,
+} from "@nordixgen/core";
 import { Command } from "commander";
 import pc from "picocolors";
+import { runGenerate, runInit } from "./orchestrator.js";
 
 export const CLI_VERSION = "0.1.0";
 
-/**
- * Checks runtime Node version and warns if < 24
- */
 export function checkNodeRuntime(): boolean {
-  const currentMajor = Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
-  if (currentMajor < 24) {
-    console.error(
-      pc.yellow(
-        `\n⚠️  Warning: NordixGen requires Node.js >= 24.0.0 (Current: ${process.version}).`,
-      ),
-    );
-    console.error(pc.dim("Please update with fnm (`fnm install 24 && fnm use 24`) or nvm.\n"));
+  const major = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
+  if (major < 24) {
+    console.error(pc.yellow(`NordixGen requires Node.js >= 24.0.0 (current: ${process.version}).`));
     return false;
   }
   return true;
@@ -25,35 +25,85 @@ export function checkNodeRuntime(): boolean {
 export function createProgram(): Command {
   const program = new Command();
   const coreInfo = getCoreInfo();
-
   program
     .name("nordixgen")
-    .description(
-      "Declarative & deterministic architecture & scaffolding engine for full-stack projects",
-    )
-    .version(`CLI: ${CLI_VERSION} | Core: ${coreInfo.version}`);
+    .description("Declarative architecture and scaffolding for full-stack projects")
+    .version(CLI_VERSION);
 
   program
     .command("info")
-    .description("Display NordixGen runtime environment and active core engine details")
+    .description("Display NordixGen runtime and core engine versions")
     .action(() => {
-      checkNodeRuntime();
-      intro(pc.cyan("⚡ NordixGen Platform"));
-      console.log(pc.bold("Node.js Runtime : ") + pc.green(process.version));
-      console.log(pc.bold("CLI Version     : ") + pc.green(CLI_VERSION));
-      console.log(
-        pc.bold("Core Engine     : ") + pc.green(`${coreInfo.engine} (v${coreInfo.version})`),
-      );
-      console.log(pc.bold("Status          : ") + pc.green("Ready for Phase 2 Engine"));
-      outro(pc.cyan("https://github.com/NordixTech/NordixGen"));
+      intro(pc.cyan("NordixGen"));
+      console.log(`${pc.bold("Node.js Runtime:")} ${process.version}`);
+      console.log(`${pc.bold("CLI Version:")} ${CLI_VERSION}`);
+      console.log(`${pc.bold("Core Engine:")} ${coreInfo.engine} (v${coreInfo.version})`);
+      outro("https://github.com/NordixTech/NordixGen");
+    });
+
+  program
+    .command("validate")
+    .description("Validate a NordixGen YAML configuration")
+    .requiredOption("-f, --file <file>", "Configuration YAML file")
+    .action(async ({ file }: { file: string }) => {
+      const task = spinner();
+      task.start(`Validating ${file}`);
+      try {
+        const result = parseNordixYaml(await readFile(file, "utf8"));
+        if (!result.success) {
+          task.stop("Configuration is invalid");
+          for (const diagnostic of result.diagnostics) {
+            console.error(pc.red(formatDiagnostic(diagnostic)));
+          }
+          process.exitCode = 1;
+          return;
+        }
+        task.stop("Configuration is valid");
+        console.log(`Project: ${result.config.name} v${result.config.version}`);
+        console.log(
+          `Repositories: ${result.config.repositories.length}; frontends: ${normalizeFrontends(result.config).length}; backends: ${normalizeBackends(result.config).length}; entities: ${Object.keys(result.config.entities).length}; endpoints: ${result.config.endpoints.length}`,
+        );
+        for (const diagnostic of result.diagnostics) {
+          console.warn(pc.yellow(formatDiagnostic(diagnostic)));
+        }
+      } catch (error) {
+        task.stop("Validation failed");
+        console.error(pc.red(error instanceof Error ? error.message : String(error)));
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command("init")
+    .description("Create a starter nordix.config.yaml interactively")
+    .action(async () => {
+      try {
+        await runInit();
+      } catch (error) {
+        console.error(pc.red(error instanceof Error ? error.message : String(error)));
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command("generate")
+    .description("Scaffold applications described in a NordixGen YAML configuration")
+    .requiredOption("-f, --file <file>", "Configuration YAML file")
+    .requiredOption("-o, --output <directory>", "Empty or new output directory")
+    .action(async ({ file, output }: { file: string; output: string }) => {
+      intro(pc.cyan("NordixGen project generation"));
+      try {
+        await runGenerate(file, output);
+      } catch (error) {
+        console.error(pc.red(error instanceof Error ? error.message : String(error)));
+        process.exitCode = 1;
+      }
     });
 
   return program;
 }
 
-// Auto-run if executed directly as a script
 if (process.argv[1]?.endsWith("index.js") || process.argv[1]?.endsWith("index.ts")) {
-  checkNodeRuntime();
-  const program = createProgram();
-  program.parse(process.argv);
+  if (!checkNodeRuntime()) process.exitCode = 1;
+  else void createProgram().parseAsync(process.argv);
 }

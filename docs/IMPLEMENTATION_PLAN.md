@@ -83,14 +83,14 @@ flowchart LR
   - Invocación no-interactiva de `create-next-app` o desempaquetado de plantilla canónica curada.
   - Invocación de templates base Cloudflare Workers (`npm create cloudflare`).
   - Ensamblaje del Monorepo con `pnpm-workspace.yaml` raíz y scripts `pnpm dev`.
-  - **Preflight de repositorios remotos:** antes de crear nada, comprobar que la sesión autenticada del proveedor coincide con el `handle` de la organización/cuenta configurada y tiene permiso para crear repositorios allí.
-  - Comprobar también que la identidad tendrá permiso de escritura en el repositorio nuevo antes del primer push; verificar el remoto y el permiso de push antes de enviar commits.
-  - Si faltan credenciales, no coincide la identidad o faltan permisos, detenerse antes de crear el remoto o hacer push y explicar cómo corregir la autenticación o los permisos. Nunca guardar ni imprimir tokens.
+  - **Preflight de repositorios remotos:** antes de generar archivos o crear remotos, comprobar la autenticación activa de GitHub CLI, verificar que la cuenta personal coincide con el handle configurado o que puede crear repositorios en la organización, y confirmar que el nombre remoto no esté ocupado.
+  - Para repositorios inicializados, comprobar que Git tiene una identidad configurada; después de crear el remoto, verificar el URL y ejecutar `git push --dry-run` antes del primer push real. La autorización de push depende de reglas del repositorio nuevo y no puede comprobarse por completo antes de crearlo.
+  - Si faltan credenciales o permisos, detenerse con instrucciones para corregir `gh auth login`, cambiar la cuenta activa o pedir acceso. Nunca guardar ni imprimir tokens. El primer adaptador remoto implementado es GitHub; GitLab y Bitbucket quedan pendientes.
 
 *Criterio de Aceptación / Hito Verificable:*
 - Al ejecutar `nordixgen validate examples/ecommerce.yaml` el CLI valida y muestra un resumen con spinner de Clack sin errores.
-- El generador crea una estructura monorepo o varios repositorios según `repositories`; Git init y creación remota se controlan por repo y son opt-in.
-- Para `createRemote: true`, el CLI confirma identidad y permisos de creación/escritura antes de cualquier operación remota; los fallos de preflight no crean repositorios ni hacen push.
+- El generador crea scaffolds upstream de Next.js 15 y Hono y ensambla los repositorios/workspaces definidos en `repositories`; Git init y creación remota son opt-in.
+- Para `createRemote: true`, comprobar identidad y permiso de creación antes de la generación; comprobar URL e intentar `git push --dry-run` antes del primer push. El permiso de push no puede confirmarse por completo antes de crear un repositorio nuevo, porque depende de sus reglas.
 
 ---
 
