@@ -1,3 +1,5 @@
+import type { NordixEntityRepresentation } from "../intermediate-representation.js";
+
 export const PLUGIN_ROLES = ["architecture", "framework", "orm", "authentication"] as const;
 
 export type PluginRole = (typeof PLUGIN_ROLES)[number];
@@ -73,7 +75,14 @@ export interface PluginContributionContext {
   framework: FrameworkContext;
   architecture: ArchitectureLayout;
   availableCapabilities: ReadonlySet<string>;
+  /** Normalized, backend-scoped model input for architecture and framework generators. */
+  domainModel?: DomainModelContext;
   persistence?: PersistenceContext;
+}
+
+export interface DomainModelContext {
+  readonly enums: Readonly<Record<string, readonly string[]>>;
+  readonly entities: Readonly<Record<string, NordixEntityRepresentation>>;
 }
 
 /** Backend persistence details made available to ORM plugins during generation. */

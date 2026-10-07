@@ -4,6 +4,7 @@ import type {
   GeneratorPlugin,
   PluginSelection,
 } from "../contracts.js";
+import { generateDomainFiles } from "./domain-files.js";
 
 const CLEAN_DIRECTORIES: ArchitectureLayout["directories"] = Object.freeze({
   domainEntity: "domain/entities",
@@ -47,5 +48,5 @@ export const cleanArchitecturePlugin: GeneratorPlugin = {
     provides: ["architecture:clean"],
   },
   resolveArchitectureLayout: resolveCleanArchitectureLayout,
-  contribute: () => [],
+  contribute: generateDomainFiles,
 };
