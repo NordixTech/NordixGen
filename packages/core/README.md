@@ -46,6 +46,8 @@ if (!result.success) {
 
 `parseNordixYaml` returns structured diagnostics for YAML syntax, schema, semantic, and compatibility errors. `buildIntermediateRepresentation` sorts entities by their foreign-key dependencies, reports cycles, injects generated IDs and audit fields, and normalizes object ordering. The virtual file system writes files only when their contents change.
 
+Use `composeBackendPlugins(config, backendName, registry)` to resolve the framework, architecture, and optional ORM declared by a backend. It checks that each selected plugin is registered and that its declared capability requirements match the configured database engine and provider before any plugin contributes files.
+
 ## Backend generator plugins
 
 The core exposes contracts for architecture, framework, ORM, and authentication plugins. Hosts register plugin implementations; the core package does not hard-code Hono, Clean Architecture, Drizzle, or Better Auth. A plugin declares a stable identifier/version, role, provided capabilities, and required capabilities. The compatibility resolver checks the complete selection before calling any plugin.
