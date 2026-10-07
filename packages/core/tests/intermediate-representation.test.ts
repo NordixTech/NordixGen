@@ -10,7 +10,7 @@ import { createValidConfig } from "./fixtures.js";
 describe("Nordix Intermediate Representation", () => {
   it("normalizes project configuration, injects generated fields, and orders dependencies", () => {
     const ir = buildIntermediateRepresentation(createValidConfig());
-    expect(ir.formatVersion).toBe(1);
+    expect(ir.formatVersion).toBe(2);
     expect(ir.entityOrder).toEqual(["User", "Order", "OrderItem"]);
     expect(Object.keys(ir.entities)).toEqual(["Order", "OrderItem", "User"]);
     expect(ir.entities.User?.fields).toHaveProperty("id", {
@@ -20,6 +20,10 @@ describe("Nordix Intermediate Representation", () => {
     });
     expect(ir.entities.User?.fields).toHaveProperty("createdAt");
     expect(ir.entities.User?.fields).toHaveProperty("deletedAt");
+    expect(ir.entities.OrderItem?.backend).toBe("core-api");
+    expect(ir.entities.OrderItem?.fields).toHaveProperty("createdAt");
+    expect(ir.entities.OrderItem?.fields).not.toHaveProperty("updatedAt");
+    expect(ir.repositories.map((repository) => repository.name)).toEqual(["commerce"]);
     expect(ir.dependencyEdges.map((edge) => `${edge.dependency}->${edge.dependent}`)).toEqual([
       "Order->OrderItem",
       "Order->OrderItem",
@@ -29,8 +33,21 @@ describe("Nordix Intermediate Representation", () => {
 
   it("produces canonical output when entity and object keys are reordered", () => {
     const first = createValidConfig();
+    const firstRepository = first.repositories[0];
+    if (!firstRepository) throw new Error("Fixture is incomplete.");
+    firstRepository.path = "repos/commerce";
+    first.repositories.push({ name: "notifications", path: "repos/notifications" });
+    first.organizations.push({ name: "team-alpha", provider: "github", handle: "TeamAlpha" });
     first.entities.User.fields.profile = { type: "json", default: { z: 1, a: [3, 2] } };
     const second = createValidConfig();
+    const secondRepository = second.repositories[0];
+    if (!secondRepository) throw new Error("Fixture is incomplete.");
+    secondRepository.path = "repos/commerce";
+    second.repositories.reverse();
+    second.repositories.push({ name: "notifications", path: "repos/notifications" });
+    second.repositories.reverse();
+    second.organizations.push({ name: "team-alpha", provider: "github", handle: "TeamAlpha" });
+    second.organizations.reverse();
     second.entities.User.fields.profile = { type: "json", default: { a: [3, 2], z: 1 } };
     const firstRepresentation = buildIntermediateRepresentation(first);
     const secondRepresentation = buildIntermediateRepresentation(second);
@@ -45,6 +62,7 @@ describe("Nordix Intermediate Representation", () => {
     config.endpoints.push({
       path: (config.endpoints[0] as { path: string }).path,
       method: "POST",
+      backend: "core-api",
       entity: "Order",
     });
     expect(
@@ -53,7 +71,13 @@ describe("Nordix Intermediate Representation", () => {
   });
 
   it("preserves optional metadata when configured and omits it otherwise", () => {
-    const sparse = { name: "sparse", version: "1.0.0", entities: { User: {} } };
+    const sparse = {
+      name: "sparse",
+      version: "1.0.0",
+      repositories: [{ name: "repo", path: "." }],
+      backends: [{ name: "api", framework: "hono", repository: "repo", path: "." }],
+      entities: { User: { backend: "api" } },
+    };
     const bareRepresentation = buildIntermediateRepresentation(sparse);
     expect(bareRepresentation).not.toHaveProperty("database");
     expect(bareRepresentation.project).not.toHaveProperty("description");
@@ -64,7 +88,7 @@ describe("Nordix Intermediate Representation", () => {
       docker: { postgres: true },
       llm: { enabled: true, endpoint: "/ai" },
       deployment: { provider: "cloudflare", ci: "github-actions" },
-      entities: { User: { description: "A user" } },
+      entities: { User: { backend: "api", description: "A user" } },
     };
     const fullRepresentation = buildIntermediateRepresentation(full);
     expect(fullRepresentation.project.description).toBe("Full project");
@@ -77,9 +101,16 @@ describe("Nordix Intermediate Representation", () => {
   it("sorts independent entities deterministically and ignores many-to-many dependencies", () => {
     expect(
       sortEntitiesTopologically({
-        Zebra: { fields: {}, relations: {}, timestamps: false, softDelete: false },
+        Zebra: {
+          backend: "api",
+          fields: {},
+          relations: {},
+          timestamps: { createdAt: false, updatedAt: false },
+          softDelete: false,
+        },
         Alpha: {
           fields: {},
+          backend: "api",
           relations: {
             peers: {
               type: "many-to-many",
@@ -88,7 +119,7 @@ describe("Nordix Intermediate Representation", () => {
               required: false,
             },
           },
-          timestamps: false,
+          timestamps: { createdAt: false, updatedAt: false },
           softDelete: false,
         },
       }),
@@ -96,16 +127,29 @@ describe("Nordix Intermediate Representation", () => {
     expect(
       sortEntitiesTopologically({
         Root: {
+          backend: "api",
           fields: {},
           relations: {
             zebra: { type: "one-to-many", target: "Zebra" },
             alpha: { type: "one-to-many", target: "Alpha" },
           },
-          timestamps: false,
+          timestamps: { createdAt: false, updatedAt: false },
           softDelete: false,
         },
-        Alpha: { fields: {}, relations: {}, timestamps: false, softDelete: false },
-        Zebra: { fields: {}, relations: {}, timestamps: false, softDelete: false },
+        Alpha: {
+          backend: "api",
+          fields: {},
+          relations: {},
+          timestamps: { createdAt: false, updatedAt: false },
+          softDelete: false,
+        },
+        Zebra: {
+          backend: "api",
+          fields: {},
+          relations: {},
+          timestamps: { createdAt: false, updatedAt: false },
+          softDelete: false,
+        },
       } as never),
     ).toEqual(["Root", "Alpha", "Zebra"]);
   });

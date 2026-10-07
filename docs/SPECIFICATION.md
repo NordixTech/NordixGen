@@ -124,29 +124,36 @@ gitGraph
 
 ## 🧩 3. Soporte para Múltiples Frontends y Múltiples Backends
 
-Un sistema de software moderno rara vez consiste en un solo frontend y un solo backend. NordixGen permite declarar **múltiples aplicaciones cliente y múltiples servicios de backend** dentro de un mismo monorepo:
+Un sistema de software moderno puede combinar **múltiples aplicaciones cliente y servicios backend** en un monorepo, repositorios separados o cualquier agrupación intermedia definida en `repositories`:
 
 ### Casos de Uso Multi-App:
 - **E-commerce:** Frontend Web Tienda (`apps/web-store`), Panel de Administración Web (`apps/web-admin`), App Móvil (`apps/mobile-app`), Backend API Core (`apps/api-core`), Worker de Procesamiento Asíncrono de Pagos (`apps/worker-payments`).
 - **SaaS B2B:** Portal de Clientes, Landing Page de Marketing, Microservicios de Auth y Facturación.
 
 ### Declaración en YAML:
-El esquema soporta tanto la forma simplificada (`frontend:` / `backend:`) como la forma plural de alta escala:
+Cada aplicación señala su repositorio. Este ejemplo agrupa las apps en un solo repositorio; la misma forma admite listas de repositorios separados:
 
 ```yaml
 # Múltiples Frontends
+repositories:
+  - name: commerce
+    path: .
 frontends:
   - name: store-web
     framework: nextjs
     type: web
     styling: tailwind
     stateManagement: zustand
+    repository: commerce
+    connectsTo: [core-api]
     path: apps/store-web
   - name: admin-portal
     framework: nextjs
     type: web
     styling: tailwind
     stateManagement: zustand
+    repository: commerce
+    connectsTo: [core-api]
     path: apps/admin-portal
 
 # Múltiples Backends
@@ -154,6 +161,7 @@ backends:
   - name: core-api
     framework: hono
     architecture: clean
+    repository: commerce
     path: apps/api-core
     auth:
       type: jwt
@@ -161,6 +169,7 @@ backends:
   - name: notifications-worker
     framework: hono
     architecture: modular
+    repository: commerce
     path: apps/worker-notifications
 ```
 
@@ -216,6 +225,26 @@ NordixGen **no genera archivos de inicialización desde strings crudos** cuando 
 
 A continuación se detalla cada sección, campo y capacidad que puede declararse en la especificación central `nordix.config.yaml`.
 
+### Topología de código: organizaciones, repositorios y aplicaciones
+
+- `organizations` registra proveedores (`github`, `gitlab`, `bitbucket`) y el `handle` de cada organización o cuenta.
+- `repositories` es la lista de repositorios previstos. `path` ubica el checkout en el directorio de salida. `initializeGit` activa `git init`; ambos switches `initializeGit` y `createRemote` son `false` por defecto.
+- `organization` vincula el repo con una organización declarada. `createRemote: true` requiere esa asociación; `visibility` puede ser `private` o `public` y por defecto es `private`.
+- Cada frontend y backend declara `repository` y su `path` relativo a ese repositorio. Así se pueden juntar todas las apps en un repo, separar cada app o crear cualquier agrupación intermedia. Un repo puede contener varias apps.
+- Cada frontend puede declarar `connectsTo: [backend-a, backend-b]`. Se permite `connectsTo: []` y también backends sin frontends asociados.
+- Cada entidad y endpoint declara `backend`. Relaciones y joins se limitan a entidades de ese backend; la validación informa si se intenta cruzar esa frontera.
+
+Las opciones de inicialización remota son declarativas en la fase actual. Cuando el CLI las ejecute, deberá usar una sesión o credencial ya configurada para el proveedor; el YAML no debe almacenar tokens.
+
+Antes de cualquier operación remota, el CLI debe hacer un **preflight de identidad y permisos**:
+
+1. Confirmar que el usuario autenticado con el proveedor corresponde al `handle` configurado en `organizations` (admite una cuenta personal o una organización).
+2. Confirmar que esa identidad puede crear repositorios en esa cuenta u organización y que tendrá permiso de escritura en el repositorio nuevo.
+3. Si la autenticación no existe, la identidad no coincide o faltan permisos, detenerse antes de crear el repositorio. Antes del primer push, verificar también que el remoto configurado corresponde al repositorio esperado y que la identidad tiene permiso de escritura.
+4. Mostrar instrucciones accionables para corregir el acceso sin exponer tokens ni otros secretos en la salida.
+
+La verificación debe usar el mecanismo de autenticación soportado por el proveedor (por ejemplo, una sesión ya iniciada en su CLI oficial o un flujo seguro equivalente). No debe solicitar que se escriba un token en el YAML.
+
 ### A. Modelado de Datos y Entidades (`entities` & `enums`)
 
 #### 1. Enums Globales (`enums`)
@@ -239,7 +268,7 @@ A continuación se detalla cada sección, campo y capacidad que puede declararse
 
 #### 3. Llaves Primarias y Auditoría
 - **Primary Key:** Inyección automática de `id: uuid().defaultRandom().primaryKey()`.
-- **Timestamps:** (`timestamps: true`): Inyecta `createdAt` y `updatedAt`.
+- **Timestamps:** configurables de forma independiente: `timestamps.createdAt` y `timestamps.updatedAt` inyectan sus campos respectivos. Ambos están desactivados por defecto.
 - **Soft Delete:** (`softDelete: true`): Inyecta `deletedAt`. Todas las consultas de lectura filtran registros eliminados de forma transparente.
 - **Políticas de Cascada (`onDelete`):** `cascade`, `set-null`, `restrict`, `no-action`.
 
@@ -253,7 +282,7 @@ A continuación se detalla cada sección, campo y capacidad que puede declararse
 
 1. **Endpoints CRUD Estándar:** 5 endpoints RESTful por entidad (`List` paginado, `GetById`, `Create`, `Update`, `Delete`).
 2. **Endpoints Complejos con JOINs Declarativos:**
-   - Proyecciones relacionales que cruzan múltiples entidades (`inner` o `left`).
+   - Proyecciones relacionales que cruzan entidades del mismo backend (`inner` o `left`).
    - Parámetros tipados: `queryParams`, `pathParams`, `requestBody` (DTOs de Zod).
    - Consultas emitidas mediante la Relational Query API de Drizzle (`db.query.*.findMany`).
 
@@ -303,7 +332,9 @@ Un solo comando (`pnpm docker:up`) levanta:
 
 ### G. Manejo de Estado en Frontend, Caché de Datos y Clientes API Autogenerados
 
-Para garantizar que los frontends no solo reciban vistas estáticas sino una **integración viva, reactiva y de máximo rendimiento** con el backend especificado, NordixGen implementa un modelo de **Estado Dual (Server State + Client State)** altamente eficiente:
+Cada entidad declara su backend propietario con `backend`. Ese modelo es la fuente de verdad para los contratos y datos que puede consultar el frontend. Las entidades de los backends conectados determinan los tipos y consultas disponibles; el estado de servidor (TanStack Query/SWR) cachea y sincroniza esas respuestas para evitar peticiones repetidas. Las entidades de backends no conectados no se exponen a ese frontend.
+
+Para garantizar que los frontends no solo reciban vistas estáticas sino una **integración viva, reactiva y de máximo rendimiento** con los backends especificados, NordixGen implementa un modelo de **Estado Dual (Server State + Client State)** altamente eficiente:
 
 ```mermaid
 flowchart TD
@@ -376,7 +407,8 @@ frontends:
       server: tanstack-query     # tanstack-query (default) | swr | native-fetch
       generateHooks: true        # Genera automáticamente useEntityQueries y useEntityMutations
       optimisticUpdates: true    # Genera lógica de actualización instantánea en UI
-    connectsTo: core-api         # Enlace explícito al backend para generar el SDK de endpoints
+    repository: commerce         # Repositorio al que pertenece este frontend
+    connectsTo: [core-api]       # Cero o varios backends
     path: apps/store-web
 ```
 
@@ -477,7 +509,20 @@ flowchart TD
 name: nexus-enterprise
 version: 1.0.0
 description: "Plataforma SaaS E-commerce en Cloudflare Edge con Hono, Next.js y Terraform IaC"
-structure: monorepo
+
+# Los repositorios pueden compartir un checkout o estar separados.
+organizations:
+  - name: nordix
+    provider: github
+    handle: NordixTech
+
+repositories:
+  - name: commerce
+    path: .
+    organization: nordix
+    initializeGit: true
+    createRemote: false
+    visibility: private
 
 # Múltiples Frontends
 frontends:
@@ -490,7 +535,8 @@ frontends:
       server: tanstack-query
       generateHooks: true
       optimisticUpdates: true
-    connectsTo: core-api
+    repository: commerce
+    connectsTo: [core-api]
     authUI: true
     path: apps/store-web
   - name: admin-portal
@@ -502,7 +548,8 @@ frontends:
       server: tanstack-query
       generateHooks: true
       optimisticUpdates: true
-    connectsTo: core-api
+    repository: commerce
+    connectsTo: [core-api]
     authUI: true
     path: apps/admin-portal
 
@@ -511,6 +558,7 @@ backends:
   - name: core-api
     framework: hono
     architecture: clean
+    repository: commerce
     path: apps/api-core
     auth:
       type: jwt
@@ -521,6 +569,7 @@ backends:
   - name: worker-notifications
     framework: hono
     architecture: modular
+    repository: commerce
     path: apps/worker-notifications
     auth:
       type: none
@@ -560,6 +609,7 @@ enums:
 # Entidades del Dominio
 entities:
   User:
+    backend: core-api
     description: "Usuarios del sistema con roles y estado"
     fields:
       email:
@@ -578,9 +628,10 @@ entities:
         enumName: UserStatus
         default: ACTIVE
     softDelete: true
-    timestamps: true
+    timestamps: { createdAt: true, updatedAt: true }
 
   Category:
+    backend: core-api
     description: "Categorías de productos"
     fields:
       name:
@@ -595,9 +646,10 @@ entities:
         type: string
         required: false
     softDelete: true
-    timestamps: true
+    timestamps: { createdAt: true, updatedAt: false }
 
   Product:
+    backend: core-api
     description: "Catálogo de productos de la tienda"
     fields:
       name:
@@ -628,9 +680,10 @@ entities:
         foreignKey: category_id
         onDelete: set-null
     softDelete: true
-    timestamps: true
+    timestamps: { createdAt: true, updatedAt: true }
 
   Order:
+    backend: core-api
     description: "Órdenes de compra de clientes"
     fields:
       orderNumber:
@@ -651,9 +704,10 @@ entities:
         foreignKey: user_id
         onDelete: restrict
     softDelete: true
-    timestamps: true
+    timestamps: { createdAt: true, updatedAt: true }
 
   OrderItem:
+    backend: core-api
     description: "Líneas de detalle por orden"
     fields:
       quantity:
@@ -674,12 +728,13 @@ entities:
         foreignKey: product_id
         onDelete: restrict
     softDelete: false
-    timestamps: true
+    timestamps: { createdAt: true, updatedAt: true }
 
 # Endpoints Complejos y Joins
 endpoints:
   - path: /api/orders/summary
     method: GET
+    backend: core-api
     summary: "Consulta agregada de órdenes con datos de clientes y detalle"
     entity: Order
     authRequired: true

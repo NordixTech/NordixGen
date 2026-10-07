@@ -11,10 +11,11 @@ import { type ConfigDiagnostic, createDiagnostic, formatDiagnostic } from "./dia
 
 export interface NordixEntityRepresentation {
   name: string;
+  backend: string;
   description?: string;
   fields: Record<string, FieldDefinition>;
   relations: Record<string, RelationDefinition>;
-  timestamps: boolean;
+  timestamps: EntityDefinition["timestamps"];
   softDelete: boolean;
 }
 
@@ -25,8 +26,10 @@ export interface NordixDependencyEdge {
 }
 
 export interface NordixIntermediateRepresentation {
-  formatVersion: 1;
-  project: { name: string; version: string; description?: string; structure: string };
+  formatVersion: 2;
+  project: { name: string; version: string; description?: string };
+  organizations: NordixConfig["organizations"];
+  repositories: NordixConfig["repositories"];
   frontends: ReturnType<typeof normalizeFrontends>;
   backends: ReturnType<typeof normalizeBackends>;
   database?: NordixConfig["database"];
@@ -81,8 +84,10 @@ function canonicalEntity(name: string, entity: EntityDefinition): NordixEntityRe
   for (const [fieldName, field] of Object.entries(fields)) {
     if (fieldName !== "id") normalizedFields[fieldName] = canonicalField(field);
   }
-  if (entity.timestamps) {
+  if (entity.timestamps.createdAt) {
     normalizedFields.createdAt = { type: "date", required: true, unique: false };
+  }
+  if (entity.timestamps.updatedAt) {
     normalizedFields.updatedAt = { type: "date", required: true, unique: false };
   }
   if (entity.softDelete)
@@ -90,6 +95,7 @@ function canonicalEntity(name: string, entity: EntityDefinition): NordixEntityRe
 
   return {
     name,
+    backend: entity.backend,
     ...(entity.description === undefined ? {} : { description: entity.description }),
     fields: sortedRecord(normalizedFields),
     relations: sortedRecord(entity.relations),
@@ -182,13 +188,18 @@ export function buildIntermediateRepresentation(input: unknown): NordixIntermedi
   const edges = relationEdgeOrder(config.entities);
 
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     project: {
       name: config.name,
       version: config.version,
       ...(config.description === undefined ? {} : { description: config.description }),
-      structure: config.structure,
     },
+    organizations: [...config.organizations].sort((left, right) =>
+      left.name.localeCompare(right.name),
+    ),
+    repositories: [...config.repositories].sort((left, right) =>
+      left.name.localeCompare(right.name),
+    ),
     frontends: normalizeFrontends(config),
     backends: normalizeBackends(config),
     ...(config.database === undefined ? {} : { database: config.database }),

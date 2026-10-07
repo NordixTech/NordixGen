@@ -13,7 +13,7 @@ export interface IncompatibilityRule {
 export const INCOMPATIBILITY_MATRIX: readonly IncompatibilityRule[] = [
   {
     id: "frontend-backend-link",
-    description: "Frontend connections must name a configured backend.",
+    description: "Each frontend connection must name a configured backend.",
   },
   {
     id: "query-hook-strategy",
@@ -33,16 +33,16 @@ export const INCOMPATIBILITY_MATRIX: readonly IncompatibilityRule[] = [
 export function validateCompatibility(config: NordixConfig): ConfigDiagnostic[] {
   const diagnostics: ConfigDiagnostic[] = [];
   const backends = normalizeBackends(config);
-  const backendNames = new Set(backends.map((backend) => backend.name));
-  const authenticatedBackends = backends.filter((backend) => backend.auth.type !== "none");
+  const backendByName = new Map(backends.map((backend) => [backend.name, backend]));
 
   for (const frontend of normalizeFrontends(config)) {
-    if (frontend.connectsTo && !backendNames.has(frontend.connectsTo)) {
+    for (const backendName of frontend.connectsTo) {
+      if (backendByName.has(backendName)) continue;
       diagnostics.push(
         createDiagnostic(
           "INCOMPATIBLE_FRONTEND_BACKEND",
           `frontends.${frontend.name}.connectsTo`,
-          `Backend "${frontend.connectsTo}" is not configured. Add it under backends or update this connection.`,
+          `Backend "${backendName}" is not configured. Add it under backends or update this connection.`,
         ),
       );
     }
@@ -86,14 +86,15 @@ export function validateCompatibility(config: NordixConfig): ConfigDiagnostic[] 
   }
 
   for (const [index, endpoint] of config.endpoints.entries()) {
+    const backend = backendByName.get(endpoint.backend);
     const isSecured =
       endpoint.authRequired || endpoint.roles.length > 0 || endpoint.permissions.length > 0;
-    if (isSecured && authenticatedBackends.length === 0) {
+    if (isSecured && backend?.auth.type === "none") {
       diagnostics.push(
         createDiagnostic(
           "INCOMPATIBLE_ENDPOINT_AUTH",
           `endpoints.${index}.authRequired`,
-          `Endpoint ${endpoint.method} ${endpoint.path} requires authentication, but every configured backend uses auth type "none".`,
+          `Endpoint ${endpoint.method} ${endpoint.path} requires authentication, but backend "${endpoint.backend}" uses auth type "none".`,
         ),
       );
     }

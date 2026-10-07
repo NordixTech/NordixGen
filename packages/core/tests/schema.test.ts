@@ -32,26 +32,41 @@ describe("Nordix configuration schemas", () => {
       onDelete: "no-action",
       required: false,
     });
-    expect(EntitySchema.parse({})).toMatchObject({
+    expect(EntitySchema.parse({ backend: "api" })).toMatchObject({
       fields: {},
       relations: {},
-      timestamps: false,
+      timestamps: { createdAt: false, updatedAt: false },
       softDelete: false,
     });
     expect(
-      FrontendSchema.parse({ name: "web", framework: "nextjs", path: "apps/web" }),
+      FrontendSchema.parse({
+        name: "web",
+        framework: "nextjs",
+        path: "apps/web",
+        repository: "app",
+      }),
     ).toMatchObject({ type: "web", authUI: false });
-    expect(BackendSchema.parse({ name: "api", framework: "hono", path: "apps/api" })).toMatchObject(
-      { architecture: "clean", auth: { type: "none" } },
-    );
+    expect(
+      BackendSchema.parse({ name: "api", framework: "hono", path: "apps/api", repository: "app" }),
+    ).toMatchObject({ architecture: "clean", auth: { type: "none" } });
   });
 
   it("rejects malformed names, paths, relations, and unknown properties", () => {
     expect(
-      FrontendSchema.safeParse({ name: "Bad Name", framework: "nextjs", path: "apps/web" }).success,
+      FrontendSchema.safeParse({
+        name: "Bad Name",
+        framework: "nextjs",
+        path: "apps/web",
+        repository: "app",
+      }).success,
     ).toBe(false);
     expect(
-      FrontendSchema.safeParse({ name: "web", framework: "nextjs", path: "apps\\web" }).success,
+      FrontendSchema.safeParse({
+        name: "web",
+        framework: "nextjs",
+        path: "apps\\web",
+        repository: "app",
+      }).success,
     ).toBe(false);
     expect(RelationSchema.safeParse({ type: "owns", target: "User" }).success).toBe(false);
     expect(EntitySchema.safeParse({ unexpected: true }).success).toBe(false);
@@ -60,7 +75,12 @@ describe("Nordix configuration schemas", () => {
   it("accepts the full configuration shape and rejects invalid required values", () => {
     expect(NordixConfigSchema.safeParse(createValidConfig()).success).toBe(true);
     expect(
-      NordixConfigSchema.safeParse({ name: "sample", version: "1.0.0", entities: {} }).success,
+      NordixConfigSchema.safeParse({
+        name: "sample",
+        version: "1.0.0",
+        repositories: [{ name: "repo", path: "." }],
+        entities: {},
+      }).success,
     ).toBe(false);
     expect(
       NordixConfigSchema.safeParse({ name: "sample", version: "latest", entities: { User: {} } })
@@ -75,17 +95,18 @@ describe("Nordix configuration schemas", () => {
     const pluralConfig = NordixConfigSchema.parse({
       ...createValidConfig(),
       frontends: [
-        { name: "z-web", framework: "nextjs", path: "apps/z" },
-        { name: "a-web", framework: "nextjs", path: "apps/a" },
+        { name: "z-web", framework: "nextjs", path: "apps/z", repository: "commerce" },
+        { name: "a-web", framework: "nextjs", path: "apps/a", repository: "commerce" },
       ],
     });
     expect(normalizeFrontends(pluralConfig).map((app) => app.name)).toEqual(["a-web", "z-web"]);
     const singularConfig = NordixConfigSchema.parse({
       name: "singular",
       version: "1.0.0",
-      entities: { User: {} },
-      frontend: { framework: "nextjs", path: "apps/web" },
-      backend: { framework: "hono", path: "apps/api" },
+      repositories: [{ name: "app", path: "." }],
+      entities: { User: { backend: "backend" } },
+      frontend: { framework: "nextjs", path: "apps/web", repository: "app" },
+      backend: { framework: "hono", path: "apps/api", repository: "app" },
     });
     expect(normalizeFrontends(singularConfig)[0]).toMatchObject({ name: "frontend", type: "web" });
     expect(normalizeBackends(singularConfig)[0]).toMatchObject({

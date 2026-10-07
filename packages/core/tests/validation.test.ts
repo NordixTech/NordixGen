@@ -128,11 +128,101 @@ describe("config validation", () => {
     ).toContain("UNSAFE_APP_PATH");
   });
 
+  it("validates repository and organization declarations while allowing flexible topology", () => {
+    const flexible = createValidConfig();
+    const flexibleFrontend = flexible.frontends[0];
+    const flexibleRepository = flexible.repositories[0];
+    if (!flexibleFrontend || !flexibleRepository) throw new Error("Fixture is incomplete.");
+    flexibleFrontend.connectsTo = ["core-api", "worker-notifications"];
+    flexibleRepository.path = "repos/commerce";
+    flexible.repositories.push({ name: "notifications", path: "repos/notifications" });
+    flexible.frontends.push({
+      name: "standalone-web",
+      framework: "nextjs",
+      path: ".",
+      repository: "commerce",
+      connectsTo: [],
+    });
+    flexible.backends.push({
+      name: "worker-notifications",
+      framework: "hono",
+      path: "apps/notifications",
+      repository: "commerce",
+    });
+    expect(validateNordixConfig(flexible).success).toBe(true);
+
+    const rootRepository = createValidConfig();
+    rootRepository.repositories.push({ name: "nested-repo", path: "packages/nested" });
+    expect(validateNordixConfig(rootRepository).diagnostics.map((item) => item.code)).toContain(
+      "NESTED_REPOSITORY_PATH",
+    );
+
+    const invalid = createValidConfig();
+    invalid.organizations.push({ name: "nordix", provider: "github", handle: "NordixTech" });
+    const invalidRepository = invalid.repositories[0];
+    if (!invalidRepository) throw new Error("Fixture is incomplete.");
+    invalidRepository.path = "repos/commerce";
+    invalid.repositories.push(
+      { name: "commerce", path: "repos/commerce", organization: "missing" },
+      { name: "nested", path: "repos/commerce/nested" },
+      { name: "remote-without-org", path: "repos/remote", createRemote: true },
+    );
+    invalid.frontends.push({
+      name: "store-web",
+      framework: "nextjs",
+      path: "../outside",
+      repository: "missing-repository",
+    });
+    const codes = validateNordixConfig(invalid).diagnostics.map((item) => item.code);
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        "DUPLICATE_ORGANIZATION",
+        "DUPLICATE_REPOSITORY",
+        "DUPLICATE_REPOSITORY_PATH",
+        "NESTED_REPOSITORY_PATH",
+        "UNKNOWN_REPOSITORY_ORGANIZATION",
+        "REMOTE_REPOSITORY_WITHOUT_ORGANIZATION",
+        "UNKNOWN_APP_REPOSITORY",
+        "DUPLICATE_APP_NAME",
+        "UNSAFE_APP_PATH",
+      ]),
+    );
+  });
+
+  it("checks backend ownership for entities, relations, endpoints, and joins", () => {
+    const config = createValidConfig();
+    config.entities.OrderItem.backend = "other-api";
+    const endpoint = config.endpoints[0];
+    if (!endpoint) throw new Error("Fixture is incomplete.");
+    endpoint.backend = "unknown-api";
+    const codes = validateNordixConfig(config).diagnostics.map((item) => item.code);
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        "CROSS_BACKEND_RELATION",
+        "UNKNOWN_ENDPOINT_BACKEND",
+        "ENDPOINT_ENTITY_BACKEND_MISMATCH",
+        "CROSS_BACKEND_JOIN",
+      ]),
+    );
+  });
+
+  it("supports the singular backend form when resolving entity ownership", () => {
+    const result = validateNordixConfig({
+      name: "single-backend",
+      version: "1.0.0",
+      repositories: [{ name: "app", path: "." }],
+      backend: { framework: "hono", path: "apps/api", repository: "app" },
+      entities: { User: { backend: "backend" } },
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("validates endpoint entities, roles, duplicate routes, join projections, and enum parameters", () => {
     const config = createValidConfig();
     config.endpoints.push({
       path: "/api/orders/summary",
       method: "GET",
+      backend: "core-api",
       entity: "Missing",
       roles: ["owner"],
       permissions: ["billing:read"],
@@ -176,9 +266,20 @@ describe("config validation", () => {
   it("checks endpoint role and permission declarations against unauthenticated backends", () => {
     const config = createValidConfig();
     config.backends = [
-      { name: "api", framework: "hono", path: "apps/api", auth: { type: "none" } },
+      {
+        name: "core-api",
+        framework: "hono",
+        path: "apps/api",
+        repository: "commerce",
+        auth: { type: "none" },
+      },
     ];
-    const endpoint = config.endpoints[0] as { roles: string[]; permissions: string[] };
+    const endpoint = config.endpoints[0] as {
+      backend: string;
+      roles: string[];
+      permissions: string[];
+    };
+    endpoint.backend = "core-api";
     endpoint.roles = ["admin"];
     endpoint.permissions = ["orders:read"];
     expect(validateNordixConfig(config).diagnostics.map((item) => item.code)).toEqual(

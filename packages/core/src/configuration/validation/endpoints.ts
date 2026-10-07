@@ -7,12 +7,7 @@ const GENERATED_ENTITY_FIELDS = new Set(["id", "createdAt", "updatedAt", "delete
 export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
   const diagnostics: ConfigDiagnostic[] = [];
   const backends = normalizeBackends(config);
-  const knownRoles = new Set(
-    backends.flatMap((backend) => (backend.auth.type === "none" ? [] : backend.auth.roles)),
-  );
-  const knownPermissions = new Set(
-    backends.flatMap((backend) => (backend.auth.type === "none" ? [] : backend.auth.permissions)),
-  );
+  const backendsByName = new Map(backends.map((backend) => [backend.name, backend]));
   const endpointKeys = new Set<string>();
 
   for (const [index, endpoint] of config.endpoints.entries()) {
@@ -29,7 +24,19 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
     }
     endpointKeys.add(endpointKey);
 
-    if (!config.entities[endpoint.entity]) {
+    const backend = backendsByName.get(endpoint.backend);
+    if (!backend) {
+      diagnostics.push(
+        createDiagnostic(
+          "UNKNOWN_ENDPOINT_BACKEND",
+          `${endpointPath}.backend`,
+          `Backend "${endpoint.backend}" is not configured.`,
+        ),
+      );
+    }
+
+    const endpointEntity = config.entities[endpoint.entity];
+    if (!endpointEntity) {
       diagnostics.push(
         createDiagnostic(
           "UNKNOWN_ENDPOINT_ENTITY",
@@ -37,27 +44,39 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
           `Entity "${endpoint.entity}" is not defined.`,
         ),
       );
+    } else if (endpointEntity.backend !== endpoint.backend) {
+      diagnostics.push(
+        createDiagnostic(
+          "ENDPOINT_ENTITY_BACKEND_MISMATCH",
+          `${endpointPath}.entity`,
+          `Entity "${endpoint.entity}" belongs to backend "${endpointEntity.backend}", not "${endpoint.backend}".`,
+        ),
+      );
     }
-    for (const role of endpoint.roles) {
-      if (!knownRoles.has(role)) {
-        diagnostics.push(
-          createDiagnostic(
-            "UNKNOWN_ENDPOINT_ROLE",
-            `${endpointPath}.roles`,
-            `Role "${role}" is not declared by an authenticated backend.`,
-          ),
-        );
+    if (backend) {
+      const knownRoles = backend.auth.type === "none" ? [] : backend.auth.roles;
+      const knownPermissions = backend.auth.type === "none" ? [] : backend.auth.permissions;
+      for (const role of endpoint.roles) {
+        if (!knownRoles.includes(role)) {
+          diagnostics.push(
+            createDiagnostic(
+              "UNKNOWN_ENDPOINT_ROLE",
+              `${endpointPath}.roles`,
+              `Role "${role}" is not declared by backend "${backend.name}".`,
+            ),
+          );
+        }
       }
-    }
-    for (const permission of endpoint.permissions) {
-      if (!knownPermissions.has(permission)) {
-        diagnostics.push(
-          createDiagnostic(
-            "UNKNOWN_ENDPOINT_PERMISSION",
-            `${endpointPath}.permissions`,
-            `Permission "${permission}" is not declared by an authenticated backend.`,
-          ),
-        );
+      for (const permission of endpoint.permissions) {
+        if (!knownPermissions.includes(permission)) {
+          diagnostics.push(
+            createDiagnostic(
+              "UNKNOWN_ENDPOINT_PERMISSION",
+              `${endpointPath}.permissions`,
+              `Permission "${permission}" is not declared by backend "${backend.name}".`,
+            ),
+          );
+        }
       }
     }
     for (const [joinIndex, join] of endpoint.joins.entries()) {
@@ -72,6 +91,15 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
           ),
         );
         continue;
+      }
+      if (joinedEntity.backend !== endpoint.backend) {
+        diagnostics.push(
+          createDiagnostic(
+            "CROSS_BACKEND_JOIN",
+            `${joinPath}.entity`,
+            `Endpoint joins must stay within backend "${endpoint.backend}"; entity "${join.entity}" belongs to "${joinedEntity.backend}".`,
+          ),
+        );
       }
       for (const field of join.fields) {
         if (!joinedEntity.fields[field] && !GENERATED_ENTITY_FIELDS.has(field)) {

@@ -61,10 +61,17 @@ export const RelationSchema = z
 
 export const EntitySchema = z
   .object({
+    backend: SlugSchema,
     description: z.string().optional(),
     fields: z.record(IdentifierSchema, FieldSchema).default({}),
     relations: z.record(IdentifierSchema, RelationSchema).default({}),
-    timestamps: z.boolean().default(false),
+    timestamps: z
+      .object({
+        createdAt: z.boolean().default(false),
+        updatedAt: z.boolean().default(false),
+      })
+      .strict()
+      .default({}),
     softDelete: z.boolean().default(false),
   })
   .strict();
@@ -85,7 +92,8 @@ export const FrontendSchema = z
     type: z.enum(["web", "mobile", "desktop"]).default("web"),
     styling: z.string().min(1).optional(),
     stateManagement: z.union([z.string().min(1), StateManagementObjectSchema]).optional(),
-    connectsTo: SlugSchema.optional(),
+    repository: SlugSchema,
+    connectsTo: z.array(SlugSchema).default([]),
     authUI: z.boolean().default(false),
     path: PathSchema,
   })
@@ -114,6 +122,7 @@ export const BackendSchema = z
     name: SlugSchema,
     framework: z.string().min(1),
     architecture: z.enum(["clean", "modular"]).default("clean"),
+    repository: SlugSchema,
     path: PathSchema,
     auth: AuthSchema.default({ type: "none" }),
   })
@@ -130,6 +139,7 @@ const ParameterSchema = z
 
 export const EndpointSchema = z
   .object({
+    backend: SlugSchema,
     path: z.string().startsWith("/"),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
     summary: z.string().optional(),
@@ -161,12 +171,32 @@ const EnumValuesSchema = z
     message: "Enum values must be unique.",
   });
 
+export const OrganizationSchema = z
+  .object({
+    name: SlugSchema,
+    provider: z.enum(["github", "gitlab", "bitbucket"]),
+    handle: z.string().min(1),
+  })
+  .strict();
+
+export const RepositorySchema = z
+  .object({
+    name: SlugSchema,
+    path: PathSchema,
+    organization: SlugSchema.optional(),
+    initializeGit: z.boolean().default(false),
+    createRemote: z.boolean().default(false),
+    visibility: z.enum(["private", "public"]).default("private"),
+  })
+  .strict();
+
 export const NordixConfigSchema = z
   .object({
     name: SlugSchema,
     version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
     description: z.string().optional(),
-    structure: z.enum(["monorepo", "single-app"]).default("monorepo"),
+    organizations: z.array(OrganizationSchema).default([]),
+    repositories: z.array(RepositorySchema).min(1),
     frontend: FrontendSchema.omit({ name: true }).optional(),
     frontends: z.array(FrontendSchema).default([]),
     backend: BackendSchema.omit({ name: true }).optional(),
@@ -225,6 +255,8 @@ export type EntityDefinition = z.infer<typeof EntitySchema>;
 export type FrontendDefinition = z.infer<typeof FrontendSchema>;
 export type BackendDefinition = z.infer<typeof BackendSchema>;
 export type EndpointDefinition = z.infer<typeof EndpointSchema>;
+export type OrganizationDefinition = z.infer<typeof OrganizationSchema>;
+export type RepositoryDefinition = z.infer<typeof RepositorySchema>;
 export type NordixConfig = z.infer<typeof NordixConfigSchema>;
 
 export function normalizeFrontends(config: NordixConfig): FrontendDefinition[] {
