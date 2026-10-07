@@ -117,6 +117,71 @@ describe("generate command orchestration", () => {
     expect(await readFile(join(output, "README.md"), "utf8")).toContain("workspace");
   });
 
+  it("generates Drizzle files for a Hono backend configured with a database", async () => {
+    const root = await makeTempDirectory();
+    const configPath = join(root, "nordix.config.yaml");
+    const output = join(root, "generated");
+    const persistedConfiguration = configuration
+      .replace(
+        "version: 1.0.0",
+        "version: 1.0.0\ndatabases:\n  commerce-db:\n    engine: postgres\n    provider: neon",
+      )
+      .replace(
+        "    framework: hono",
+        "    framework: hono\n    persistence:\n      database: commerce-db\n      orm: drizzle",
+      );
+    await writeFile(configPath, persistedConfiguration, "utf8");
+
+    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
+      const directoryName = args[2];
+      if (directoryName && args[0] === "create") {
+        const appDirectory = resolve(cwd, basename(directoryName));
+        await mkdir(appDirectory, { recursive: true });
+        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
+      }
+      return "";
+    });
+
+    await runGenerate(configPath, output, runner);
+
+    const apiRoot = join(output, "apps", "api");
+    expect(await readFile(join(apiRoot, "drizzle.config.ts"), "utf8")).toContain(
+      'dialect: "postgresql"',
+    );
+    expect(
+      await readFile(
+        join(apiRoot, "src", "infrastructure", "database", "schema", "index.ts"),
+        "utf8",
+      ),
+    ).toContain("export");
+    expect(runner).toHaveBeenCalledWith(
+      "pnpm",
+      expect.arrayContaining(["create", "hono@0.19.4"]),
+      expect.any(String),
+    );
+  });
+
+  it("rejects an unregistered ORM before creating output or scaffolding", async () => {
+    const root = await makeTempDirectory();
+    const configPath = join(root, "nordix.config.yaml");
+    const output = join(root, "generated");
+    const persistedConfiguration = configuration
+      .replace(
+        "version: 1.0.0",
+        "version: 1.0.0\ndatabases:\n  commerce-db:\n    engine: postgres\n    provider: neon",
+      )
+      .replace(
+        "    framework: hono",
+        "    framework: hono\n    persistence:\n      database: commerce-db\n      orm: missing-orm",
+      );
+    await writeFile(configPath, persistedConfiguration, "utf8");
+    const runner = vi.fn();
+
+    await expect(runGenerate(configPath, output, runner)).rejects.toThrow("PLUGIN_NOT_REGISTERED");
+    expect(runner).not.toHaveBeenCalled();
+    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("writes Hono plugin files beneath a repository subdirectory with valid relative imports", async () => {
     const root = await makeTempDirectory();
     const configPath = join(root, "nordix.config.yaml");
