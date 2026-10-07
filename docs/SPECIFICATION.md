@@ -63,43 +63,43 @@ flowchart TD
 - **`@nordixgen/core`:** Motor de esquemas Zod, validador YAML, constructor de la representación intermedia, sistema de archivos virtual, ordenamiento topológico y matriz de incompatibilidad.
 - **Plugins Especializados:** Los plugins de arquitectura, framework y persistencia implementan contratos separados sobre la representación intermedia. Esto permite agregar, por ejemplo, una arquitectura Hexagonal, un framework `.NET` o un ORM adicional sin convertir el núcleo en un generador monolítico.
 
-### Contrato de Generación Backend Modular
+### Modular Backend Generation Contract
 
-NordixGen construye cada backend como una composición validada de plugins con responsabilidades independientes. En documentación y código se usará **plugin** para la unidad extensible seleccionable; **motor de generación** se reserva para el coordinador del núcleo que descubre, valida y ejecuta plugins. Un plugin puede tener módulos internos, pero «módulo» no es el término del contrato público.
+NordixGen builds each backend as a validated composition of plugins with independent responsibilities. **Plugin** is the selectable extension unit; **generation engine** is the core coordinator that discovers, validates, and executes plugins. A plugin may contain internal modules, but “module” is not the public extension contract.
 
-#### Responsabilidades
+#### Responsibilities
 
-- **Core / compositor:** consume la representación intermedia (IR), resuelve plugins, valida requisitos/capacidades, prepara el contexto de generación y coordina las contribuciones al sistema de archivos virtual (VFS). Debe detectar errores antes de emitir archivos.
-- **Plugin de arquitectura:** define las capas, límites y rutas semánticas de los artefactos: entidades, casos de uso, puertos, adaptadores, controladores y configuración. Clean, Hexagonal y Onion son estrategias distintas seleccionables. La arquitectura no emite sintaxis específica de Hono, C# u otro framework.
-- **Plugin de framework:** define lenguaje, scaffold/upstream, raíz de código dentro de la aplicación, convenciones de imports, puntos de entrada y reglas de namespace cuando apliquen. Recibe la ubicación resuelta por arquitectura y genera la sintaxis concreta del framework. Por ejemplo, el generador `.NET` calcula namespaces a partir de las rutas finales; Hono genera módulos TypeScript.
-- **Plugin de ORM/persistencia:** implementa la persistencia concreta (esquemas, mapeos, repositorios, queries y migraciones) y declara los lenguajes, motores de base de datos y entornos compatibles. Coloca sus artefactos en el espacio de infraestructura definido por la estrategia de arquitectura.
-- **Recurso de base de datos:** describe el motor y proveedor de almacenamiento, no el ORM. El mismo recurso puede ser referenciado por varios backends cuando la configuración lo permita.
+- **Core/composer:** consumes the intermediate representation (IR), resolves plugins, validates requirements and capabilities, prepares the generation context, and coordinates contributions to the virtual file system (VFS). It must report errors before emitting files.
+- **Architecture plugin:** defines layers, boundaries, and semantic locations for entities, use cases, ports, adapters, controllers, and configuration. Clean, Hexagonal, and Onion are distinct selectable strategies. Architecture plugins do not emit Hono-, C#-, or other framework-specific syntax.
+- **Framework plugin:** defines the language, upstream scaffold, code root within the application, import conventions, entry points, and namespace rules where applicable. It receives the architecture layout and emits framework-specific syntax. For example, the .NET plugin derives namespaces from final paths while Hono generates TypeScript modules.
+- **ORM/persistence plugin:** implements concrete persistence (schemas, mappings, repositories, queries, and migrations) and declares compatible languages, database engines, and runtimes. Its files go in the infrastructure locations provided by the architecture strategy.
+- **Database resource:** describes the storage engine and provider, not the ORM. Multiple backends may reference the same resource when configured to do so.
 
-#### Acuerdo entre framework y arquitectura
+#### Framework and architecture handshake
 
-La dependencia se resuelve mediante un contexto compartido, no haciendo que un plugin importe internamente a otro:
+The dependency is coordinated through a shared context instead of plugins importing one another:
 
-1. El framework aporta `BackendProjectContext`: lenguaje, raíz de la aplicación, raíz de código (por ejemplo `src`), formato de archivo, convenciones de imports/namespaces y restricciones del runtime.
-2. Arquitectura recibe ese contexto y el backend de la IR, y devuelve un `ArchitectureLayout`: rutas relativas para los roles semánticos (entidad, caso de uso, puerto, adaptador, controlador, etc.) y reglas de dependencia entre capas.
-3. Los plugins de framework y ORM reciben el contexto y el layout resuelto para emitir código en las ubicaciones correctas. El framework es responsable de producir imports y namespaces coherentes con esas rutas.
-4. El compositor comprueba colisiones de rutas y dependencias antes de escribir al disco.
+1. The framework provides `BackendProjectContext`: language, application root, code root (for example `src`), file conventions, import/namespace rules, and runtime constraints.
+2. The architecture plugin receives that context and the backend IR, then returns an `ArchitectureLayout`: paths for semantic roles (entity, use case, port, adapter, controller, and so on) and dependency rules between layers.
+3. Framework and ORM plugins consume the resolved context and layout to emit files at the correct locations. The framework plugin is responsible for imports and namespaces that match the final paths.
+4. The composer detects path and dependency conflicts before writing to disk.
 
-La raíz de la aplicación procede de la ruta del backend en YAML; la raíz de código y las convenciones específicas del proyecto las aporta el framework. Arquitectura resuelve debajo de esa raíz. Esto evita colocar archivos por accidente en la raíz del repositorio y permite que, por ejemplo, un mismo perfil Clean se use tanto con `src/` de Hono como con los proyectos/directorios y namespaces de .NET.
+The backend path in YAML defines the application root; the framework defines the code root and project-specific conventions; architecture resolves its layout beneath that root. This prevents generated business files from leaking into the repository root and lets one Clean strategy work with Hono’s `src/` layout or .NET projects, directories, and namespaces.
 
-#### Compatibilidad extensible
+#### Extensible compatibility
 
-El registro no debe enumerar manualmente todas las combinaciones posibles —eso crecería como un producto cartesiano al agregar arquitecturas, frameworks y ORMs—. Cada plugin declara un identificador/versionado, sus capacidades provistas y sus requisitos/restricciones. El resolver comprueba el conjunto seleccionado antes de generar:
+The registry must not manually enumerate every possible combination; that would grow as a Cartesian product of architectures, frameworks, and ORMs. Each plugin declares a stable identifier/version, provided capabilities, and requirements/constraints. The resolver checks the selected set before generation:
 
-- plugin desconocido o no instalado: error accionable, como «no hay plugin ORM registrado para `orm: prisma`»;
-- combinación conocida pero incompatible: error que identifica qué requisito no se satisface, por ejemplo Entity Framework requiere C# y no es compatible con el contexto TypeScript de Hono;
-- capacidad solicitada explícitamente pero no soportada: error bloqueante antes de generar; las advertencias se reservan para recomendaciones no bloqueantes;
-- combinación válida: generación determinista por VFS y validación de rutas, imports y dependencias.
+- Unknown or unavailable plugin: actionable error, such as “no ORM plugin is registered for `orm: prisma`.”
+- Known but incompatible combination: error identifies the unmet requirement, such as Entity Framework requiring C# and not matching Hono’s TypeScript context.
+- Explicitly requested but unsupported capability: blocking error before generation. Warnings are reserved for non-blocking recommendations.
+- Valid combination: deterministic VFS generation and validation of paths, imports, and dependencies.
 
-El sistema debe permitir a terceros registrar nuevos plugins mediante el contrato público, sin modificar el core. La primera entrega no necesita implementar decenas de plugins: debe probar el contrato con la estrategia Clean, Hono/TypeScript y Drizzle/PostgreSQL, y demostrar que una combinación incompatible se rechaza antes de generar.
+Third parties must be able to register plugins through the public contract without changing core. The first implementation does not need dozens of plugins: it must validate the contract with Clean, Hono/TypeScript, and Drizzle/PostgreSQL, and prove that an incompatible combination is rejected before generation.
 
-#### ORM y base de datos en YAML
+#### ORM and database YAML model
 
-La configuración de bases de datos se declara como recursos nombrados. El ORM pertenece a la persistencia de cada backend porque el backend determina el lenguaje/runtime y la compatibilidad del ORM. No se debe usar un ORM global:
+Database configuration uses named resources. The ORM belongs to each backend’s persistence configuration because the backend determines its language/runtime and ORM compatibility. There must not be a single global ORM:
 
 ```yaml
 databases:
@@ -123,7 +123,7 @@ backends:
       orm: entity-framework
 ```
 
-`persistence` es opcional para backends sin almacenamiento. La validación semántica comprueba que la referencia `database` exista y que el plugin ORM admita el framework/runtime y el motor de base de datos seleccionados. Secretos y cadenas de conexión no se guardan en el YAML; se resuelven en el entorno generado.
+`persistence` is optional for backends that do not use storage. Semantic validation checks that each database reference exists and that the ORM plugin supports the selected framework/runtime and database engine. Secrets and connection strings are not stored in YAML; they are configured in the generated environment.
 
 ### Estrategia de Scaffolding Upstream
 
@@ -277,7 +277,7 @@ NordixGen **no genera archivos de inicialización desde strings crudos** cuando 
      - La Clean Architecture (capas de dominio, aplicación, infraestructura).
      - Los modelos y esquemas relacionales de Drizzle ORM.
      - Los endpoints y controladores tipados con validación Zod.
-     - El módulo de autenticación Web Crypto y middlewares RBAC/PBAC.
+     - Integration with a maintained authentication library/provider and generated application-level RBAC/PBAC policies; NordixGen does not implement cryptographic protocols from scratch.
      - El cliente de API tipado para el frontend.
      - Las vistas completas de tablas, filtros y modales por entidad.
 3. **Matriz de Fijación y Seguimiento de Versiones (Version Matrix & Node.js Binding):**
@@ -363,24 +363,31 @@ La verificación debe usar el mecanismo de autenticación soportado por el prove
 
 ---
 
-### C. Seguridad, Autenticación y Autorización
+### C. Authentication and Authorization
 
-1. **Mecanismos de Autenticación:**
-   - **Correo y Contraseña:** Hashing con **Web Crypto PBKDF2 / SHA-256** (100% nativo de Cloudflare Workers, 0 ms cold starts).
-   - **Usuario y PIN:** Para terminales POS o apps móviles rápidas.
-   - **OAuth 2.0:** Google y GitHub out-of-the-box.
-   - **2FA / TOTP:** Códigos temporales de 6 dígitos compatibles con Google Authenticator.
-2. **Flujos de Correo Electrónico:**
-   - Confirmación de cuenta con tokens temporales firmados.
-   - Restablecimiento de contraseña.
-   - **Local:** Captura SMTP con **Mailpit** (puerto 1025) y consola web (`http://localhost:8025`).
-   - **Producción:** Resend, SendGrid o Cloudflare Email Routing.
-3. **Manejo de Tokens y Sesión:**
-   - Access Tokens JWT de corta duración + Refresh Tokens en base de datos.
-4. **Autorización Granular (RBAC & PBAC):**
-   - Definición de Roles (`admin`, `manager`, `customer`).
-   - Definición de Permisos (`products:create`, `orders:cancel`).
-   - Protección de endpoints por roles o permisos específicos.
+NordixGen must integrate a maintained authentication library or identity provider; it must not implement password hashing, OAuth/OIDC flows, token signing, session lifecycle, MFA, or recovery cryptography from scratch. The first Golden Path should evaluate Better Auth as a self-hosted library because its official documentation describes Hono/Cloudflare Workers integration and a Drizzle adapter. Runtime requirements such as Cloudflare's `nodejs_compat` flag must be validated by the framework plugin before generation. This is a candidate to verify, not an unconditional dependency until that compatibility check is complete.
+
+1. **Identity and sign-in:**
+   - The library owns account verification, credential checks, session creation/revocation, password reset, and MFA implementation.
+   - Optional external identity providers (for example Google, GitHub, or an organization's identity service) integrate through OpenID Connect (OIDC) or a maintained library adapter. OAuth 2.0 alone is an authorization framework; OIDC adds the standardized identity layer.
+   - External providers are optional. Users may choose a supported self-hosted authentication library/configuration or connect an external provider; provider secrets are environment secrets, never YAML values.
+   - If local passwords are enabled, use the selected library's maintained password-storage implementation and verify its algorithm and parameters against current OWASP guidance. Prefer Argon2id; use scrypt if Argon2id is unavailable, or PBKDF2-HMAC-SHA-256 when required by FIPS/compliance. Plain SHA-256 is not password hashing.
+2. **Browser sessions and API tokens:**
+   - Browser-based frontends default to library-managed sessions in `Secure`, `HttpOnly`, appropriately `SameSite` cookies with CSRF protections. Do not put session secrets or refresh tokens in local storage, Zustand, or other JavaScript-readable persistent state.
+   - JWT is a token format, not a complete authentication design. Use bearer-token flows only when the client/API needs them. Federated public clients use OAuth Authorization Code with PKCE; access tokens are short-lived and restricted to the intended audience/scope. If refresh tokens are issued to public clients, follow RFC 9700 by using rotation or sender-constraining and detecting replay.
+   - Session expiry, revocation, logout, cookie flags, CSRF behavior, and any token lifecycle are delegated to the selected maintained library/provider and verified through integration tests.
+3. **Application authorization (RBAC/PBAC):**
+   - NordixGen maps declared roles (for example `admin`, `manager`, `customer`) and permissions (for example `products:create`, `orders:cancel`) to backend policy checks.
+   - Authentication middleware establishes verified identity/session context; authorization is enforced on the server at routes and/or application use cases. Frontend state is only for display and never grants access.
+4. **Account email and recovery:**
+   - Email verification and password recovery use the selected library/provider's expiring, single-use flows.
+   - Local development may capture email with Mailpit; production mail delivery is configured separately. Credentials and signing secrets are supplied through environment/secret management.
+5. **Security controls and validation:**
+   - Use the library/provider's supported rate limiting, generic authentication errors, secure secret handling, and audit hooks; add app-specific controls where required.
+   - Tests cover login/logout, session expiry/revocation, CSRF, unauthorized/forbidden access, role/permission checks, and provider callback protections. Test OIDC state/nonce/PKCE and refresh-token replay handling when those flows are enabled.
+   - The generated project must fail validation when the selected auth library/provider is unavailable or incompatible with the framework/runtime/ORM. Unsupported requested auth features must never be silently omitted.
+
+**Standards and implementation references:** [OAuth 2.0 Security Best Current Practice (RFC 9700)](https://www.rfc-editor.org/rfc/rfc9700.html), [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html), and [OpenID Connect overview](https://openid.net/developers/how-connect-works/). Candidate library references: [Better Auth Hono/Cloudflare integration](https://better-auth.com/docs/integrations/hono) and [Better Auth Drizzle adapter](https://better-auth.com/docs/adapters/drizzle).
 
 ---
 
@@ -465,8 +472,8 @@ Para cada entidad declarada en el YAML (ej. `User`, `Order`) y cada endpoint com
    - `useCreateUserMutation()`: Con invalidación automática de la caché de listas al crearse un usuario (`queryClient.invalidateQueries({ queryKey: ['users'] })`).
    - `useUpdateUserMutation()` y `useDeleteUserMutation()` con soporte para **Mutaciones Optimistas** opcionales.
 3. **Stores de Zustand Especializados (`apps/web/src/stores/`):**
-   - `useAuthStore`: Token JWT, usuario activo, permisos computados `hasPermission('users:create')`, login/logout.
-   - `useUIStore`: Alertas globales, toast notifications, control de modales.
+   - `useAuthStore`: Non-sensitive current-user display data and derived permission hints; it does not store session secrets or refresh tokens.
+   - `useUIStore`: UI-only alerts, toast notifications, and modal state.
 
 #### 3. Parámetros del YAML para Configuración de Estado en Frontends:
 Cada frontend puede personalizar o seleccionar su estrategia de estado:

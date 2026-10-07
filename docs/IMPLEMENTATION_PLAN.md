@@ -11,7 +11,7 @@
 flowchart LR
     Fase1["Fase 1: Infra Monorepo & CI/CD NPM"] --> Fase2["Fase 2: Core Configuration & Intermediate Representation Engine"]
     Fase2 --> Fase3["Fase 3: Upstream Orchestrator & CLI"]
-    Fase3 --> Fase4["Fase 4: Composable Backend Generation"]
+    Fase3 --> Fase4["Phase 4: Composable Backend Generation"]
     Fase4 --> Fase5["Fase 5: Plugin Next.js 15 & Dual-State"]
     Fase5 --> Fase6["Fase 6: Docker Local & Cloudflare IaC"]
     Fase6 --> Fase7["Fase 7: AI Agent Tools & E2E Validation"]
@@ -96,22 +96,22 @@ flowchart LR
 
 ---
 
-### 🛡️ Fase 4: Generación Backend Componible (Golden Path)
+### 🛡️ Phase 4: Composable Backend Generation (Golden Path)
 
-**Objetivo:** generar backends combinando plugins independientes de arquitectura, framework y persistencia. El Golden Path inicial será Hono + Clean + Drizzle + PostgreSQL/Neon, pero el diseño debe admitir arquitecturas como Hexagonal/Onion, runtimes como .NET/C# y otros ORMs sin copiar un generador para cada combinación.
+**Objective:** Generate backends by composing independent architecture, framework, and persistence plugins. The initial Golden Path is Hono + Clean + Drizzle + PostgreSQL/Neon. The design must also support strategies such as Hexagonal/Onion, runtimes such as .NET/C#, and additional ORMs without duplicating a generator for every combination.
 
-**Terminología:** llamamos **plugin** a la unidad extensible registrada y seleccionable (arquitectura, framework o ORM). Una **estrategia de arquitectura** como Clean es implementada por un plugin de arquitectura. **Motor de generación** es el coordinador del core que resuelve y ejecuta plugins. «Módulo» puede describir archivos internos, pero no es el nombre de la extensión pública.
+**Terminology:** A **plugin** is a registered, selectable extension (architecture, framework, or ORM). An architecture strategy such as Clean is implemented by an architecture plugin. The **generation engine** is the core coordinator that resolves and executes plugins. “Module” may describe internal files, but it is not the public extension contract.
 
-#### Acuerdos de arquitectura que guían todas las sub-issues
+#### Architecture decisions guiding the sub-issues
 
-1. **Core/compositor:** recibe la IR, resuelve plugins registrados, valida compatibilidad/capacidades, coordina el contexto y contribuciones al VFS. Rechaza plugins desconocidos, combinaciones incompatibles, capacidades no cubiertas y colisiones de ruta antes de emitir archivos; nunca omite configuración silenciosamente.
-2. **Plugin de framework:** establece el contexto del proyecto (lenguaje, raíz de aplicación/código, scaffold, extensiones, imports, entrada, runtime y reglas de namespace). Hono/TypeScript y .NET/C# son plugins diferentes.
-3. **Plugin de arquitectura:** independiente del framework, define capas, dependencias permitidas y un mapa de ubicaciones por rol (entidad, caso de uso, puerto, adaptador, controlador). Recibe el contexto del framework para resolver las rutas dentro de `src/` u otra raíz, sin emitir sintaxis propia de un framework.
-4. **Plugins generadores:** framework y ORM consumen el contexto y `ArchitectureLayout` resuelto. Framework genera el código de presentación/arranque y calcula imports/namespaces con las rutas finales; ORM genera esquemas, repositorios y migraciones en el espacio de persistencia/infraestructura que expone la arquitectura.
-5. **Compatibilidad por capacidades declaradas:** plugins declaran identidad/versionado, capacidades que proveen y requisitos/restricciones (lenguaje, runtime, framework, base de datos). El resolver evita una tabla manual de todas las permutaciones, pero permite restricciones explícitas. Por ejemplo, Entity Framework debe fallar con Hono/TypeScript antes de generar.
-6. **Persistencia por backend:** `databases` describe recursos; cada backend puede opcionalmente seleccionar `persistence.database` y `persistence.orm`. No hay un ORM global. Secretos/conexiones se resuelven fuera del YAML.
+1. **Core/composer:** Receives the IR, resolves registered plugins, validates compatibility and capabilities, prepares the context, and coordinates VFS contributions. Unknown plugins, incompatible selections, uncovered capabilities, and path collisions fail before files are emitted; configuration is never silently ignored.
+2. **Framework plugin:** Provides project context (language, application/code roots, scaffold, file/import conventions, entry points, runtime, and namespace rules). Hono/TypeScript and .NET/C# are different framework plugins.
+3. **Architecture plugin:** Remains independent from a specific framework. It defines layers, allowed dependency directions, and semantic file locations (entity, use case, port, adapter, controller). It consumes framework context to resolve paths under `src/` or another code root without emitting framework-specific syntax.
+4. **Generator plugins:** Framework and ORM consume the shared context and resolved `ArchitectureLayout`. The framework generates bootstrap/presentation code and derives imports/namespaces from final paths. The ORM generates schemas, repositories, and migrations in the persistence/infrastructure locations exposed by architecture.
+5. **Declared-capability compatibility:** Plugins declare identity/version, provided capabilities, and requirements/constraints (language, runtime, framework, database). The resolver avoids a manually enumerated table of every permutation while allowing explicit restrictions. For example, Entity Framework must be rejected with Hono/TypeScript before generation.
+6. **Persistence per backend:** `databases` describes resources; each backend can optionally select `persistence.database` and `persistence.orm`. There is no global ORM. Secrets and connection strings are configured outside YAML.
 
-Configuración objetivo:
+Target configuration:
 
 ```yaml
 databases:
@@ -128,33 +128,34 @@ backends:
       orm: drizzle
 ```
 
-Un backend sin persistencia puede omitir `persistence`. La validación debe comprobar que las referencias de base de datos existan y que el ORM sea compatible con el framework/runtime y motor elegidos.
+Backends without storage can omit `persistence`. Validation checks that database references exist and that the ORM supports the selected framework/runtime and database engine.
 
-#### Sub-issues y entregas (cada una se desarrolla en su propio PR a `develop`)
+#### Sub-issues and deliverables (each is implemented in its own PR to `develop`)
 
-La issue padre es [#5: Phase 4: Plugin Hono + Drizzle ORM (Golden Path Backend)](https://github.com/NordixTech/NordixGen/issues/5). Cada sub-issue se implementará en su propio PR a `develop`; las relaciones «blocked by» de GitHub reflejan las dependencias:
+The parent issue is [#5: Phase 4: Plugin Hono + Drizzle ORM (Golden Path Backend)](https://github.com/NordixTech/NordixGen/issues/5). Each sub-issue will be delivered in its own PR to `develop`; GitHub’s “blocked by” relationships track dependencies:
 
-1. [#11 Contrato de plugins, registro y compositor](https://github.com/NordixTech/NordixGen/issues/11): interfaz/versionado estable, tipos `FrameworkContext`/`ArchitectureLayout`, registro, contribución VFS, requisitos/capacidades y errores de incompatibilidad antes de escribir.
-2. [#12 Persistencia por backend en YAML e IR](https://github.com/NordixTech/NordixGen/issues/12): recursos `databases` y `backends[].persistence`; persistencia opcional; validar referencias y diagnósticos.
-3. [#13 Plugin de arquitectura Clean](https://github.com/NordixTech/NordixGen/issues/13): roles, layout, dirección de dependencias y pruebas independientes del framework; preparar la adición futura de Hexagonal/Onion.
-4. [#14 Plugin framework Hono](https://github.com/NordixTech/NordixGen/issues/14): scaffold upstream, contexto TypeScript/Hono, raíz de código y convenciones; consumir layout para arranque y controladores.
-5. [#15 Plugin ORM Drizzle](https://github.com/NordixTech/NordixGen/issues/15): persistencia compatible con TypeScript/runtime/PostgreSQL-Neon y capacidades/restricciones registradas.
-6. [#16 Generación de dominio y puertos](https://github.com/NordixTech/NordixGen/issues/16): entidades/enums puros y puertos de repositorio en las ubicaciones de Clean.
-7. [#17 Casos de uso y DTOs](https://github.com/NordixTech/NordixGen/issues/17): CRUD y operaciones declaradas, DTOs Zod y consultas/joins sin dependencias de Hono o Drizzle en dominio/aplicación.
-8. [#18 Adaptadores Drizzle](https://github.com/NordixTech/NordixGen/issues/18): esquemas, relaciones, índices, transacciones, repositorios, soft delete y joins declarados.
-9. [#19 Presentación Hono](https://github.com/NordixTech/NordixGen/issues/19): rutas/controladores, validación `@hono/zod-validator`, casos de uso y respuestas RFC 7807.
-10. [#20 Migraciones y seeders](https://github.com/NordixTech/NordixGen/issues/20): Drizzle Kit, scripts reproducibles y orden topológico para foreign keys y datos sintéticos.
-11. [#21 Autenticación y autorización](https://github.com/NordixTech/NordixGen/issues/21): Web Crypto, PBKDF2/SHA-256, JWT, refresh tokens, RBAC/PBAC y protección de endpoints.
-12. [#22 Integración y aceptación del Golden Path](https://github.com/NordixTech/NordixGen/issues/22): generación completa desde el ejemplo, instalación/build/typecheck, `wrangler dev`, CRUD, joins, soft delete, migraciones, seeders y autenticación.
+1. [#11 Plugin contracts, registry, and composer](https://github.com/NordixTech/NordixGen/issues/11): stable interfaces/versioning, `FrameworkContext`/`ArchitectureLayout`, registry, VFS contribution, capability requirements, and pre-generation compatibility errors.
+2. [#12 Per-backend persistence in YAML and IR](https://github.com/NordixTech/NordixGen/issues/12): named `databases` resources and `backends[].persistence`, optional persistence, reference validation, and diagnostics.
+3. [#13 Clean Architecture plugin](https://github.com/NordixTech/NordixGen/issues/13): semantic roles, layout, dependency direction, and framework-independent tests; prepare for Hexagonal/Onion strategies.
+4. [#14 Hono framework plugin](https://github.com/NordixTech/NordixGen/issues/14): upstream scaffold, TypeScript/Hono context, code root and conventions; consume the layout for bootstrap and controllers.
+5. [#15 Drizzle ORM plugin](https://github.com/NordixTech/NordixGen/issues/15): persistence for supported TypeScript/runtime/PostgreSQL-Neon combinations, with declared capabilities and constraints.
+6. [#16 Domain entities and ports](https://github.com/NordixTech/NordixGen/issues/16): pure entities/enums and repository ports in Clean locations.
+7. [#17 Application use cases and DTOs](https://github.com/NordixTech/NordixGen/issues/17): CRUD and declared operations, Zod DTOs, and join queries without Hono/Drizzle dependencies in domain/application.
+8. [#18 Drizzle adapters](https://github.com/NordixTech/NordixGen/issues/18): schemas, relations, indexes, transactions, repositories, soft deletes, and declared joins.
+9. [#19 Hono presentation](https://github.com/NordixTech/NordixGen/issues/19): routes/controllers, `@hono/zod-validator`, use-case dispatch, and RFC 7807 responses.
+10. [#20 Migrations and seeders](https://github.com/NordixTech/NordixGen/issues/20): Drizzle Kit, reproducible scripts, and topological ordering for foreign keys and synthetic data.
+11. [#21 Authentication and authorization](https://github.com/NordixTech/NordixGen/issues/21): evaluate a maintained library (Better Auth is the first self-hosted candidate), optional OIDC identity providers, secure browser sessions or standards-based API tokens, and application RBAC/PBAC. Do not implement authentication cryptography/protocols from scratch.
+12. [#22 Golden Path integration and acceptance](https://github.com/NordixTech/NordixGen/issues/22): full generation from the example, install/build/typecheck, `wrangler dev`, CRUD, joins, soft delete, migrations, seeders, and authentication.
 
-#### Criterios de aceptación de la fase
+#### Phase acceptance criteria
 
-- La composición Hono + Clean + Drizzle + PostgreSQL/Neon genera una aplicación reproducible y determinista, compila sin errores y corre en `wrangler dev`.
-- La arquitectura resuelve todos los roles bajo la raíz de código que declara el framework; ningún archivo de negocio acaba accidentalmente en la raíz del repositorio. Imports y namespaces derivan de las rutas finales.
-- Plugins desconocidos y pares inválidos (p. ej. `framework: hono` + `orm: entity-framework`) fallan antes de generar, con el plugin o capacidad faltante nombrado.
-- Cualquier capacidad solicitada explícitamente en YAML y no cubierta por un plugin causa un error bloqueante antes de generar; las advertencias se reservan para recomendaciones que no cambian el resultado declarado.
-- Clean, Hono y Drizzle se prueban como plugins con límites separados; un plugin nuevo puede registrarse mediante contrato documentado sin editar el core.
-- Cada sub-issue se completa en su PR, incluye tests de su contrato y señala las pruebas del proyecto generado que habilita. La sub-issue final verifica el Golden Path entero.
+- The Hono + Clean + Drizzle + PostgreSQL/Neon composition generates reproducibly, typechecks, and runs with `wrangler dev`.
+- Architecture resolves every file role beneath the framework-declared code root; business files do not leak into the repository root. Imports and namespaces follow final paths.
+- Unknown plugins and invalid combinations (for example, `framework: hono` with `orm: entity-framework`) fail before generation and name the missing plugin/capability.
+- Any explicitly requested YAML capability not covered by a plugin is a blocking pre-generation error. Warnings are reserved for non-blocking recommendations.
+- Authentication delegates credential hashing, OAuth/OIDC, session/token lifecycle, MFA, and recovery to a maintained library/provider; browser sessions use secure cookies, and app authorization is enforced by the backend.
+- Clean, Hono, and Drizzle are tested as separate plugins; a new plugin can be registered through the documented contract without editing core.
+- Every sub-issue is delivered in its own PR and tests its contract. The final sub-issue verifies the complete Golden Path.
 
 ---
 
