@@ -7,7 +7,16 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["node_modules", "dist", "build", "coverage", ".turbo", "tmp", "sandbox"]
+    "ignore": [
+      "node_modules",
+      "dist",
+      "build",
+      "coverage",
+      ".turbo",
+      "tmp",
+      "sandbox",
+      "nordix.schema.json"
+    ]
   },
   "formatter": {
     "enabled": true,

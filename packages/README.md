@@ -4,8 +4,8 @@ Este directorio alberga los paquetes que componen la plataforma NordixGen bajo u
 
 - **`packages/core`**: Motor principal de NordixGen.
   - Esquemas de validación Zod (`nordix.config.yaml`).
-  - Generador del Grafo Semántico (Nordix Intermediate Representation - IR).
-  - Virtual File System (VFS) determinista y ordenamiento topológico.
+  - Generador de la representación intermedia y el grafo de dependencias.
+  - Sistema de archivos virtual determinista y ordenamiento topológico.
   - Matriz de validación e incompatibilidades.
 
 - **`packages/cli`**: Interfaz de línea de comandos ejecutable mediante `npx nordixgen`.
