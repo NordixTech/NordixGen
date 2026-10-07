@@ -1,0 +1,60 @@
+name: Release & Publish NPM
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    name: Build & Publish to NPM (Provenance OIDC)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+
+      - name: Setup Node.js (Active LTS 24)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      - name: Ensure npm supports trusted publishing
+        run: npm install --global 'npm@^11.5.1'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate code quality & run tests
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+
+      - name: Build production packages
+        run: pnpm build
+
+      - name: Pack workspace packages
+        run: |
+          mkdir -p "$RUNNER_TEMP/nordixgen-core" "$RUNNER_TEMP/nordixgen-cli"
+          pnpm --dir packages/core pack --pack-destination "$RUNNER_TEMP/nordixgen-core"
+          pnpm --dir packages/cli pack --pack-destination "$RUNNER_TEMP/nordixgen-cli"
+
+      - name: Publish packages to npm with Trusted Publishing
+        run: |
+          npm publish "$RUNNER_TEMP/nordixgen-core"/*.tgz --access public
+          npm publish "$RUNNER_TEMP/nordixgen-cli"/*.tgz --access public
