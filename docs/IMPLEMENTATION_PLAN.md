@@ -144,7 +144,7 @@ The parent issue is [#5: Phase 4: Plugin Hono + Drizzle ORM (Golden Path Backend
 8. [#18 Drizzle adapters](https://github.com/NordixTech/NordixGen/issues/18): schemas, relations, indexes, transactions, repositories, soft deletes, and declared joins.
 9. [#19 Hono presentation](https://github.com/NordixTech/NordixGen/issues/19): routes/controllers, `@hono/zod-validator`, use-case dispatch, and RFC 7807 responses.
 10. [#20 Migrations and seeders](https://github.com/NordixTech/NordixGen/issues/20): Drizzle Kit, reproducible scripts, and topological ordering for foreign keys and synthetic data.
-11. [#21 Authentication and authorization](https://github.com/NordixTech/NordixGen/issues/21): evaluate a maintained library (Better Auth is the first self-hosted candidate), optional OIDC identity providers, secure browser sessions or standards-based API tokens, and application RBAC/PBAC. Do not implement authentication cryptography/protocols from scratch.
+11. [#21 Authentication and authorization](https://github.com/NordixTech/NordixGen/issues/21): implement Better Auth as the first authentication plugin and Golden Path; compose it through framework, architecture, ORM, database, and core capability contracts; support its validated sign-in/session/provider features and a separate server-side RBAC/PBAC policy capability. Reject unsupported combinations and credential methods (including PIN unless a secure supported integration is validated). Do not implement authentication cryptography/protocols from scratch.
 12. [#22 Golden Path integration and acceptance](https://github.com/NordixTech/NordixGen/issues/22): full generation from the example, install/build/typecheck, `wrangler dev`, CRUD, joins, soft delete, migrations, seeders, and authentication.
 
 #### Phase acceptance criteria
@@ -153,7 +153,9 @@ The parent issue is [#5: Phase 4: Plugin Hono + Drizzle ORM (Golden Path Backend
 - Architecture resolves every file role beneath the framework-declared code root; business files do not leak into the repository root. Imports and namespaces follow final paths.
 - Unknown plugins and invalid combinations (for example, `framework: hono` with `orm: entity-framework`) fail before generation and name the missing plugin/capability.
 - Any explicitly requested YAML capability not covered by a plugin is a blocking pre-generation error. Warnings are reserved for non-blocking recommendations.
-- Authentication delegates credential hashing, OAuth/OIDC, session/token lifecycle, MFA, and recovery to a maintained library/provider; browser sessions use secure cookies, and app authorization is enforced by the backend.
+- Better Auth is the first Authentication plugin, generated into a backend by default rather than deployed as a separate service. Its adapter capabilities are checked against the selected framework/runtime, architecture layout, ORM, and database before generation; authentication-owned schema and migrations are integrated deliberately.
+- Authentication delegates credential hashing, OAuth/OIDC, session/token lifecycle, MFA, and recovery to Better Auth; optional external identity providers require runtime secrets and provider-side setup. Browser sessions use secure cookies, and a separate backend authorization-policy capability enforces RBAC/PBAC using the verified identity context.
+- Username/password is supported only through validated Better Auth capabilities. A PIN is not treated as a shorter password; unsupported PIN configuration fails validation unless a secure maintained integration is explicitly added and its rate limits, lockout, session scope, and recovery behavior are tested.
 - Clean, Hono, and Drizzle are tested as separate plugins; a new plugin can be registered through the documented contract without editing core.
 - Every sub-issue is delivered in its own PR and tests its contract. The final sub-issue verifies the complete Golden Path.
 

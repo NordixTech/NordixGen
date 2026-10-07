@@ -200,6 +200,8 @@ Un sistema de software moderno puede combinar **múltiples aplicaciones cliente 
 ### Declaración en YAML:
 Cada aplicación señala su repositorio. Este ejemplo agrupa las apps en un solo repositorio; la misma forma admite listas de repositorios separados:
 
+El bloque de autenticación de este ejemplo ilustra la estructura objetivo de Phase 4.11; no forma parte del esquema que acepta actualmente el parser.
+
 ```yaml
 # Múltiples Frontends
 repositories:
@@ -233,8 +235,11 @@ backends:
     persistence:
       database: commerce-db
       orm: drizzle
-    auth:
-      type: jwt
+    authentication:
+      plugin: better-auth
+      methods: [email-password, username-password]
+      identityProviders: [google, github]
+    authorization:
       roles: [admin, customer]
   - name: notifications-worker
     framework: hono
@@ -365,29 +370,56 @@ La verificación debe usar el mecanismo de autenticación soportado por el prove
 
 ### C. Authentication and Authorization
 
-NordixGen must integrate a maintained authentication library or identity provider; it must not implement password hashing, OAuth/OIDC flows, token signing, session lifecycle, MFA, or recovery cryptography from scratch. The first Golden Path should evaluate Better Auth as a self-hosted library because its official documentation describes Hono/Cloudflare Workers integration and a Drizzle adapter. Runtime requirements such as Cloudflare's `nodejs_compat` flag must be validated by the framework plugin before generation. This is a candidate to verify, not an unconditional dependency until that compatibility check is complete.
+NordixGen treats authentication as a **composable generator plugin**, alongside architecture, framework, and ORM plugins. Better Auth is the selected first authentication plugin and the authentication Golden Path for Phase 4.11. Better Auth is a library integrated into a generated backend, not an external identity provider and not a separately deployed authentication microservice by default. The generated application owns its deployment; Better Auth supplies maintained authentication behavior.
+
+The authentication plugin must coordinate with the other plugins through declared capabilities rather than hard-coded technology assumptions:
+
+- The **framework plugin** provides the HTTP handler, middleware hooks, runtime requirements, and request context integration. For the first combination, this means Hono integration and explicit validation of runtime requirements such as Cloudflare Workers' `nodejs_compat` where needed.
+- The **architecture plugin** provides semantic file roles and resolved paths for authentication configuration, adapters, and delivery-layer integration. The authentication plugin must not assume that a particular layer or folder name exists.
+- The **ORM and database plugins** provide supported persistence adapters, schema ownership, and migration capabilities. For the first combination, Better Auth uses its Drizzle adapter and the backend's selected database. Authentication-owned tables and migrations must be integrated without silently overwriting or duplicating application schema.
+- The **core composer and compatibility registry** verify these requirements before generation. A missing authentication plugin, unsupported framework/runtime/ORM/database combination, or requested capability that the selected plugin does not provide is a blocking diagnostic before files are written.
+
+**Alcance del ejemplo:** la forma YAML siguiente es el diseño objetivo de Phase 4.11; no describe lo que acepta el parser actual. Phase 4.11 actualizará el esquema y la implementación.
+
+```yaml
+backends:
+  - name: core-api
+    framework: hono
+    architecture: clean
+    persistence:
+      database: commerce-db
+      orm: drizzle
+    authentication:
+      plugin: better-auth
+      methods: [email-password, username-password]
+      identityProviders: [google, github]
+    authorization:
+      roles: [admin, customer]
+```
+
+`authentication.plugin` selects NordixGen's authentication generator plugin. `methods` declares local sign-in methods; `identityProviders` lists optional external identity providers. Provider client IDs/secrets, the Better Auth secret, database credentials, and mail delivery credentials belong in environment variables or a secret manager, never in YAML. `authorization` declares application policy inputs and is separate from authentication; the former asks what an authenticated identity may do, the latter establishes the identity.
 
 1. **Identity and sign-in:**
-   - The library owns account verification, credential checks, session creation/revocation, password reset, and MFA implementation.
-   - Optional external identity providers (for example Google, GitHub, or an organization's identity service) integrate through OpenID Connect (OIDC) or a maintained library adapter. OAuth 2.0 alone is an authorization framework; OIDC adds the standardized identity layer.
-   - External providers are optional. Users may choose a supported self-hosted authentication library/configuration or connect an external provider; provider secrets are environment secrets, never YAML values.
-   - If local passwords are enabled, use the selected library's maintained password-storage implementation and verify its algorithm and parameters against current OWASP guidance. Prefer Argon2id; use scrypt if Argon2id is unavailable, or PBKDF2-HMAC-SHA-256 when required by FIPS/compliance. Plain SHA-256 is not password hashing.
+   - Better Auth owns account verification, credential checks, session creation/revocation, password reset, and any enabled MFA behavior; NordixGen must configure and integrate the library rather than reimplement its security protocols.
+   - The initial Golden Path covers Better Auth email/password and username sign-in capabilities, subject to the library's supported configuration and generated schema. Optional external providers (for example Google or GitHub) are configured through Better Auth and require credentials at runtime. OAuth 2.0 alone is an authorization framework; OIDC adds the standardized identity layer.
+   - A PIN is a distinct, low-entropy authentication method, not a short-password setting. It is not part of the initial Better Auth Golden Path unless Phase 4.11 verifies a supported and adequately protected integration. NordixGen must reject an unsupported PIN request rather than silently lower password requirements or generate a weak credential flow. Any later PIN profile requires explicit threat-model limits, strict rate limiting/lockout, constrained sessions and permissions, and recovery/revocation behavior.
+   - If local passwords are enabled, use Better Auth's maintained password-storage implementation and validate its defaults and configuration against current OWASP guidance. Do not weaken password policy just to model a PIN. Plain SHA-256 is not password hashing.
 2. **Browser sessions and API tokens:**
    - Browser-based frontends default to library-managed sessions in `Secure`, `HttpOnly`, appropriately `SameSite` cookies with CSRF protections. Do not put session secrets or refresh tokens in local storage, Zustand, or other JavaScript-readable persistent state.
    - JWT is a token format, not a complete authentication design. Use bearer-token flows only when the client/API needs them. Federated public clients use OAuth Authorization Code with PKCE; access tokens are short-lived and restricted to the intended audience/scope. If refresh tokens are issued to public clients, follow RFC 9700 by using rotation or sender-constraining and detecting replay.
-   - Session expiry, revocation, logout, cookie flags, CSRF behavior, and any token lifecycle are delegated to the selected maintained library/provider and verified through integration tests.
+   - Session expiry, revocation, logout, cookie flags, CSRF behavior, and any token lifecycle are delegated to Better Auth and verified through integration tests. The plugin declares whether it provides browser sessions, API tokens, or both; unsupported modes are validation errors.
 3. **Application authorization (RBAC/PBAC):**
-   - NordixGen maps declared roles (for example `admin`, `manager`, `customer`) and permissions (for example `products:create`, `orders:cancel`) to backend policy checks.
+   - A separate authorization-policy capability maps declared roles (for example `admin`, `manager`, `customer`) and permissions (for example `products:create`, `orders:cancel`) to backend policy checks. It consumes the verified identity/session context exposed by the authentication plugin without making authentication responsible for application business policy.
    - Authentication middleware establishes verified identity/session context; authorization is enforced on the server at routes and/or application use cases. Frontend state is only for display and never grants access.
 4. **Account email and recovery:**
-   - Email verification and password recovery use the selected library/provider's expiring, single-use flows.
+   - Email verification and password recovery use Better Auth's expiring, single-use flows.
    - Local development may capture email with Mailpit; production mail delivery is configured separately. Credentials and signing secrets are supplied through environment/secret management.
 5. **Security controls and validation:**
-   - Use the library/provider's supported rate limiting, generic authentication errors, secure secret handling, and audit hooks; add app-specific controls where required.
+   - Use Better Auth's supported rate limiting, generic authentication errors, secure secret handling, and audit hooks; add app-specific controls where required.
    - Tests cover login/logout, session expiry/revocation, CSRF, unauthorized/forbidden access, role/permission checks, and provider callback protections. Test OIDC state/nonce/PKCE and refresh-token replay handling when those flows are enabled.
-   - The generated project must fail validation when the selected auth library/provider is unavailable or incompatible with the framework/runtime/ORM. Unsupported requested auth features must never be silently omitted.
+   - The generated project must fail validation when the Better Auth plugin is unavailable or incompatible with the framework/runtime/ORM/database. Unsupported requested authentication or authorization features must never be silently omitted.
 
-**Standards and implementation references:** [OAuth 2.0 Security Best Current Practice (RFC 9700)](https://www.rfc-editor.org/rfc/rfc9700.html), [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html), and [OpenID Connect overview](https://openid.net/developers/how-connect-works/). Candidate library references: [Better Auth Hono/Cloudflare integration](https://better-auth.com/docs/integrations/hono) and [Better Auth Drizzle adapter](https://better-auth.com/docs/adapters/drizzle).
+**Standards and implementation references:** [OAuth 2.0 Security Best Current Practice (RFC 9700)](https://www.rfc-editor.org/rfc/rfc9700.html), [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html), and [OpenID Connect overview](https://openid.net/developers/how-connect-works/). Golden Path library references: [Better Auth Hono/Cloudflare integration](https://better-auth.com/docs/integrations/hono), [Better Auth Drizzle adapter](https://better-auth.com/docs/adapters/drizzle), [Better Auth username plugin](https://better-auth.com/docs/plugins/username), and [Better Auth email/password](https://better-auth.com/docs/authentication/email-password).
 
 ---
 
@@ -580,7 +612,9 @@ flowchart TD
 
 ---
 
-## 🔬 8. Ejemplo del YAML Más Avanzado Soportado
+## 🔬 8. Ejemplo Avanzado de YAML y Capacidades Objetivo
+
+El bloque `authentication`/`authorization` de este ejemplo presenta la forma prevista para Phase 4.11 y todavía no valida contra el esquema actual. El resto del ejemplo ilustra las capacidades declaradas en las secciones anteriores.
 
 ```yaml
 # yaml-language-server: $schema=./nordix.schema.json
@@ -645,19 +679,22 @@ backends:
     persistence:
       database: commerce-db
       orm: drizzle
-    auth:
-      type: jwt
-      providers: [credentials, google, github]
-      twoFactor: true
-      passwordRecovery: true
+    authentication:
+      plugin: better-auth
+      methods: [email-password, username-password]
+      identityProviders: [google, github]
+      features: [two-factor, password-recovery]
+    authorization:
       roles: [admin, manager, customer]
   - name: worker-notifications
     framework: hono
     architecture: modular
     repository: commerce
     path: apps/worker-notifications
-    auth:
-      type: none
+    authentication:
+      plugin: none
+    authorization:
+      roles: []
 
 # Base de datos como recurso; el ORM se selecciona en cada backend.
 databases:
