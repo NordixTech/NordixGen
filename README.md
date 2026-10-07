@@ -27,7 +27,7 @@ A partir de un archivo declarativo `nordix.config.yaml`, NordixGen construye:
 
 ## Scaffolding oficial de frameworks
 
-NordixGen parte de las herramientas oficiales de cada framework para crear la estructura inicial, en vez de mantener copias propias que envejecen. `generate` coordina `create-next-app` para Next.js y Cloudflare C3 para Hono, les pasa opciones no interactivas y seguras, y después ensambla los repositorios definidos en el YAML. NordixGen personaliza el README generado y la portada del frontend con su identidad de producto; las entidades, endpoints y lógica de negocio se incorporarán en las fases de generación posteriores.
+NordixGen parte de las herramientas oficiales de cada framework para crear la estructura inicial, en vez de mantener copias propias que envejecen. `generate` coordina `create-next-app` para Next.js y el template oficial `cloudflare-workers` de `create-hono` para Hono, les pasa opciones no interactivas y seguras, y después ensambla los repositorios definidos en el YAML. NordixGen personaliza el README generado y la portada del frontend con su identidad de producto; las entidades, endpoints y lógica de negocio se incorporarán en las fases de generación posteriores.
 
 ## Backend Generation
 
@@ -38,7 +38,7 @@ NordixGen composes **specialized plugins** instead of maintaining one monolithic
 - **ORM** generates concrete persistence code, such as Drizzle or Entity Framework, and declares the languages, databases, and runtimes it supports.
 - **Database** identifies the storage engine and provider, such as PostgreSQL on Neon. Each backend selects its ORM and references the database it uses.
 
-The framework provides project context; the architecture strategy resolves where each file role belongs in that context; and the framework and ORM plugins generate code at the resolved paths. Before writing files, NordixGen verifies that every plugin exists and that their capabilities are compatible. An unsupported combination, such as Hono with Entity Framework, produces a clear diagnostic instead of an incomplete project.
+The framework provides project context, including its pinned upstream scaffold command, source root, runtime, entry points, and import conventions. The architecture strategy resolves where each file role belongs in that context; the framework and ORM plugins generate code at those resolved paths. Before writing files, NordixGen verifies that every plugin exists and that their capabilities are compatible. An unsupported combination, such as Hono with Entity Framework, produces a clear diagnostic instead of an incomplete project.
 
 The first planned combination is Hono + Clean + Drizzle + PostgreSQL/Neon, with Better Auth as the first authentication plugin. The generator architecture allows additional strategies, frameworks, ORMs, and authentication plugins without duplicating a generator for every combination. See [Phase 4](docs/IMPLEMENTATION_PLAN.md#phase-4-composable-backend-generation-golden-path) and the [detailed specification](docs/SPECIFICATION.md#modular-backend-generation-contract).
 

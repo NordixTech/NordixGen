@@ -10,6 +10,7 @@ function frameworkContext(codeRoot: string): FrameworkContext {
     language: "some-language",
     runtime: "some-runtime",
     moduleSystem: "some-module-system",
+    scaffold: { executable: "some-tool", argumentsBeforeTarget: [], argumentsAfterTarget: [] },
     entryPoints: {},
     conventions: {},
   };

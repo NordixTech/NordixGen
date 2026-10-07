@@ -28,6 +28,12 @@ export interface PluginDescriptor {
   readonly requires?: readonly PluginCapabilityRequirement[];
 }
 
+export interface UpstreamScaffoldPlan {
+  readonly executable: string;
+  readonly argumentsBeforeTarget: readonly string[];
+  readonly argumentsAfterTarget: readonly string[];
+}
+
 /** Project conventions exposed by a framework plugin to all other backend plugins. */
 export interface FrameworkContext {
   readonly pluginId: string;
@@ -36,6 +42,7 @@ export interface FrameworkContext {
   readonly language: string;
   readonly runtime: string;
   readonly moduleSystem: string;
+  readonly scaffold: UpstreamScaffoldPlan;
   readonly entryPoints: Readonly<Record<string, string>>;
   readonly conventions: Readonly<Record<string, string>>;
 }

@@ -127,7 +127,7 @@ backends:
 
 ### Estrategia de Scaffolding Upstream
 
-NordixGen utiliza los generadores oficiales de los frameworks para producir sus estructuras iniciales, en lugar de mantener una copia privada de cada plantilla. El CLI orquesta `create-next-app` para Next.js y Cloudflare C3 para Hono con versiones fijadas y opciones no interactivas: el scaffold no inicializa Git ni despliega a una cuenta cloud por su cuenta. Después, NordixGen integra las aplicaciones en los repositorios/workspaces definidos por la configuración y añade una presentación inicial de marca en el README y la portada frontend.
+NordixGen utiliza los generadores oficiales de los frameworks para producir sus estructuras iniciales, en lugar de mantener una copia privada de cada plantilla. El CLI orquesta `create-next-app` para Next.js y el template oficial `cloudflare-workers` de `create-hono` para Hono con versiones fijadas y opciones no interactivas. El scaffold de Hono instala dependencias, pero no inicializa Git ni despliega a una cuenta cloud. Después, NordixGen integra las aplicaciones en los repositorios/workspaces definidos por la configuración y añade una presentación inicial de marca en el README y la portada frontend.
 
 Este límite es intencional: la herramienta upstream conserva las convenciones y archivos propios del framework; NordixGen aplica sus personalizaciones en puntos concretos y en fases posteriores genera la arquitectura de dominio, entidades, endpoints y estado de frontend declarados en YAML.
 ### Estrategia de Ramas Git y Pipeline de Publicación Automática a NPM:
@@ -276,7 +276,7 @@ NordixGen **no genera archivos de inicialización desde strings crudos** cuando 
      ```bash
      npx create-next-app@15.1.7 [app-name] --typescript --tailwind --app --no-src-dir --import-alias "@/*" --use-pnpm
      ```
-   - Para Cloudflare / Hono: Utiliza los templates base oficiales validados de Cloudflare Workers (`npm create cloudflare@latest`).
+   - Para Cloudflare / Hono: Utiliza el template oficial `cloudflare-workers` de `create-hono`.
 2. **Fase 2: Inyección de Arquitectura y Dominio (El Valor Real de NordixGen):**
    - Una vez instanciado el esqueleto oficial en el sistema de archivos virtual, NordixGen inyecta de forma algorítmica y determinista:
      - La Clean Architecture (capas de dominio, aplicación, infraestructura).

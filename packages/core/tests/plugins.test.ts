@@ -21,6 +21,11 @@ const frameworkContext: FrameworkContext = {
   language: "typescript",
   runtime: "cloudflare-workers",
   moduleSystem: "esm",
+  scaffold: {
+    executable: "pnpm",
+    argumentsBeforeTarget: ["create", "cloudflare@2.72.13"],
+    argumentsAfterTarget: ["--framework=hono"],
+  },
   entryPoints: { worker: "apps/api/src/index.ts" },
   conventions: { importExtension: ".js" },
 };
@@ -411,6 +416,10 @@ describe("plugin composition", () => {
       { ...frameworkContext, applicationRoot: "./apps/api" },
       { ...frameworkContext, entryPoints: { worker: 123 } },
       { ...frameworkContext, conventions: { module: 123 } },
+      {
+        ...frameworkContext,
+        scaffold: { ...frameworkContext.scaffold, executable: "" },
+      },
     ];
     for (const context of invalidContexts) {
       const registry = new PluginRegistry();

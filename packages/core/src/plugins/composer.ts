@@ -54,6 +54,17 @@ function validateFrameworkContext(context: FrameworkContext, expectedPluginId: s
       "Framework context must declare its plugin, language, runtime, and module system.",
     );
   }
+  if (
+    !context.scaffold ||
+    typeof context.scaffold.executable !== "string" ||
+    !context.scaffold.executable ||
+    !Array.isArray(context.scaffold.argumentsBeforeTarget) ||
+    !context.scaffold.argumentsBeforeTarget.every((argument) => typeof argument === "string") ||
+    !Array.isArray(context.scaffold.argumentsAfterTarget) ||
+    !context.scaffold.argumentsAfterTarget.every((argument) => typeof argument === "string")
+  ) {
+    throw new Error("Framework context must declare a valid upstream scaffold command.");
+  }
   validateRelativeDirectory(context.applicationRoot, "Framework applicationRoot", true);
   validateRelativeDirectory(context.codeRoot, "Framework codeRoot");
   if (
@@ -214,6 +225,11 @@ function invokeFrameworkPlugin(
   validateFrameworkContext(context, plugin.descriptor.id);
   return Object.freeze({
     ...context,
+    scaffold: Object.freeze({
+      ...context.scaffold,
+      argumentsBeforeTarget: Object.freeze([...context.scaffold.argumentsBeforeTarget]),
+      argumentsAfterTarget: Object.freeze([...context.scaffold.argumentsAfterTarget]),
+    }),
     entryPoints: Object.freeze({ ...context.entryPoints }),
     conventions: Object.freeze({ ...context.conventions }),
   });

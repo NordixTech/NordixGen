@@ -2,7 +2,13 @@ import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { intro, isCancel, outro, select, text } from "@clack/prompts";
 import {
+  type FrameworkContext,
   type NordixConfig,
+  type PluginCompositionResult,
+  PluginRegistry,
+  cleanArchitecturePlugin,
+  composeBackendPlugins,
+  honoFrameworkPlugin,
   normalizeBackends,
   normalizeFrontends,
   parseNordixYaml,
@@ -240,6 +246,7 @@ async function scaffold(
   application: { name: string; framework: string },
   target: string,
   runner: CommandRunner,
+  frameworkContext?: FrameworkContext,
 ): Promise<void> {
   const framework = application.framework.toLowerCase();
   if (framework === "nextjs" || framework === "next.js") {
@@ -263,18 +270,13 @@ async function scaffold(
     return;
   }
   if (framework === "hono") {
+    if (!frameworkContext) {
+      throw new Error(`Framework context for Hono is missing for "${application.name}".`);
+    }
+    const plan = frameworkContext.scaffold;
     await runner(
-      "pnpm",
-      [
-        "create",
-        "cloudflare@2.72.13",
-        basename(target),
-        "--framework=hono",
-        "--lang=ts",
-        "--no-deploy",
-        "--no-git",
-        "--accept-defaults",
-      ],
+      plan.executable,
+      [...plan.argumentsBeforeTarget, basename(target), ...plan.argumentsAfterTarget],
       dirname(target),
     );
     return;
@@ -428,6 +430,10 @@ export async function runGenerate(
     ...normalizeFrontends(config).map((app) => ({ ...app, kind: "frontend" as const })),
     ...normalizeBackends(config).map((app) => ({ ...app, kind: "backend" as const })),
   ];
+  const backendCompositions = new Map<string, PluginCompositionResult>();
+  const pluginRegistry = new PluginRegistry();
+  pluginRegistry.register(honoFrameworkPlugin);
+  pluginRegistry.register(cleanArchitecturePlugin);
 
   for (const app of applications) {
     if (!["nextjs", "next.js", "hono"].includes(app.framework.toLowerCase())) {
@@ -438,6 +444,17 @@ export async function runGenerate(
     const repo = repositories.find((item) => item.name === app.repository);
     if (!repo) throw new Error(`Application "${app.name}" references an unknown repository.`);
     safeResolve(repo.root, app.path);
+    if (app.kind === "backend" && app.framework.toLowerCase() === "hono") {
+      const composition = composeBackendPlugins(config, app.name, pluginRegistry);
+      if (!composition.success) {
+        throw new Error(
+          composition.diagnostics
+            .map((item) => `${item.code} at ${item.path}: ${item.message}`)
+            .join("\n"),
+        );
+      }
+      backendCompositions.set(app.name, composition);
+    }
   }
   for (const repository of repositories) await assertEmptyOrMissing(repository.root);
 
@@ -449,7 +466,9 @@ export async function runGenerate(
     if (!repo) throw new Error(`Application "${app.name}" references an unknown repository.`);
     const appTarget = safeResolve(repo.root, app.path);
     await mkdir(dirname(appTarget), { recursive: true });
-    await scaffold(app, appTarget, runner);
+    const composition = app.kind === "backend" ? backendCompositions.get(app.name) : undefined;
+    await scaffold(app, appTarget, runner, composition?.frameworkContext);
+    if (composition) await composition.virtualFileSystem.emit(repo.root);
     if (app.kind === "frontend" && ["nextjs", "next.js"].includes(app.framework.toLowerCase())) {
       await writeBrandedNextHomepage(appTarget, config.name, app.name);
     }
