@@ -234,7 +234,16 @@ A continuación se detalla cada sección, campo y capacidad que puede declararse
 - Cada frontend puede declarar `connectsTo: [backend-a, backend-b]`. Se permite `connectsTo: []` y también backends sin frontends asociados.
 - Cada entidad y endpoint declara `backend`. Relaciones y joins se limitan a entidades de ese backend; la validación informa si se intenta cruzar esa frontera.
 
-Las opciones de inicialización remota son declarativas en la fase actual. El CLI deberá ejecutarlas posteriormente usando las credenciales ya configuradas del proveedor; el YAML no debe almacenar tokens.
+Las opciones de inicialización remota son declarativas en la fase actual. Cuando el CLI las ejecute, deberá usar una sesión o credencial ya configurada para el proveedor; el YAML no debe almacenar tokens.
+
+Antes de cualquier operación remota, el CLI debe hacer un **preflight de identidad y permisos**:
+
+1. Confirmar que el usuario autenticado con el proveedor corresponde al `handle` configurado en `organizations` (admite una cuenta personal o una organización).
+2. Confirmar que esa identidad puede crear repositorios en esa cuenta u organización y que tendrá permiso de escritura en el repositorio nuevo.
+3. Si la autenticación no existe, la identidad no coincide o faltan permisos, detenerse antes de crear el repositorio. Antes del primer push, verificar también que el remoto configurado corresponde al repositorio esperado y que la identidad tiene permiso de escritura.
+4. Mostrar instrucciones accionables para corregir el acceso sin exponer tokens ni otros secretos en la salida.
+
+La verificación debe usar el mecanismo de autenticación soportado por el proveedor (por ejemplo, una sesión ya iniciada en su CLI oficial o un flujo seguro equivalente). No debe solicitar que se escriba un token en el YAML.
 
 ### A. Modelado de Datos y Entidades (`entities` & `enums`)
 

@@ -83,10 +83,14 @@ flowchart LR
   - Invocación no-interactiva de `create-next-app` o desempaquetado de plantilla canónica curada.
   - Invocación de templates base Cloudflare Workers (`npm create cloudflare`).
   - Ensamblaje del Monorepo con `pnpm-workspace.yaml` raíz y scripts `pnpm dev`.
+  - **Preflight de repositorios remotos:** antes de crear nada, comprobar que la sesión autenticada del proveedor coincide con el `handle` de la organización/cuenta configurada y tiene permiso para crear repositorios allí.
+  - Comprobar también que la identidad tendrá permiso de escritura en el repositorio nuevo antes del primer push; verificar el remoto y el permiso de push antes de enviar commits.
+  - Si faltan credenciales, no coincide la identidad o faltan permisos, detenerse antes de crear el remoto o hacer push y explicar cómo corregir la autenticación o los permisos. Nunca guardar ni imprimir tokens.
 
 *Criterio de Aceptación / Hito Verificable:*
 - Al ejecutar `nordixgen validate examples/ecommerce.yaml` el CLI valida y muestra un resumen con spinner de Clack sin errores.
 - El generador crea una estructura monorepo o varios repositorios según `repositories`; Git init y creación remota se controlan por repo y son opt-in.
+- Para `createRemote: true`, el CLI confirma identidad y permisos de creación/escritura antes de cualquier operación remota; los fallos de preflight no crean repositorios ni hacen push.
 
 ---
 
