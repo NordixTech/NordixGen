@@ -26,13 +26,13 @@ export interface NordixDependencyEdge {
 }
 
 export interface NordixIntermediateRepresentation {
-  formatVersion: 2;
+  formatVersion: 3;
   project: { name: string; version: string; description?: string };
   organizations: NordixConfig["organizations"];
   repositories: NordixConfig["repositories"];
   frontends: ReturnType<typeof normalizeFrontends>;
   backends: ReturnType<typeof normalizeBackends>;
-  database?: NordixConfig["database"];
+  databases: NordixConfig["databases"];
   docker?: NordixConfig["docker"];
   llm?: NordixConfig["llm"];
   deployment?: NordixConfig["deployment"];
@@ -188,7 +188,7 @@ export function buildIntermediateRepresentation(input: unknown): NordixIntermedi
   const edges = relationEdgeOrder(config.entities);
 
   return {
-    formatVersion: 2,
+    formatVersion: 3,
     project: {
       name: config.name,
       version: config.version,
@@ -202,7 +202,7 @@ export function buildIntermediateRepresentation(input: unknown): NordixIntermedi
     ),
     frontends: normalizeFrontends(config),
     backends: normalizeBackends(config),
-    ...(config.database === undefined ? {} : { database: config.database }),
+    databases: sortedRecord(config.databases),
     ...(config.docker === undefined ? {} : { docker: config.docker }),
     ...(config.llm === undefined ? {} : { llm: config.llm }),
     ...(config.deployment === undefined ? {} : { deployment: config.deployment }),

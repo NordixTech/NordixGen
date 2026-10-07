@@ -11,5 +11,7 @@ describe("IDE JSON Schema generation", () => {
     expect(schema).toHaveProperty("properties.name");
     expect(schema).toHaveProperty("properties.entities");
     expect(schema).toHaveProperty("properties.frontends");
+    expect(schema).toHaveProperty("properties.databases");
+    expect(schema.properties).not.toHaveProperty("database");
   });
 });

@@ -31,9 +31,10 @@ export function createValidConfig() {
           roles: ["admin", "customer"],
           permissions: ["orders:read"],
         },
+        persistence: { database: "commerce-db", orm: "drizzle" },
       },
     ],
-    database: { engine: "postgres", provider: "neon", orm: "drizzle" },
+    databases: { "commerce-db": { engine: "postgres", provider: "neon" } },
     deployment: { provider: "cloudflare", ci: "cloudflare-native" },
     enums: { OrderStatus: ["PENDING", "PAID"], UserRole: ["ADMIN", "CUSTOMER"] },
     entities: {
@@ -121,7 +122,9 @@ backends:
     path: apps/api-core
     repository: commerce
     auth: { type: jwt, roles: [admin, customer] }
-database: { engine: postgres, provider: neon, orm: drizzle }
+    persistence: { database: commerce-db, orm: drizzle }
+databases:
+  commerce-db: { engine: postgres, provider: neon }
 deployment: { provider: cloudflare, ci: cloudflare-native }
 enums:
   UserRole: [ADMIN, CUSTOMER]

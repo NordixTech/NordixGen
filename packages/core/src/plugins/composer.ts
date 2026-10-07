@@ -1,3 +1,5 @@
+import type { NordixConfig } from "../configuration/schema.js";
+import { normalizeBackends } from "../configuration/schema.js";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
 import { VirtualFileSystem, normalizeVirtualPath } from "../virtual-file-system.js";
 import { ARCHITECTURE_FILE_ROLES } from "./contracts.js";
@@ -26,6 +28,7 @@ export interface ComposePluginsOptions {
   selections: readonly PluginSelection[];
   registry: PluginRegistry;
   requiredRoles?: readonly PluginRole[];
+  externalCapabilities?: readonly string[];
 }
 
 function fail(diagnostics: ConfigDiagnostic[]): PluginCompositionResult {
@@ -118,6 +121,7 @@ function validateSelections(
   selections: readonly PluginSelection[],
   registry: PluginRegistry,
   requiredRoles: readonly PluginRole[],
+  externalCapabilities: readonly string[],
 ): { plugins: GeneratorPlugin[]; diagnostics: ConfigDiagnostic[] } {
   const diagnostics: ConfigDiagnostic[] = [];
   const plugins: GeneratorPlugin[] = [];
@@ -176,7 +180,10 @@ function validateSelections(
     }
   }
 
-  const capabilities = new Set(plugins.flatMap((plugin) => plugin.descriptor.provides));
+  const capabilities = new Set([
+    ...plugins.flatMap((plugin) => plugin.descriptor.provides),
+    ...externalCapabilities,
+  ]);
   for (const plugin of plugins) {
     for (const requirement of plugin.descriptor.requires ?? []) {
       if (capabilities.has(requirement.capability)) continue;
@@ -235,7 +242,12 @@ export function composePlugins(options: ComposePluginsOptions): PluginCompositio
     ...new Set<PluginRole>(["framework", "architecture", ...(options.requiredRoles ?? [])]),
   ];
   const selectionById = new Map(selections.map((selection) => [selection.pluginId, selection]));
-  const { plugins, diagnostics } = validateSelections(selections, registry, requiredRoles);
+  const { plugins, diagnostics } = validateSelections(
+    selections,
+    registry,
+    requiredRoles,
+    options.externalCapabilities ?? [],
+  );
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) return fail(diagnostics);
 
   const frameworkPlugin = plugins.find(
@@ -269,7 +281,10 @@ export function composePlugins(options: ComposePluginsOptions): PluginCompositio
   }
 
   const stagedFiles = new Map<string, { content: string; pluginId: string }>();
-  const availableCapabilities = plugins.flatMap((plugin) => plugin.descriptor.provides);
+  const availableCapabilities = [
+    ...plugins.flatMap((plugin) => plugin.descriptor.provides),
+    ...(options.externalCapabilities ?? []),
+  ];
   const orderedPlugins = [...plugins].sort((left, right) =>
     left.descriptor.role.localeCompare(right.descriptor.role),
   );
@@ -359,4 +374,44 @@ export function composePlugins(options: ComposePluginsOptions): PluginCompositio
     architectureLayout,
     diagnostics,
   };
+}
+
+/** Resolves the plugin IDs and database capabilities declared by one backend's YAML config. */
+export function composeBackendPlugins(
+  config: NordixConfig,
+  backendName: string,
+  registry: PluginRegistry,
+): PluginCompositionResult {
+  const backend = normalizeBackends(config).find((candidate) => candidate.name === backendName);
+  if (!backend) {
+    return fail([
+      createDiagnostic(
+        "UNKNOWN_BACKEND_PLUGIN_TARGET",
+        `backends.${backendName}`,
+        `Backend "${backendName}" is not configured.`,
+      ),
+    ]);
+  }
+
+  const selections: PluginSelection[] = [
+    { pluginId: backend.framework, configuration: { applicationRoot: backend.path } },
+    { pluginId: backend.architecture },
+  ];
+  const externalCapabilities: string[] = [];
+  if (backend.persistence) {
+    const database = config.databases[backend.persistence.database];
+    if (!database) {
+      return fail([
+        createDiagnostic(
+          "UNKNOWN_BACKEND_DATABASE",
+          `backends.${backend.name}.persistence.database`,
+          `Database "${backend.persistence.database}" is not configured under databases.`,
+        ),
+      ]);
+    }
+    selections.push({ pluginId: backend.persistence.orm });
+    externalCapabilities.push(`database:${database.engine}`, `provider:${database.provider}`);
+  }
+
+  return composePlugins({ selections, registry, externalCapabilities });
 }

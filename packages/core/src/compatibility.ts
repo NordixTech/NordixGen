@@ -62,14 +62,16 @@ export function validateCompatibility(config: NordixConfig): ConfigDiagnostic[] 
     }
   }
 
-  if (config.database?.provider === "neon" && config.database.engine !== "postgres") {
-    diagnostics.push(
-      createDiagnostic(
-        "INCOMPATIBLE_NEON_DATABASE",
-        "database.engine",
-        "The Neon provider requires the postgres database engine.",
-      ),
-    );
+  for (const [name, database] of Object.entries(config.databases)) {
+    if (database.provider === "neon" && database.engine !== "postgres") {
+      diagnostics.push(
+        createDiagnostic(
+          "INCOMPATIBLE_NEON_DATABASE",
+          `databases.${name}.engine`,
+          "The Neon provider requires the postgres database engine.",
+        ),
+      );
+    }
   }
 
   if (

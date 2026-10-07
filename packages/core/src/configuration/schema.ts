@@ -125,6 +125,20 @@ export const BackendSchema = z
     repository: SlugSchema,
     path: PathSchema,
     auth: AuthSchema.default({ type: "none" }),
+    persistence: z
+      .object({
+        database: SlugSchema,
+        orm: SlugSchema,
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const DatabaseSchema = z
+  .object({
+    engine: SlugSchema,
+    provider: SlugSchema,
   })
   .strict();
 
@@ -201,14 +215,7 @@ export const NordixConfigSchema = z
     frontends: z.array(FrontendSchema).default([]),
     backend: BackendSchema.omit({ name: true }).optional(),
     backends: z.array(BackendSchema).default([]),
-    database: z
-      .object({
-        engine: z.string().min(1),
-        provider: z.string().min(1),
-        orm: z.string().min(1),
-      })
-      .strict()
-      .optional(),
+    databases: z.record(SlugSchema, DatabaseSchema).default({}),
     docker: z
       .object({
         postgres: z.boolean().default(false),

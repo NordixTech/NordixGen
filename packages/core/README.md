@@ -15,6 +15,8 @@ pnpm generate:schema
 
 The example configuration is in [`examples/ecommerce.yaml`](../../examples/ecommerce.yaml). The schema generator writes [`nordix.schema.json`](../../nordix.schema.json) for YAML editor autocomplete.
 
+Database resources are named under `databases`; each backend can optionally select a resource and ORM under `persistence`. The former root-level `database` property is no longer supported, and the intermediate representation uses format version 3 for this shape change. ORM identifiers are checked against registered, compatible plugins during composition. Keep credentials and connection strings in environment configuration, never in YAML.
+
 ## Use the core APIs
 
 ```ts
@@ -43,6 +45,8 @@ if (!result.success) {
 ```
 
 `parseNordixYaml` returns structured diagnostics for YAML syntax, schema, semantic, and compatibility errors. `buildIntermediateRepresentation` sorts entities by their foreign-key dependencies, reports cycles, injects generated IDs and audit fields, and normalizes object ordering. The virtual file system writes files only when their contents change.
+
+Use `composeBackendPlugins(config, backendName, registry)` to resolve the framework, architecture, and optional ORM declared by a backend. It checks that each selected plugin is registered and that its declared capability requirements match the configured database engine and provider before any plugin contributes files.
 
 ## Backend generator plugins
 
