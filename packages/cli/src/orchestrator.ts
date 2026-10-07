@@ -8,6 +8,7 @@ import {
   PluginRegistry,
   cleanArchitecturePlugin,
   composeBackendPlugins,
+  drizzleOrmPlugin,
   honoFrameworkPlugin,
   normalizeBackends,
   normalizeFrontends,
@@ -437,6 +438,7 @@ export async function runGenerate(
   const pluginRegistry = new PluginRegistry();
   pluginRegistry.register(honoFrameworkPlugin);
   pluginRegistry.register(cleanArchitecturePlugin);
+  pluginRegistry.register(drizzleOrmPlugin);
 
   for (const app of applications) {
     if (!["nextjs", "next.js", "hono"].includes(app.framework.toLowerCase())) {
