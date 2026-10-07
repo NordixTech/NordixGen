@@ -63,6 +63,11 @@ flowchart TD
 - **`@nordixgen/core`:** Motor de esquemas Zod, validador YAML, constructor de la representación intermedia, sistema de archivos virtual, ordenamiento topológico y matriz de incompatibilidad.
 - **Plugins Especializados:** Cada generador de framework vive como un módulo independiente que implementa el contrato de la representación intermedia, permitiendo a la comunidad agregar soporte para `.NET`, `NestJS`, `Django`, `Angular` o `React Native` sin tocar el núcleo.
 
+### Estrategia de Scaffolding Upstream
+
+NordixGen utiliza los generadores oficiales de los frameworks para producir sus estructuras iniciales, en lugar de mantener una copia privada de cada plantilla. El CLI orquesta `create-next-app` para Next.js y Cloudflare C3 para Hono con versiones fijadas y opciones no interactivas: el scaffold no inicializa Git ni despliega a una cuenta cloud por su cuenta. Después, NordixGen integra las aplicaciones en los repositorios/workspaces definidos por la configuración y añade una presentación inicial de marca en el README y la portada frontend.
+
+Este límite es intencional: la herramienta upstream conserva las convenciones y archivos propios del framework; NordixGen aplica sus personalizaciones en puntos concretos y en fases posteriores genera la arquitectura de dominio, entidades, endpoints y estado de frontend declarados en YAML.
 ### Estrategia de Ramas Git y Pipeline de Publicación Automática a NPM:
 Para el desarrollo propio de NordixGen como herramienta CLI open-source, se establece el siguiente flujo de trabajo estricto de Git:
 

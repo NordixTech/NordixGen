@@ -25,6 +25,9 @@ A partir de un archivo declarativo `nordix.config.yaml`, NordixGen construye:
 
 ---
 
+## Scaffolding oficial de frameworks
+
+NordixGen parte de las herramientas oficiales de cada framework para crear la estructura inicial, en vez de mantener copias propias que envejecen. `generate` coordina `create-next-app` para Next.js y Cloudflare C3 para Hono, les pasa opciones no interactivas y seguras, y después ensambla los repositorios definidos en el YAML. NordixGen personaliza el README generado y la portada del frontend con su identidad de producto; las entidades, endpoints y lógica de negocio se incorporarán en las fases de generación posteriores.
 ## 🏆 El Golden Path Oficial
 
 NordixGen está diseñado de forma modular para que la comunidad pueda extenderlo a cualquier framework (.NET, NestJS, Django, Angular, etc.). Sin embargo, la **Ruta Dorada Oficial** de máxima eficiencia y coste cero o ultrabajo es:
@@ -53,17 +56,23 @@ npx nordixgen init
 # Validar tu archivo YAML
 npx nordixgen validate -f nordix.config.yaml
 
-# Generar el proyecto completo en un monorepo
+# Generar scaffolds base Next.js/Hono en el destino
 npx nordixgen generate -f nordix.config.yaml -o ./mi-nuevo-proyecto
+
+# Luego, instala las dependencias del workspace generado
+cd ./mi-nuevo-proyecto
+pnpm install
 ```
 
 ### 2. Instalación Global
 ```bash
 npm install -g nordixgen
-nordixgen generate -f nordix.config.yaml
+nordixgen generate -f nordix.config.yaml -o ./mi-nuevo-proyecto
 ```
 
 ---
+
+> `generate` actualmente prepara scaffolds upstream de Next.js y Hono; la generación de entidades, endpoints, arquitectura de negocio y estado del frontend corresponde a las fases siguientes. La creación remota está disponible para GitHub y requiere GitHub CLI autenticado (`gh auth login`). Después de crear un remoto con Git inicializado, NordixGen verifica su URL y ejecuta `git push --dry-run` antes del primer push real.
 
 ## 🌿 Flujo de Trabajo Git y Publicación de Paquetes
 
@@ -106,4 +115,3 @@ NordixGen implementa un modelo de desarrollo profesional y publicación continua
 ## 📄 Licencia
 
 Este proyecto está bajo la Licencia [MIT](LICENSE).
-

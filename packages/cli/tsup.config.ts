@@ -6,7 +6,7 @@ export default defineConfig({
   banner: {
     js: "#!/usr/bin/env node",
   },
-  dts: true,
+  dts: { compilerOptions: { composite: false } },
   clean: true,
   sourcemap: true,
 });
