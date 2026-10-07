@@ -430,7 +430,10 @@ export async function runGenerate(
     ...normalizeFrontends(config).map((app) => ({ ...app, kind: "frontend" as const })),
     ...normalizeBackends(config).map((app) => ({ ...app, kind: "backend" as const })),
   ];
-  const backendCompositions = new Map<string, PluginCompositionResult>();
+  const backendCompositions = new Map<
+    string,
+    Extract<PluginCompositionResult, { success: true }>
+  >();
   const pluginRegistry = new PluginRegistry();
   pluginRegistry.register(honoFrameworkPlugin);
   pluginRegistry.register(cleanArchitecturePlugin);
