@@ -31,14 +31,26 @@ export function validateEntities(config: NordixConfig): ConfigDiagnostic[] {
   const fieldDiagnostics: ConfigDiagnostic[] = [];
   const relationDiagnostics: ConfigDiagnostic[] = [];
   const generatedFieldDiagnostics: ConfigDiagnostic[] = [];
+  const backendNames = new Set([
+    ...config.backends.map((backend) => backend.name),
+    ...(config.backend ? ["backend"] : []),
+  ]);
 
   for (const [entityName, entity] of Object.entries(config.entities)) {
     const generatedFields = new Set(["id"]);
-    if (entity.timestamps) {
-      generatedFields.add("createdAt");
-      generatedFields.add("updatedAt");
-    }
+    if (entity.timestamps.createdAt) generatedFields.add("createdAt");
+    if (entity.timestamps.updatedAt) generatedFields.add("updatedAt");
     if (entity.softDelete) generatedFields.add("deletedAt");
+
+    if (!backendNames.has(entity.backend)) {
+      relationDiagnostics.push(
+        createDiagnostic(
+          "UNKNOWN_ENTITY_BACKEND",
+          `entities.${entityName}.backend`,
+          `Backend "${entity.backend}" is not configured.`,
+        ),
+      );
+    }
 
     for (const [fieldName, field] of Object.entries(entity.fields)) {
       const fieldPath = `entities.${entityName}.fields.${fieldName}`;
@@ -83,6 +95,14 @@ export function validateEntities(config: NordixConfig): ConfigDiagnostic[] {
             "UNKNOWN_RELATION_TARGET",
             `${relationPath}.target`,
             `Entity "${relation.target}" is not defined.`,
+          ),
+        );
+      } else if (entity.backend !== config.entities[relation.target]?.backend) {
+        relationDiagnostics.push(
+          createDiagnostic(
+            "CROSS_BACKEND_RELATION",
+            `${relationPath}.target`,
+            `Entity relations must stay within one backend; "${entityName}" and "${relation.target}" have different backends.`,
           ),
         );
       }

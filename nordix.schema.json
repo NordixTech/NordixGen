@@ -14,13 +14,78 @@
     "description": {
       "type": "string"
     },
-    "structure": {
-      "type": "string",
-      "enum": [
-        "monorepo",
-        "single-app"
-      ],
-      "default": "monorepo"
+    "organizations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "github",
+              "gitlab",
+              "bitbucket"
+            ]
+          },
+          "handle": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "name",
+          "provider",
+          "handle"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "repositories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "organization": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "initializeGit": {
+            "type": "boolean",
+            "default": false
+          },
+          "createRemote": {
+            "type": "boolean",
+            "default": false
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "public"
+            ],
+            "default": "private"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
     },
     "frontend": {
       "type": "object",
@@ -82,9 +147,17 @@
             }
           ]
         },
-        "connectsTo": {
+        "repository": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "connectsTo": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "default": []
         },
         "authUI": {
           "type": "boolean",
@@ -97,6 +170,7 @@
       },
       "required": [
         "framework",
+        "repository",
         "path"
       ],
       "additionalProperties": false
@@ -167,9 +241,17 @@
               }
             ]
           },
-          "connectsTo": {
+          "repository": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "connectsTo": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "default": []
           },
           "authUI": {
             "type": "boolean",
@@ -183,6 +265,7 @@
         "required": [
           "name",
           "framework",
+          "repository",
           "path"
         ],
         "additionalProperties": false
@@ -203,6 +286,10 @@
             "modular"
           ],
           "default": "clean"
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
         },
         "path": {
           "type": "string",
@@ -292,6 +379,7 @@
       },
       "required": [
         "framework",
+        "repository",
         "path"
       ],
       "additionalProperties": false
@@ -316,6 +404,10 @@
               "modular"
             ],
             "default": "clean"
+          },
+          "repository": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
           },
           "path": {
             "type": "string",
@@ -406,6 +498,7 @@
         "required": [
           "name",
           "framework",
+          "repository",
           "path"
         ],
         "additionalProperties": false
@@ -516,6 +609,10 @@
       "additionalProperties": {
         "type": "object",
         "properties": {
+          "backend": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
           "description": {
             "type": "string"
           },
@@ -790,14 +887,28 @@
             "default": {}
           },
           "timestamps": {
-            "type": "boolean",
-            "default": false
+            "type": "object",
+            "properties": {
+              "createdAt": {
+                "type": "boolean",
+                "default": false
+              },
+              "updatedAt": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "additionalProperties": false,
+            "default": {}
           },
           "softDelete": {
             "type": "boolean",
             "default": false
           }
         },
+        "required": [
+          "backend"
+        ],
         "additionalProperties": false
       },
       "propertyNames": {
@@ -810,6 +921,10 @@
       "items": {
         "type": "object",
         "properties": {
+          "backend": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
           "path": {
             "type": "string",
             "pattern": "^\\/"
@@ -1176,6 +1291,7 @@
           }
         },
         "required": [
+          "backend",
           "path",
           "method",
           "entity"
@@ -1187,7 +1303,8 @@
   },
   "required": [
     "name",
-    "version"
+    "version",
+    "repositories"
   ],
   "additionalProperties": false
 }

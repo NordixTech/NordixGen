@@ -23,14 +23,25 @@ describe("incompatibility matrix", () => {
           name: "web",
           framework: "nextjs",
           path: "apps/web",
-          connectsTo: "missing-api",
+          repository: "commerce",
+          connectsTo: ["missing-api"],
           stateManagement: { client: "zustand", server: "native-fetch", generateHooks: true },
         },
       ],
-      backends: [{ name: "api", framework: "hono", path: "apps/api", auth: { type: "none" } }],
+      backends: [
+        {
+          name: "api",
+          framework: "hono",
+          path: "apps/api",
+          repository: "commerce",
+          auth: { type: "none" },
+        },
+      ],
       database: { engine: "mysql", provider: "neon", orm: "drizzle" },
       deployment: { provider: "aws", ci: "cloudflare-native" },
-      endpoints: [{ path: "/api/secure", method: "GET", entity: "User", authRequired: true }],
+      endpoints: [
+        { path: "/api/secure", method: "GET", backend: "api", entity: "User", authRequired: true },
+      ],
     });
     expect(validateCompatibility(config).map((diagnostic) => diagnostic.code)).toEqual([
       "INCOMPATIBLE_FRONTEND_BACKEND",
@@ -45,7 +56,13 @@ describe("incompatibility matrix", () => {
     const config = NordixConfigSchema.parse({
       ...createValidConfig(),
       frontends: [
-        { name: "web", framework: "nextjs", path: "apps/web", stateManagement: "zustand" },
+        {
+          name: "web",
+          framework: "nextjs",
+          path: "apps/web",
+          repository: "commerce",
+          stateManagement: "zustand",
+        },
       ],
     });
     expect(validateCompatibility(config)).toEqual([]);
@@ -54,12 +71,20 @@ describe("incompatibility matrix", () => {
   it("evaluates each secured-endpoint signal independently", () => {
     const config = NordixConfigSchema.parse({
       ...createValidConfig(),
-      backends: [{ name: "api", framework: "hono", path: "apps/api", auth: { type: "none" } }],
+      backends: [
+        {
+          name: "api",
+          framework: "hono",
+          path: "apps/api",
+          repository: "commerce",
+          auth: { type: "none" },
+        },
+      ],
       endpoints: [
-        { path: "/a", method: "GET", entity: "User", authRequired: true },
-        { path: "/b", method: "GET", entity: "User", roles: ["admin"] },
-        { path: "/c", method: "GET", entity: "User", permissions: ["users:read"] },
-        { path: "/d", method: "GET", entity: "User" },
+        { path: "/a", method: "GET", backend: "api", entity: "User", authRequired: true },
+        { path: "/b", method: "GET", backend: "api", entity: "User", roles: ["admin"] },
+        { path: "/c", method: "GET", backend: "api", entity: "User", permissions: ["users:read"] },
+        { path: "/d", method: "GET", backend: "api", entity: "User" },
       ],
     });
     expect(

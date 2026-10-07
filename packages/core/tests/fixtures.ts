@@ -2,12 +2,15 @@ export function createValidConfig() {
   return {
     name: "sample-commerce",
     version: "1.0.0",
+    organizations: [{ name: "nordix", provider: "github", handle: "NordixTech" }],
+    repositories: [{ name: "commerce", path: ".", organization: "nordix", initializeGit: true }],
     frontends: [
       {
         name: "store-web",
         framework: "nextjs",
         path: "apps/store-web",
-        connectsTo: "core-api",
+        repository: "commerce",
+        connectsTo: ["core-api"],
         stateManagement: {
           client: "zustand",
           server: "tanstack-query",
@@ -20,6 +23,7 @@ export function createValidConfig() {
       {
         name: "core-api",
         framework: "hono",
+        repository: "commerce",
         path: "apps/api-core",
         auth: {
           type: "jwt",
@@ -34,15 +38,17 @@ export function createValidConfig() {
     enums: { OrderStatus: ["PENDING", "PAID"], UserRole: ["ADMIN", "CUSTOMER"] },
     entities: {
       User: {
+        backend: "core-api",
         fields: {
           email: { type: "string", unique: true },
           role: { type: "enum", enumName: "UserRole", default: "CUSTOMER" },
         },
         relations: {},
-        timestamps: true,
+        timestamps: { createdAt: true, updatedAt: true },
         softDelete: true,
       },
       Order: {
+        backend: "core-api",
         fields: {
           status: { type: "enum", enumName: "OrderStatus", default: "PENDING" },
           total: { type: "number", default: 10.5 },
@@ -56,10 +62,11 @@ export function createValidConfig() {
           },
           items: { type: "one-to-many", target: "OrderItem", foreignKey: "order_id" },
         },
-        timestamps: true,
+        timestamps: { createdAt: true, updatedAt: true },
         softDelete: true,
       },
       OrderItem: {
+        backend: "core-api",
         fields: {
           quantity: { type: "number", default: 1 },
           note: { type: "string", required: false },
@@ -72,7 +79,7 @@ export function createValidConfig() {
             onDelete: "cascade",
           },
         },
-        timestamps: true,
+        timestamps: { createdAt: true, updatedAt: false },
         softDelete: false,
       },
     },
@@ -80,6 +87,7 @@ export function createValidConfig() {
       {
         path: "/api/orders/summary",
         method: "GET",
+        backend: "core-api",
         entity: "Order",
         authRequired: true,
         roles: ["admin"],
@@ -96,16 +104,22 @@ export function createValidConfig() {
 export const comprehensiveYaml = `
 name: sample-commerce
 version: 1.0.0
+organizations:
+  - { name: nordix, provider: github, handle: NordixTech }
+repositories:
+  - { name: commerce, path: ., organization: nordix, initializeGit: true }
 frontends:
   - name: store-web
     framework: nextjs
     path: apps/store-web
-    connectsTo: core-api
+    repository: commerce
+    connectsTo: [core-api]
     stateManagement: { client: zustand, server: tanstack-query, generateHooks: true }
 backends:
   - name: core-api
     framework: hono
     path: apps/api-core
+    repository: commerce
     auth: { type: jwt, roles: [admin, customer] }
 database: { engine: postgres, provider: neon, orm: drizzle }
 deployment: { provider: cloudflare, ci: cloudflare-native }
@@ -114,12 +128,14 @@ enums:
   OrderStatus: [PENDING, PAID]
 entities:
   User:
+    backend: core-api
     fields:
       email: { type: string, unique: true }
       role: { type: enum, enumName: UserRole, default: CUSTOMER }
-    timestamps: true
+    timestamps: { createdAt: true, updatedAt: true }
     softDelete: true
   Order:
+    backend: core-api
     fields:
       status: { type: enum, enumName: OrderStatus, default: PENDING }
     relations:
@@ -127,6 +143,7 @@ entities:
 endpoints:
   - path: /api/orders/summary
     method: GET
+    backend: core-api
     entity: Order
     authRequired: true
     roles: [admin]
