@@ -6,6 +6,7 @@ import type {
   ArchitectureLayout,
   FrameworkContext,
   GeneratorPlugin,
+  PluginContributionContext,
 } from "../src/plugins/contracts.js";
 import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
 import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
@@ -18,6 +19,36 @@ function createRegistry(framework: GeneratorPlugin = honoFrameworkPlugin) {
   registry.register(cleanArchitecturePlugin);
   registry.register(drizzleOrmPlugin);
   return registry;
+}
+
+function createDrizzleContext(
+  persistence: PluginContributionContext["persistence"] | null = createValidPersistenceContext(),
+): PluginContributionContext {
+  const selection = { pluginId: "hono", configuration: { applicationRoot: "apps/api-core" } };
+  const framework = honoFrameworkPlugin.createFrameworkContext?.(selection);
+  if (!framework) throw new Error("Hono framework context is unavailable.");
+  const architecture = cleanArchitecturePlugin.resolveArchitectureLayout?.(framework, {
+    pluginId: "clean",
+  });
+  if (!architecture) throw new Error("Clean architecture layout is unavailable.");
+  return {
+    selection: { pluginId: "drizzle" },
+    framework,
+    architecture,
+    availableCapabilities: new Set(),
+    ...(persistence ? { persistence } : {}),
+  };
+}
+
+function createValidPersistenceContext(): NonNullable<PluginContributionContext["persistence"]> {
+  return {
+    database: { name: "commerce-db", engine: "postgres", provider: "neon" },
+    directories: {
+      infrastructure: "apps/api-core/src/infrastructure",
+      adapter: "apps/api-core/src/infrastructure/adapters",
+    },
+    connectionStringEnvironmentVariable: "DATABASE_URL",
+  };
 }
 
 describe("Drizzle ORM plugin", () => {
@@ -33,6 +64,34 @@ describe("Drizzle ORM plugin", () => {
         { capability: "provider:neon" },
       ],
     });
+  });
+
+  it.each([
+    ["missing persistence context", null],
+    [
+      "non-PostgreSQL database",
+      {
+        ...createValidPersistenceContext(),
+        database: { name: "commerce-db", engine: "mysql", provider: "neon" },
+      },
+    ],
+    [
+      "non-Neon provider",
+      {
+        ...createValidPersistenceContext(),
+        database: { name: "commerce-db", engine: "postgres", provider: "local" },
+      },
+    ],
+    [
+      "unexpected connection string environment variable",
+      {
+        ...createValidPersistenceContext(),
+        connectionStringEnvironmentVariable: "DATABASE_CONNECTION",
+      },
+    ],
+  ])("rejects %s when called without validated composition", (_label, persistence) => {
+    const context = createDrizzleContext(persistence);
+    expect(() => drizzleOrmPlugin.contribute(context)).toThrow();
   });
 
   it("generates Drizzle Kit configuration from the selected backend persistence context", () => {
