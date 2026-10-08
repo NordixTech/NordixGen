@@ -1,0 +1,133 @@
+# yaml-language-server: $schema=../../nordix.schema.json
+name: nordix-phase-four-smoke
+version: 1.0.0
+description: Golden path smoke test for Clean Architecture, Hono, Drizzle, domain entities, and application use cases.
+
+repositories:
+  - name: workspace
+    path: .
+    initializeGit: false
+    createRemote: false
+
+backends:
+  - name: api
+    framework: hono
+    architecture: clean
+    repository: workspace
+    path: apps/api
+    auth:
+      type: jwt
+      providers: [credentials]
+      roles: [admin, customer]
+      permissions: [orders:read, orders:create]
+    persistence:
+      database: commerce-db
+      orm: drizzle
+
+databases:
+  commerce-db:
+    engine: postgres
+    provider: neon
+
+enums:
+  UserRole: [ADMIN, CUSTOMER]
+  OrderStatus: [PENDING, PAID, CANCELLED]
+
+entities:
+  User:
+    backend: api
+    fields:
+      email:
+        type: string
+        required: true
+        unique: true
+        minLength: 3
+        maxLength: 254
+      role:
+        type: enum
+        enumName: UserRole
+        default: CUSTOMER
+    timestamps: { createdAt: true, updatedAt: true }
+    softDelete: true
+
+  Order:
+    backend: api
+    fields:
+      status:
+        type: enum
+        enumName: OrderStatus
+        default: PENDING
+      total:
+        type: number
+        format: decimal
+        required: true
+    relations:
+      customer:
+        type: many-to-one
+        target: User
+        foreignKey: customer_id
+        onDelete: restrict
+      items:
+        type: one-to-many
+        target: OrderItem
+        foreignKey: order_id
+    timestamps: { createdAt: true, updatedAt: true }
+    softDelete: true
+
+  OrderItem:
+    backend: api
+    fields:
+      quantity:
+        type: number
+        format: integer
+        default: 1
+      note:
+        type: string
+        required: false
+        maxLength: 500
+    relations:
+      order:
+        type: many-to-one
+        target: Order
+        foreignKey: order_id
+        onDelete: cascade
+    timestamps: { createdAt: true, updatedAt: false }
+
+endpoints:
+  - path: /api/orders/summary
+    method: GET
+    backend: api
+    summary: Read orders with their customer and line items.
+    entity: Order
+    authRequired: true
+    roles: [admin, customer]
+    permissions: [orders:read]
+    queryParams:
+      - name: status
+        type: enum
+        enumName: OrderStatus
+        required: false
+      - name: page
+        type: number
+        required: false
+    joins:
+      - entity: User
+        type: inner
+        fields: [id, email]
+      - entity: OrderItem
+        type: left
+        fields: [id, quantity, note]
+
+  - path: /api/orders
+    method: POST
+    backend: api
+    summary: Create an order.
+    entity: Order
+    authRequired: true
+    roles: [customer]
+    permissions: [orders:create]
+    requestBody:
+      total:
+        type: number
+        format: decimal
+        required: true

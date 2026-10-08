@@ -23,6 +23,7 @@ describe("Clean Architecture strategy", () => {
       version: "1.0.0",
       role: "architecture",
       provides: ["architecture:clean"],
+      dependencies: { zod: "^3.24.2" },
     });
     expect(cleanArchitecturePlugin.descriptor.requires).toBeUndefined();
     expect(

@@ -32,6 +32,19 @@ function entityFile(name: string, model: DomainModelContext): string {
     const nullable = fieldName !== "id" && field.required === false ? " | null" : "";
     return `  ${JSON.stringify(fieldName)}: ${typeForField(field)}${nullable};`;
   });
+  const generatedFields = [
+    "id",
+    ...(entity.timestamps.createdAt ? ["createdAt"] : []),
+    ...(entity.timestamps.updatedAt ? ["updatedAt"] : []),
+    ...(entity.softDelete ? ["deletedAt"] : []),
+  ];
+  const optionalCreateFields = Object.entries(entity.fields)
+    .filter(
+      ([fieldName, field]) =>
+        !generatedFields.includes(fieldName) &&
+        (field.required === false || field.default !== undefined),
+    )
+    .map(([fieldName]) => fieldName);
   const metadata = {
     fields: Object.fromEntries(
       Object.entries(entity.fields).map(([fieldName, field]) => [
@@ -76,6 +89,12 @@ function entityFile(name: string, model: DomainModelContext): string {
     ...fields,
     "}",
     "",
+    `export type Create${name}Input = Omit<${name}, ${[...generatedFields, ...optionalCreateFields].map((field) => JSON.stringify(field)).join(" | ")}>${
+      optionalCreateFields.length > 0
+        ? ` & Partial<Pick<${name}, ${optionalCreateFields.map((field) => JSON.stringify(field)).join(" | ")}>>`
+        : ""
+    };`,
+    "",
     `export const ${name}Metadata = ${JSON.stringify(metadata, null, 2)} as const;`,
     "",
   ].join("\n");
@@ -94,11 +113,14 @@ function enumFile(model: DomainModelContext): string {
 function repositoryFile(name: string, entityPath: string, repositoryDirectory: string): string {
   const entityImport = relativeImport(repositoryDirectory, entityPath.replace(/\.ts$/, ".js"));
   return [
-    `import type { ${name} } from "${entityImport}";`,
+    `import type { ${name}, Create${name}Input } from "${entityImport}";`,
     "",
     `export interface ${name}Repository {`,
     `  findById(id: string): Promise<${name} | null>;`,
     `  findMany(filter?: Partial<${name}>): Promise<readonly ${name}[]>;`,
+    `  findPage(filter: Partial<${name}>, offset: number, limit: number): Promise<{ items: readonly ${name}[]; total: number }>;`,
+    `  create(input: Create${name}Input): Promise<${name}>;`,
+    `  update(id: string, changes: Partial<Omit<${name}, "id">>): Promise<${name} | null>;`,
     `  save(entity: ${name}): Promise<${name}>;`,
     "  delete(id: string): Promise<void>;",
     "}",

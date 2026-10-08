@@ -69,7 +69,7 @@ describe("Clean Architecture domain artifacts", () => {
       'export type OrderStatus = "PENDING" | "PAID";',
     );
     expect(repository).toContain(
-      'import type { Order } from "../../../domain/entities/Order.entity.js";',
+      'import type { Order, CreateOrderInput } from "../../../domain/entities/Order.entity.js";',
     );
     expect(repository).toContain("findById(id: string): Promise<Order | null>;");
     expect(repository).not.toMatch(/hono|drizzle/i);
@@ -121,13 +121,17 @@ describe("Clean Architecture domain artifacts", () => {
   });
 
   it("creates an empty enum module when no enums are configured", () => {
-    const { framework, architecture } = createContributionContext({ enums: {}, entities: {} });
+    const { framework, architecture } = createContributionContext({
+      enums: {},
+      entities: {},
+      endpoints: [],
+    });
     const context: PluginContributionContext = {
       selection: { pluginId: "clean" },
       framework,
       architecture,
       availableCapabilities: new Set(),
-      domainModel: { enums: {}, entities: {} },
+      domainModel: { enums: {}, entities: {}, endpoints: [] },
     };
     expect(generateDomainFiles(context)).toEqual([
       {
@@ -150,6 +154,7 @@ describe("Clean Architecture domain artifacts", () => {
         availableCapabilities: new Set(),
         domainModel: {
           enums: {},
+          endpoints: [],
           entities: new Proxy(
             {},
             {
