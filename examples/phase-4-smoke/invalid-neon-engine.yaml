@@ -1,0 +1,25 @@
+name: nordix-invalid-neon-engine
+version: 1.0.0
+repositories:
+  - name: workspace
+    path: .
+backends:
+  - name: api
+    framework: hono
+    architecture: clean
+    repository: workspace
+    path: apps/api
+    persistence:
+      database: commerce-db
+      orm: drizzle
+databases:
+  commerce-db:
+    engine: mysql
+    provider: neon
+entities:
+  User:
+    backend: api
+    fields:
+      email:
+        type: string
+        unique: true
