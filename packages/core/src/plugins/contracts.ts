@@ -1,4 +1,7 @@
-import type { NordixEntityRepresentation } from "../intermediate-representation.js";
+import type {
+  NordixEntityRepresentation,
+  NordixIntermediateRepresentation,
+} from "../intermediate-representation.js";
 
 export const PLUGIN_ROLES = ["architecture", "framework", "orm", "authentication"] as const;
 
@@ -28,6 +31,8 @@ export interface PluginDescriptor {
   readonly role: PluginRole;
   readonly provides: readonly string[];
   readonly requires?: readonly PluginCapabilityRequirement[];
+  /** Runtime packages required by files contributed to generated projects. */
+  readonly dependencies?: Readonly<Record<string, string>>;
 }
 
 export interface UpstreamScaffoldPlan {
@@ -83,6 +88,7 @@ export interface PluginContributionContext {
 export interface DomainModelContext {
   readonly enums: Readonly<Record<string, readonly string[]>>;
   readonly entities: Readonly<Record<string, NordixEntityRepresentation>>;
+  readonly endpoints: NordixIntermediateRepresentation["endpoints"];
 }
 
 /** Backend persistence details made available to ORM plugins during generation. */

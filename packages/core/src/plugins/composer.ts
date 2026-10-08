@@ -22,6 +22,7 @@ export type PluginCompositionResult =
       virtualFileSystem: VirtualFileSystem;
       frameworkContext: FrameworkContext;
       architectureLayout: ArchitectureLayout;
+      runtimeDependencies: Readonly<Record<string, string>>;
       diagnostics: ConfigDiagnostic[];
     }
   | { success: false; diagnostics: ConfigDiagnostic[] };
@@ -408,6 +409,10 @@ export function composePlugins(options: ComposePluginsOptions): PluginCompositio
     virtualFileSystem,
     frameworkContext,
     architectureLayout,
+    runtimeDependencies: Object.assign(
+      {},
+      ...orderedPlugins.map((plugin) => plugin.descriptor.dependencies ?? {}),
+    ),
     diagnostics,
   };
 }

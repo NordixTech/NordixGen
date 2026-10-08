@@ -84,7 +84,7 @@ describe("generate command orchestration", () => {
 
     await runGenerate(configPath, output, runner);
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(calls[0]).toContain("--disable-git");
     expect(calls[0]).toContain("--src-dir");
     expect(await readFile(join(output, "README.md"), "utf8")).toContain("# ✦ NordixGen");
@@ -102,6 +102,11 @@ describe("generate command orchestration", () => {
       "pnpm",
       "--install",
     ]);
+    expect(calls[2]).toEqual(["install"]);
+    const apiPackage = JSON.parse(
+      await readFile(join(output, "apps", "api", "package.json"), "utf8"),
+    );
+    expect(apiPackage.dependencies.zod).toBe("^3.24.2");
     expect(
       await readFile(
         join(output, "apps", "api", "src", "presentation", "controllers", "routes.ts"),

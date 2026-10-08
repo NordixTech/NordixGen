@@ -108,14 +108,23 @@ function canonicalEntity(name: string, entity: EntityDefinition): NordixEntityRe
 export function buildBackendDomainModel(
   config: NordixConfig,
   backendName: string,
-): Pick<NordixIntermediateRepresentation, "enums" | "entities"> {
+): Pick<NordixIntermediateRepresentation, "enums" | "entities" | "endpoints"> {
   const entities = Object.fromEntries(
     Object.entries(config.entities)
       .filter(([, entity]) => entity.backend === backendName)
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([name, entity]) => [name, canonicalEntity(name, entity)]),
   );
-  return { enums: sortedRecord(config.enums), entities };
+  return {
+    enums: sortedRecord(config.enums),
+    entities,
+    endpoints: config.endpoints
+      .filter((endpoint) => endpoint.backend === backendName)
+      .sort(
+        (left, right) =>
+          left.path.localeCompare(right.path) || left.method.localeCompare(right.method),
+      ),
+  };
 }
 
 function relationEdgeOrder(entities: Record<string, EntityDefinition>): NordixDependencyEdge[] {

@@ -81,6 +81,7 @@ export async function runInit(): Promise<void> {
     outro("Setup cancelled.");
     return;
   }
+  if (typeof name !== "string") throw new Error("Project name was not provided.");
 
   const framework = await select({
     message: "Choose the initial backend",
@@ -102,6 +103,7 @@ export async function runInit(): Promise<void> {
     outro("Setup cancelled.");
     return;
   }
+  if (typeof includeFrontend !== "boolean") throw new Error("Frontend selection was not provided.");
 
   const config = createStarterConfiguration(name, includeFrontend);
   const output = await text({
@@ -285,6 +287,29 @@ async function scaffold(
   throw new Error(
     `Unsupported framework "${application.framework}" for "${application.name}". Phase 3 supports Next.js and Hono scaffolding.`,
   );
+}
+
+async function installCompositionDependencies(
+  applicationRoot: string,
+  dependencies: Readonly<Record<string, string>>,
+  runner: CommandRunner,
+): Promise<void> {
+  if (Object.keys(dependencies).length === 0) return;
+  const manifestPath = join(applicationRoot, "package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    dependencies?: Record<string, string>;
+  };
+  const updated = { ...manifest.dependencies };
+  let changed = false;
+  for (const [name, version] of Object.entries(dependencies)) {
+    if (updated[name] === version) continue;
+    updated[name] = version;
+    changed = true;
+  }
+  if (!changed) return;
+  manifest.dependencies = updated;
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await runner("pnpm", ["install"], applicationRoot);
 }
 
 async function writeNordixReadme(
@@ -473,7 +498,10 @@ export async function runGenerate(
     await mkdir(dirname(appTarget), { recursive: true });
     const composition = app.kind === "backend" ? backendCompositions.get(app.name) : undefined;
     await scaffold(app, appTarget, runner, composition?.frameworkContext);
-    if (composition) await composition.virtualFileSystem.emit(repo.root);
+    if (composition) {
+      await composition.virtualFileSystem.emit(repo.root);
+      await installCompositionDependencies(appTarget, composition.runtimeDependencies, runner);
+    }
     if (app.kind === "frontend" && ["nextjs", "next.js"].includes(app.framework.toLowerCase())) {
       await writeBrandedNextHomepage(appTarget, config.name, app.name);
     }
