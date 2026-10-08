@@ -1,10 +1,14 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { NordixConfigSchema } from "../src/configuration/schema.js";
+import { generateApplicationFiles } from "../src/plugins/architecture/application-files.js";
 import { cleanArchitecturePlugin } from "../src/plugins/architecture/clean.js";
+import { resolveCleanArchitectureLayout } from "../src/plugins/architecture/clean.js";
 import { composeBackendPlugins } from "../src/plugins/composer.js";
+import type { DomainModelContext, PluginContributionContext } from "../src/plugins/contracts.js";
 import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
 import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
 import { PluginRegistry } from "../src/plugins/registry.js";
@@ -12,8 +16,21 @@ import { createValidConfig } from "./fixtures.js";
 
 function composeFixture() {
   const config = createValidConfig();
+  config.entities.User.fields.level = { type: "number", format: "integer" };
   const summaryEndpoint = config.endpoints[0];
   if (summaryEndpoint) summaryEndpoint.permissions = ["orders:read"];
+  config.endpoints.push({
+    backend: "core-api",
+    path: "/",
+    method: "GET",
+    entity: "User",
+    authRequired: false,
+    roles: [],
+    permissions: [],
+    queryParams: [],
+    pathParams: [],
+    joins: [],
+  });
   config.endpoints.push({
     backend: "core-api",
     path: "/api/orders/:orderId/notes",
@@ -22,9 +39,25 @@ function composeFixture() {
     authRequired: true,
     roles: ["admin"],
     permissions: ["orders:update"],
+    queryParams: [
+      { name: "revision", type: "number", required: true },
+      { name: "includeArchived", type: "boolean", required: false },
+      { name: "status", type: "enum", enumName: "OrderStatus", required: true },
+    ],
+    pathParams: [{ name: "orderId", type: "uuid", required: true }],
+    requestBody: { note: { type: "string", minLength: 1, maxLength: 50, required: true } },
+    joins: [],
+  });
+  config.endpoints.push({
+    backend: "core-api",
+    path: "/api/orders/:orderId/notes",
+    method: "PATCH",
+    entity: "Order",
+    authRequired: true,
+    roles: [],
+    permissions: [],
     queryParams: [],
     pathParams: [{ name: "orderId", type: "uuid", required: true }],
-    requestBody: { note: { type: "string", required: true } },
     joins: [],
   });
   const registry = new PluginRegistry();
@@ -90,17 +123,20 @@ describe("Clean Architecture application artifacts", () => {
 
     const mutationDto = files[`${root}/dtos/endpoints/PostApiOrdersOrderIdNotes.dto.ts`];
     expect(mutationDto).toContain('"orderId": z.string().uuid()');
+    expect(mutationDto).toContain('"revision": z.number()');
+    expect(mutationDto).toContain('"includeArchived": z.boolean().optional()');
+    expect(mutationDto).toContain('"status": z.enum(["PENDING", "PAID"])');
     expect(mutationDto).toContain('"note": z.string()');
     expect(mutationDto).toContain("RequestBodySchema");
+    expect(files[`${root}/dtos/endpoints/GetEndpoint.dto.ts`]).toBeDefined();
   });
 
   it("typechecks generated application DTOs and use cases against domain contracts", async () => {
     const result = composeFixture();
     expect(result.success).toBe(true);
     if (!result.success) return;
-    const root = await mkdtemp(
-      join(process.cwd(), "packages", "core", ".nordixgen-application-types-"),
-    );
+    const packageRoot = fileURLToPath(new URL("../", import.meta.url));
+    const root = await mkdtemp(join(packageRoot, ".nordixgen-application-types-"));
     try {
       await writeFile(join(root, "package.json"), '{"type":"module"}\n', "utf8");
       const sourcePaths = Object.keys(result.virtualFileSystem.snapshot()).filter(
@@ -135,4 +171,120 @@ describe("Clean Architecture application artifacts", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    [
+      "missing entity",
+      new Proxy(
+        {},
+        {
+          ownKeys: () => ["User"],
+          get: () => undefined,
+          getOwnPropertyDescriptor: () => ({ configurable: true, enumerable: true }),
+        },
+      ) as DomainModelContext["entities"],
+      [],
+      'Domain model is missing entity "User".',
+    ],
+    [
+      "missing endpoint entity",
+      {},
+      [endpointDefinition({ entity: "Missing" })],
+      'Domain model is missing endpoint entity "Missing".',
+    ],
+    [
+      "missing join entity",
+      { User: domainEntity("User") },
+      [endpointDefinition({ joins: [{ entity: "Missing", type: "inner", fields: [] }] })],
+      'Domain model is missing join entity "Missing".',
+    ],
+    [
+      "missing join field",
+      { User: domainEntity("User"), Order: domainEntity("Order") },
+      [endpointDefinition({ joins: [{ entity: "Order", type: "inner", fields: ["absent"] }] })],
+      'Domain model is missing field "Order.absent".',
+    ],
+    [
+      "missing field enum",
+      {
+        User: {
+          ...domainEntity("User"),
+          fields: { role: { type: "enum", enumName: "Missing", required: true, unique: false } },
+        },
+      },
+      [],
+      'Domain model is missing enum "Missing".',
+    ],
+    [
+      "missing endpoint enum name",
+      { User: domainEntity("User") },
+      [
+        endpointDefinition({
+          queryParams: [{ name: "status", type: "enum", required: true } as never],
+        }),
+      ],
+      'Domain model is missing enum "undefined".',
+    ],
+    [
+      "unregistered endpoint enum",
+      { User: domainEntity("User") },
+      [
+        endpointDefinition({
+          queryParams: [
+            { name: "status", type: "enum", enumName: "Missing", required: true } as never,
+          ],
+        }),
+      ],
+      'Domain model is missing enum "Missing".',
+    ],
+  ])("rejects an invalid %s reference", (_label, entities, endpoints, message) => {
+    expect(() => generateApplicationFiles(applicationContext(entities, endpoints))).toThrow(
+      message,
+    );
+  });
 });
+
+function domainEntity(name: string): DomainModelContext["entities"][string] {
+  return {
+    name,
+    backend: "api",
+    fields: {},
+    relations: {},
+    timestamps: { createdAt: false, updatedAt: false },
+    softDelete: false,
+  };
+}
+
+function endpointDefinition(
+  overrides: Partial<DomainModelContext["endpoints"][number]> = {},
+): DomainModelContext["endpoints"][number] {
+  return {
+    backend: "api",
+    path: "/test",
+    method: "GET",
+    entity: "User",
+    authRequired: false,
+    roles: [],
+    permissions: [],
+    queryParams: [],
+    pathParams: [],
+    joins: [],
+    ...overrides,
+  };
+}
+
+function applicationContext(
+  entities: DomainModelContext["entities"],
+  endpoints: DomainModelContext["endpoints"],
+): PluginContributionContext {
+  const selection = { pluginId: "hono", configuration: { applicationRoot: "apps/api-core" } };
+  const framework = honoFrameworkPlugin.createFrameworkContext?.(selection);
+  if (!framework) throw new Error("Hono framework context is unavailable.");
+  return {
+    selection: { pluginId: "clean" },
+    framework,
+    architecture: resolveCleanArchitectureLayout(framework),
+    availableCapabilities: new Set(),
+    domainModel: { enums: {}, entities, endpoints },
+  };
+}
