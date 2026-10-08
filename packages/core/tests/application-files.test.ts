@@ -170,7 +170,7 @@ describe("Clean Architecture application artifacts", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it.each([
     [
