@@ -343,7 +343,7 @@ La verificación debe usar el mecanismo de autenticación soportado por el prove
 - **Restricciones y Modificadores:**
   - `required`: Booleano (default: `true`).
   - `unique`: Booleano (default: `false`).
-  - `default`: Valor por defecto literal.
+  - `default`: Valor por defecto literal; los campos `date` también admiten `{ kind: now }`, resuelto en ejecución mediante un puerto de reloj.
   - `description`: Comentario para OpenAPI/Swagger.
 
 #### 3. Llaves Primarias y Auditoría
@@ -360,11 +360,25 @@ La verificación debe usar el mecanismo de autenticación soportado por el prove
 
 ### B. Sistema de API y Endpoints
 
-1. **Endpoints CRUD Estándar:** 5 endpoints RESTful por entidad (`List` paginado, `GetById`, `Create`, `Update`, `Delete`).
+1. **Endpoints CRUD Estándar:** los contratos de aplicación ofrecen operaciones `List`, `GetById`, `Create`, `Update` y `Delete`. La paginación es optativa y se configura por endpoint; una lista sin esa configuración no exige paginación.
 2. **Endpoints Complejos con JOINs Declarativos:**
    - Proyecciones relacionales que cruzan entidades del mismo backend (`inner` o `left`).
-   - Parámetros tipados: `queryParams`, `pathParams`, `requestBody` (DTOs de Zod).
+   - Parámetros tipados: `queryParams`, `pathParams`, `requestBody` (DTOs de Zod). Los parámetros pueden declarar `field: { entity, field }` para inferir el tipo del atributo y evitar ambigüedad en joins. Los cuerpos pueden mapear explícitamente propiedades a campos o reutilizar el contrato de creación/actualización de una entidad.
    - Consultas emitidas mediante la Relational Query API de Drizzle (`db.query.*.findMany`).
+
+#### Contratos de endpoints
+
+Los endpoints aceptan un `operationId` estable para nombrar los artefactos generados. Las rutas con parámetros usan placeholders `{name}` y cada placeholder debe tener un `pathParams` requerido con tipo o referencia de campo. La forma de la ruta se conserva neutral para que cada plugin de framework la adapte a su router.
+
+Los parámetros declarados con `field` heredan el tipo y las restricciones del campo de entidad. En consultas con joins, `entity` identifica sin ambigüedad la fuente. `operator` permite seleccionar la operación del filtro (`eq`, `ne`, `in`, comparaciones u `contains`). Los parámetros sin vínculo siguen pudiendo declarar un tipo explícito para valores que no representan directamente un campo.
+
+La paginación por offset se activa solo cuando el endpoint contiene `pagination`; define estrategia, nombres de parámetros y límites. En su ausencia, el contrato de consulta devuelve una colección sin sobrecarga de paginación. Los valores `now` de campos fecha se expresan como `default: { kind: now }` y se resuelven en ejecución mediante un puerto `Clock`, lo que permite inyectar tiempo determinista en pruebas.
+
+Los DTO de endpoint viven bajo `dtos/endpoints` y se nombran a partir del `operationId`; son contratos específicos de la operación y no reemplazan los DTO de entidad. Reutilizar un esquema de creación o actualización es explícito mediante `requestBody.useCase`. Los cuerpos personalizados también son explícitos y no habilitan asignación masiva.
+
+Las interfaces TypeScript generadas para entidades representan la forma de sus datos, no entidades de dominio ricas con comportamiento. Los metadatos de persistencia y las relaciones se mantienen en sus artefactos responsables. Los enums se generan en módulos separados, uno por enum, para mantener límites de importación pequeños.
+
+Las interfaces de repositorio pertenecen a los puertos de salida de Application y la infraestructura proporciona sus implementaciones. Esta ubicación expresa la dirección de dependencia de Clean Architecture: los casos de uso definen la abstracción que necesitan, mientras que Domain no depende del mecanismo de persistencia.
 
 ---
 

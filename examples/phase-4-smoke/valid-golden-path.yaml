@@ -63,6 +63,10 @@ entities:
         type: number
         format: decimal
         required: true
+      submittedAt:
+        type: date
+        default:
+          kind: now
     relations:
       customer:
         type: many-to-one
@@ -102,6 +106,7 @@ entities:
 endpoints:
   - path: /api/orders/summary
     method: GET
+    operationId: getOrderSummary
     backend: api
     summary: Read orders with their customer and line items.
     entity: Order
@@ -110,12 +115,16 @@ endpoints:
     permissions: [orders:read]
     queryParams:
       - name: status
-        type: enum
-        enumName: OrderStatus
+        field:
+          entity: Order
+          field: status
         required: false
-      - name: page
-        type: number
-        required: false
+    pagination:
+      strategy: offset
+      pageParam: page
+      pageSizeParam: pageSize
+      defaultPageSize: 20
+      maxPageSize: 100
     joins:
       - entity: User
         type: inner
@@ -126,6 +135,7 @@ endpoints:
 
   - path: /api/orders
     method: POST
+    operationId: createOrder
     backend: api
     summary: Create an order.
     entity: Order
@@ -133,7 +143,17 @@ endpoints:
     roles: [customer]
     permissions: [orders:create]
     requestBody:
-      total:
-        type: number
-        format: decimal
-        required: true
+      useCase:
+        entity: Order
+        operation: create
+
+  - path: /api/orders/{orderId}
+    method: GET
+    operationId: getOrder
+    backend: api
+    entity: Order
+    pathParams:
+      - name: orderId
+        field:
+          entity: Order
+          field: id

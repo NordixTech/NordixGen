@@ -14,7 +14,14 @@ function defaultMatchesFieldType(
     case "boolean":
       return typeof value === "boolean";
     case "date":
-      return typeof value === "string" && !Number.isNaN(Date.parse(value));
+      return (
+        (typeof value === "string" && !Number.isNaN(Date.parse(value))) ||
+        (typeof value === "object" &&
+          value !== null &&
+          !Array.isArray(value) &&
+          "kind" in value &&
+          value.kind === "now")
+      );
     case "uuid":
       return (
         typeof value === "string" &&

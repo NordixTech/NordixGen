@@ -219,8 +219,12 @@ describe("config validation", () => {
 
   it("validates endpoint entities, roles, duplicate routes, join projections, and enum parameters", () => {
     const config = createValidConfig();
+    const originalEndpoint = config.endpoints[0];
+    if (!originalEndpoint) throw new Error("Fixture is incomplete.");
+    originalEndpoint.path = "/api/orders/summary/{status}";
+    originalEndpoint.pathParams = [{ name: "status", field: { entity: "Order", field: "status" } }];
     config.endpoints.push({
-      path: "/api/orders/summary",
+      path: "/api/orders/summary/{status}",
       method: "GET",
       backend: "core-api",
       entity: "Missing",

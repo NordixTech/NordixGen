@@ -22,7 +22,7 @@ function composeFixture(config = createValidConfig()) {
 }
 
 describe("Clean Architecture domain artifacts", () => {
-  it("generates domain entities, enums, relation metadata, and repository ports", () => {
+  it("generates state-shaped domain entities, per-enum modules, and repository ports", () => {
     const config = createValidConfig();
     config.entities.User.fields.enabled = { type: "boolean", default: true };
     config.entities.User.fields.birthday = { type: "date", required: false };
@@ -49,7 +49,7 @@ describe("Clean Architecture domain artifacts", () => {
     const user = files["apps/api-core/src/domain/entities/User.entity.ts"];
     const order = files["apps/api-core/src/domain/entities/Order.entity.ts"];
     const repository = files["apps/api-core/src/application/ports/outbound/Order.repository.ts"];
-    expect(user).toContain('import type { UserRole } from "./enums.js";');
+    expect(user).toContain('import type { UserRole } from "./UserRole.enum.js";');
     expect(user).toContain('"email": string;');
     expect(user).toContain('"enabled": boolean;');
     expect(user).toContain('"birthday": Date | null;');
@@ -57,15 +57,9 @@ describe("Clean Architecture domain artifacts", () => {
     expect(user).toContain('"profile": unknown | null;');
     expect(user).toContain('"createdAt": Date;');
     expect(user).toContain('"deletedAt": Date | null;');
-    expect(user).toContain('"unique": true');
-    expect(user).toContain('"softDelete": "timestamp"');
-    expect(order).toContain('"customer": {');
-    expect(order).toContain('"onDelete": "restrict"');
-    expect(order).toContain('"items": {');
-    expect(order).toContain('"receipt": {');
-    expect(order).toContain('"onDelete": "set-null"');
-    expect(user).toContain('"joinTable": "user_teams"');
-    expect(files["apps/api-core/src/domain/entities/enums.ts"]).toContain(
+    expect(user).not.toContain("Metadata");
+    expect(order).not.toContain('"customer": {');
+    expect(files["apps/api-core/src/domain/entities/OrderStatus.enum.ts"]).toContain(
       'export type OrderStatus = "PENDING" | "PAID";',
     );
     expect(repository).toContain(
@@ -120,7 +114,7 @@ describe("Clean Architecture domain artifacts", () => {
     );
   });
 
-  it("creates an empty enum module when no enums are configured", () => {
+  it("does not create an enum module when no enums are configured", () => {
     const { framework, architecture } = createContributionContext({
       enums: {},
       entities: {},
@@ -133,12 +127,7 @@ describe("Clean Architecture domain artifacts", () => {
       availableCapabilities: new Set(),
       domainModel: { enums: {}, entities: {}, endpoints: [] },
     };
-    expect(generateDomainFiles(context)).toEqual([
-      {
-        path: "apps/api-core/src/domain/entities/enums.ts",
-        content: "export {};\n",
-      },
-    ]);
+    expect(generateDomainFiles(context)).toEqual([]);
   });
 
   it("rejects an entity name with no corresponding normalized entity", () => {

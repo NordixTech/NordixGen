@@ -46,34 +46,6 @@ function entityFile(name: string, model: DomainModelContext): string {
         (field.required === false || field.default !== undefined),
     )
     .map(([fieldName]) => fieldName);
-  const metadata = {
-    fields: Object.fromEntries(
-      Object.entries(entity.fields).map(([fieldName, field]) => [
-        fieldName,
-        {
-          type: field.type,
-          required: field.required,
-          unique: field.unique,
-          ...(field.default === undefined ? {} : { default: field.default }),
-        },
-      ]),
-    ),
-    relations: Object.fromEntries(
-      Object.entries(entity.relations).map(([relationName, relation]) => [
-        relationName,
-        {
-          type: relation.type,
-          target: relation.target,
-          ...(relation.foreignKey === undefined ? {} : { foreignKey: relation.foreignKey }),
-          ...(relation.joinTable === undefined ? {} : { joinTable: relation.joinTable }),
-          required: relation.required,
-          onDelete: relation.onDelete,
-        },
-      ]),
-    ),
-    timestamps: entity.timestamps,
-    softDelete: entity.softDelete,
-  };
   const enumNames = [
     ...new Set(
       Object.values(entity.fields)
@@ -84,7 +56,9 @@ function entityFile(name: string, model: DomainModelContext): string {
 
   return [
     ...(enumNames.length > 0
-      ? [`import type { ${enumNames.join(", ")} } from "./enums.js";`, ""]
+      ? enumNames
+          .map((enumName) => `import type { ${enumName} } from "./${enumName}.enum.js";`)
+          .concat("")
       : []),
     `export interface ${name} {`,
     ...fields,
@@ -96,22 +70,24 @@ function entityFile(name: string, model: DomainModelContext): string {
         : ""
     };`,
     "",
-    `export const ${name}Metadata = ${JSON.stringify(metadata, null, 2)} as const;`,
-    "",
   ].join("\n");
 }
 
-function enumFile(model: DomainModelContext): string {
-  const declarations = Object.entries(model.enums)
+function enumFiles(model: DomainModelContext, entityDirectory: string): GeneratedFile[] {
+  return Object.entries(model.enums)
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(
-      ([name, values]) =>
-        `export type ${name} = ${values.map((value) => JSON.stringify(value)).join(" | ")};`,
-    );
-  return declarations.length === 0 ? "export {};\n" : `${declarations.join("\n")}\n`;
+    .map(([name, values]) => ({
+      path: posix.join(entityDirectory, `${name}.enum.ts`),
+      content: `export type ${name} = ${values.map((value) => JSON.stringify(value)).join(" | ")};\n`,
+    }));
 }
 
-function repositoryFile(name: string, entityPath: string, repositoryDirectory: string): string {
+function repositoryFile(
+  name: string,
+  entityPath: string,
+  repositoryDirectory: string,
+  supportsPagination: boolean,
+): string {
   const entityImport = relativeImport(repositoryDirectory, entityPath.replace(/\.ts$/, ".js"));
   return [
     `import type { ${name}, Create${name}Input } from "${entityImport}";`,
@@ -119,7 +95,11 @@ function repositoryFile(name: string, entityPath: string, repositoryDirectory: s
     `export interface ${name}Repository {`,
     `  findById(id: string): Promise<${name} | null>;`,
     `  findMany(filter?: Partial<${name}>): Promise<readonly ${name}[]>;`,
-    `  findPage(filter: Partial<${name}>, offset: number, limit: number): Promise<{ items: readonly ${name}[]; total: number }>;`,
+    ...(supportsPagination
+      ? [
+          `  findPage(filter: Partial<${name}>, offset: number, limit: number): Promise<{ items: readonly ${name}[]; total: number }>;`,
+        ]
+      : []),
     `  create(input: Create${name}Input): Promise<${name}>;`,
     `  update(id: string, changes: Partial<Omit<${name}, "id">>): Promise<${name} | null>;`,
     `  save(entity: ${name}): Promise<${name}>;`,
@@ -142,16 +122,21 @@ export function generateDomainFiles(context: PluginContributionContext): readonl
     context.framework.codeRoot,
     context.architecture.directories.outboundPort,
   );
-  const files: GeneratedFile[] = [
-    { path: posix.join(entityDirectory, "enums.ts"), content: enumFile(model) },
-  ];
+  const files: GeneratedFile[] = enumFiles(model, entityDirectory);
 
   for (const name of Object.keys(model.entities).sort((left, right) => left.localeCompare(right))) {
     const entityPath = posix.join(entityDirectory, `${name}.entity.ts`);
     files.push({ path: entityPath, content: entityFile(name, model) });
     files.push({
       path: posix.join(repositoryDirectory, `${name}.repository.ts`),
-      content: repositoryFile(name, entityPath, repositoryDirectory),
+      content: repositoryFile(
+        name,
+        entityPath,
+        repositoryDirectory,
+        model.endpoints.some(
+          (endpoint) => endpoint.entity === name && endpoint.pagination !== undefined,
+        ),
+      ),
     });
   }
   return files;
