@@ -46,7 +46,7 @@ export function createValidConfig() {
         },
         relations: {},
         timestamps: { createdAt: true, updatedAt: true },
-        softDelete: true,
+        softDelete: "timestamp",
       },
       Order: {
         backend: "core-api",
@@ -64,7 +64,7 @@ export function createValidConfig() {
           items: { type: "one-to-many", target: "OrderItem", foreignKey: "order_id" },
         },
         timestamps: { createdAt: true, updatedAt: true },
-        softDelete: true,
+        softDelete: "boolean",
       },
       OrderItem: {
         backend: "core-api",
@@ -135,8 +135,10 @@ entities:
     fields:
       email: { type: string, unique: true }
       role: { type: enum, enumName: UserRole, default: CUSTOMER }
-    timestamps: { createdAt: true, updatedAt: true }
-    softDelete: true
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
   Order:
     backend: core-api
     fields:

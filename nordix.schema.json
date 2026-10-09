@@ -940,7 +940,19 @@
             "default": {}
           },
           "softDelete": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean",
+                "const": false
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "boolean",
+                  "timestamp"
+                ]
+              }
+            ],
             "default": false
           }
         },

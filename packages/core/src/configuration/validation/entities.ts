@@ -40,7 +40,8 @@ export function validateEntities(config: NordixConfig): ConfigDiagnostic[] {
     const generatedFields = new Set(["id"]);
     if (entity.timestamps.createdAt) generatedFields.add("createdAt");
     if (entity.timestamps.updatedAt) generatedFields.add("updatedAt");
-    if (entity.softDelete) generatedFields.add("deletedAt");
+    if (entity.softDelete === "boolean") generatedFields.add("isDeleted");
+    if (entity.softDelete === "timestamp") generatedFields.add("deletedAt");
 
     if (!backendNames.has(entity.backend)) {
       relationDiagnostics.push(

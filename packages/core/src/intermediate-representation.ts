@@ -16,7 +16,7 @@ export interface NordixEntityRepresentation {
   fields: Record<string, FieldDefinition>;
   relations: Record<string, RelationDefinition>;
   timestamps: EntityDefinition["timestamps"];
-  softDelete: boolean;
+  softDelete: EntityDefinition["softDelete"];
 }
 
 export interface NordixDependencyEdge {
@@ -90,7 +90,15 @@ function canonicalEntity(name: string, entity: EntityDefinition): NordixEntityRe
   if (entity.timestamps.updatedAt) {
     normalizedFields.updatedAt = { type: "date", required: true, unique: false };
   }
-  if (entity.softDelete)
+  if (entity.softDelete === "boolean") {
+    normalizedFields.isDeleted = {
+      type: "boolean",
+      required: true,
+      unique: false,
+      default: false,
+    };
+  }
+  if (entity.softDelete === "timestamp")
     normalizedFields.deletedAt = { type: "date", required: false, unique: false };
 
   return {

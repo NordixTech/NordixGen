@@ -58,7 +58,7 @@ describe("Clean Architecture domain artifacts", () => {
     expect(user).toContain('"createdAt": Date;');
     expect(user).toContain('"deletedAt": Date | null;');
     expect(user).toContain('"unique": true');
-    expect(user).toContain('"softDelete": true');
+    expect(user).toContain('"softDelete": "timestamp"');
     expect(order).toContain('"customer": {');
     expect(order).toContain('"onDelete": "restrict"');
     expect(order).toContain('"items": {');

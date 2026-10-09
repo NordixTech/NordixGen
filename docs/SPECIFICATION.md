@@ -349,7 +349,7 @@ La verificación debe usar el mecanismo de autenticación soportado por el prove
 #### 3. Llaves Primarias y Auditoría
 - **Primary Key:** Inyección automática de `id: uuid().defaultRandom().primaryKey()`.
 - **Timestamps:** configurables de forma independiente: `timestamps.createdAt` y `timestamps.updatedAt` inyectan sus campos respectivos. Ambos están desactivados por defecto.
-- **Soft Delete:** (`softDelete: true`): Inyecta `deletedAt`. Todas las consultas de lectura filtran registros eliminados de forma transparente.
+- **Soft Delete:** `softDelete` admite `false` (valor predeterminado, no inyecta ningún campo), `boolean` (inyecta `isDeleted: boolean`, inicializado en `false`) o `timestamp` (inyecta `deletedAt: Date | null`). La estrategia define la representación del borrado lógico; el adaptador de persistencia debe aplicar el filtro correspondiente en sus consultas.
 - **Políticas de Cascada (`onDelete`):** `cascade`, `set-null`, `restrict`, `no-action`.
 
 #### 4. Relaciones entre Entidades (`relations`)
@@ -749,8 +749,10 @@ entities:
         type: enum
         enumName: UserStatus
         default: ACTIVE
-    softDelete: true
-    timestamps: { createdAt: true, updatedAt: true }
+    softDelete: timestamp
+    timestamps:
+      createdAt: true
+      updatedAt: true
 
   Category:
     backend: core-api
@@ -767,8 +769,10 @@ entities:
       description:
         type: string
         required: false
-    softDelete: true
-    timestamps: { createdAt: true, updatedAt: false }
+    softDelete: timestamp
+    timestamps:
+      createdAt: true
+      updatedAt: false
 
   Product:
     backend: core-api
@@ -801,8 +805,10 @@ entities:
         target: Category
         foreignKey: category_id
         onDelete: set-null
-    softDelete: true
-    timestamps: { createdAt: true, updatedAt: true }
+    softDelete: timestamp
+    timestamps:
+      createdAt: true
+      updatedAt: true
 
   Order:
     backend: core-api
@@ -825,8 +831,10 @@ entities:
         target: User
         foreignKey: user_id
         onDelete: restrict
-    softDelete: true
-    timestamps: { createdAt: true, updatedAt: true }
+    softDelete: timestamp
+    timestamps:
+      createdAt: true
+      updatedAt: true
 
   OrderItem:
     backend: core-api
@@ -850,7 +858,9 @@ entities:
         foreignKey: product_id
         onDelete: restrict
     softDelete: false
-    timestamps: { createdAt: true, updatedAt: true }
+    timestamps:
+      createdAt: true
+      updatedAt: true
 
 # Endpoints Complejos y Joins
 endpoints:

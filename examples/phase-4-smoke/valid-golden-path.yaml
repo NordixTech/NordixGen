@@ -47,8 +47,10 @@ entities:
         type: enum
         enumName: UserRole
         default: CUSTOMER
-    timestamps: { createdAt: true, updatedAt: true }
-    softDelete: true
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
 
   Order:
     backend: api
@@ -71,8 +73,10 @@ entities:
         type: one-to-many
         target: OrderItem
         foreignKey: order_id
-    timestamps: { createdAt: true, updatedAt: true }
-    softDelete: true
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: boolean
 
   OrderItem:
     backend: api
@@ -91,7 +95,9 @@ entities:
         target: Order
         foreignKey: order_id
         onDelete: cascade
-    timestamps: { createdAt: true, updatedAt: false }
+    timestamps:
+      createdAt: true
+      updatedAt: false
 
 endpoints:
   - path: /api/orders/summary

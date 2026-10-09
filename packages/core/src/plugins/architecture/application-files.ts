@@ -73,7 +73,8 @@ function entityDtoFile(name: string, model: DomainModelContext): string {
     "id",
     ...(entity.timestamps.createdAt ? ["createdAt"] : []),
     ...(entity.timestamps.updatedAt ? ["updatedAt"] : []),
-    ...(entity.softDelete ? ["deletedAt"] : []),
+    ...(entity.softDelete === "boolean" ? ["isDeleted"] : []),
+    ...(entity.softDelete === "timestamp" ? ["deletedAt"] : []),
   ]);
   const fields = objectShape(entity.fields, model);
   const createFields = objectShape(entity.fields, model, generated);

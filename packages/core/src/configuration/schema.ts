@@ -59,6 +59,8 @@ export const RelationSchema = z
   })
   .strict();
 
+export const SoftDeleteSchema = z.union([z.literal(false), z.enum(["boolean", "timestamp"])]);
+
 export const EntitySchema = z
   .object({
     backend: SlugSchema,
@@ -72,7 +74,7 @@ export const EntitySchema = z
       })
       .strict()
       .default({}),
-    softDelete: z.boolean().default(false),
+    softDelete: SoftDeleteSchema.default(false),
   })
   .strict();
 
@@ -259,6 +261,7 @@ export const NordixConfigSchema = z
 export type FieldDefinition = z.infer<typeof FieldSchema>;
 export type RelationDefinition = z.infer<typeof RelationSchema>;
 export type EntityDefinition = z.infer<typeof EntitySchema>;
+export type SoftDeleteStrategy = z.infer<typeof SoftDeleteSchema>;
 export type FrontendDefinition = z.infer<typeof FrontendSchema>;
 export type BackendDefinition = z.infer<typeof BackendSchema>;
 export type EndpointDefinition = z.infer<typeof EndpointSchema>;

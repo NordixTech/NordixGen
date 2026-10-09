@@ -36,7 +36,8 @@ function entityFile(name: string, model: DomainModelContext): string {
     "id",
     ...(entity.timestamps.createdAt ? ["createdAt"] : []),
     ...(entity.timestamps.updatedAt ? ["updatedAt"] : []),
-    ...(entity.softDelete ? ["deletedAt"] : []),
+    ...(entity.softDelete === "boolean" ? ["isDeleted"] : []),
+    ...(entity.softDelete === "timestamp" ? ["deletedAt"] : []),
   ];
   const optionalCreateFields = Object.entries(entity.fields)
     .filter(
