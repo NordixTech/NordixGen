@@ -154,7 +154,7 @@ describe("Clean Architecture application artifacts", () => {
     expect(mutationDto).toContain("RequestBodySchema");
     const customBodyUseCase = files[`${root}/CreateOrderWithCustomBody.use-case.ts`];
     expect(customBodyUseCase).toContain("this.clock.now()");
-    expect(customBodyUseCase).toContain('submittedAt: input.body.submittedAt ?? this.clock.now()');
+    expect(customBodyUseCase).toContain("submittedAt: input.body.submittedAt ?? this.clock.now()");
     expect(files["apps/api-core/src/application/ports/outbound/clock.port.ts"]).toContain(
       "now(): Date",
     );
