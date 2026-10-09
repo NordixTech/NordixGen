@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   BackendSchema,
-  EntitySchema,
   EndpointSchema,
+  EntitySchema,
   FieldSchema,
   FrontendSchema,
   NordixConfigSchema,
