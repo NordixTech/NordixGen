@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BackendSchema,
   EntitySchema,
+  EndpointSchema,
   FieldSchema,
   FrontendSchema,
   NordixConfigSchema,
@@ -136,5 +137,46 @@ describe("Nordix configuration schemas", () => {
       architecture: "clean",
       auth: { type: "none" },
     });
+  });
+  it("validates endpoint path templates and opt-in pagination bounds", () => {
+    const endpoint = {
+      backend: "api",
+      path: "/orders/{orderId}",
+      method: "GET",
+      entity: "Order",
+    };
+    expect(
+      EndpointSchema.safeParse({
+        ...endpoint,
+        pathParams: [{ name: "orderId", type: "uuid" }],
+      }).success,
+    ).toBe(true);
+    expect(EndpointSchema.safeParse({ ...endpoint }).success).toBe(false);
+    expect(
+      EndpointSchema.safeParse({
+        ...endpoint,
+        path: "/orders",
+        pathParams: [{ name: "orderId", type: "uuid" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      EndpointSchema.safeParse({
+        ...endpoint,
+        path: "/orders/{orderId}/{orderId}",
+        pathParams: [{ name: "orderId", type: "uuid" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      EndpointSchema.safeParse({
+        ...endpoint,
+        pathParams: [{ name: "orderId", type: "uuid" }],
+        pagination: {
+          pageParam: "page",
+          pageSizeParam: "page",
+          defaultPageSize: 20,
+          maxPageSize: 10,
+        },
+      }).success,
+    ).toBe(false);
   });
 });

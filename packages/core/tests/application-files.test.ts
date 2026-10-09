@@ -80,6 +80,20 @@ function composeFixture() {
     pathParams: [{ name: "orderId", field: { entity: "Order", field: "id" }, required: true }],
     joins: [],
   });
+  config.endpoints.push({
+    backend: "core-api",
+    path: "/api/orders",
+    method: "POST",
+    operationId: "createOrder",
+    entity: "Order",
+    authRequired: false,
+    roles: [],
+    permissions: [],
+    queryParams: [],
+    pathParams: [],
+    requestBody: { useCase: { entity: "Order", operation: "create" } },
+    joins: [],
+  });
   const registry = new PluginRegistry();
   registry.register(honoFrameworkPlugin);
   registry.register(cleanArchitecturePlugin);

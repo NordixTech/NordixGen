@@ -290,4 +290,53 @@ describe("config validation", () => {
       expect.arrayContaining(["UNKNOWN_ENDPOINT_ROLE", "UNKNOWN_ENDPOINT_PERMISSION"]),
     );
   });
+  it("validates endpoint field bindings, operation reuse, pagination, and body references", () => {
+    const config = createValidConfig();
+    const summary = config.endpoints[0];
+    if (!summary) throw new Error("Fixture endpoint is missing.");
+    summary.operationId = "readOrders";
+    summary.queryParams = [
+      { name: "badType", field: { entity: "Order", field: "status" }, type: "string" },
+      { name: "missing", field: { entity: "Order", field: "missing" } },
+    ];
+    config.endpoints.push({
+      backend: "core-api",
+      path: "/api/orders/{orderId}",
+      method: "GET",
+      operationId: "readOrders",
+      entity: "Order",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [],
+      pathParams: [{ name: "orderId", field: { entity: "Order", field: "id" } }],
+      joins: [],
+    });
+    config.endpoints.push({
+      backend: "core-api",
+      path: "/api/orders/custom",
+      method: "POST",
+      entity: "Order",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [{ name: "page", type: "number" }],
+      pathParams: [],
+      pagination: { strategy: "offset", pageParam: "page" },
+      requestBody: { useCase: { entity: "User", operation: "update" } },
+      joins: [],
+    });
+    const codes = validateNordixConfig(config).diagnostics.map((diagnostic) => diagnostic.code);
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        "DUPLICATE_OPERATION_ID",
+        "ENDPOINT_FIELD_TYPE_MISMATCH",
+        "UNKNOWN_ENDPOINT_FIELD_REFERENCE",
+        "PAGINATION_REQUIRES_GET",
+        "PAGINATION_PARAMETER_CONFLICT",
+        "UNKNOWN_REQUEST_BODY_ENTITY",
+        "REQUEST_BODY_OPERATION_METHOD_MISMATCH",
+      ]),
+    );
+  });
 });
