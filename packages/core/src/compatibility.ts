@@ -91,7 +91,7 @@ export function validateCompatibility(config: NordixConfig): ConfigDiagnostic[] 
     const backend = backendByName.get(endpoint.backend);
     const isSecured =
       endpoint.authRequired || endpoint.roles.length > 0 || endpoint.permissions.length > 0;
-    if (isSecured && backend?.auth.type === "none") {
+    if (isSecured && backend?.auth.type === "none" && !backend.authentication) {
       diagnostics.push(
         createDiagnostic(
           "INCOMPATIBLE_ENDPOINT_AUTH",

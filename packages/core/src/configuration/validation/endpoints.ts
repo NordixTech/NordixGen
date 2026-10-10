@@ -106,8 +106,16 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
       );
     }
     if (backend) {
-      const knownRoles = backend.auth.type === "none" ? [] : backend.auth.roles;
-      const knownPermissions = backend.auth.type === "none" ? [] : backend.auth.permissions;
+      const knownRoles =
+        backend.authorization.roles.length > 0
+          ? backend.authorization.roles
+          : backend.auth.type === "none"
+            ? []
+            : backend.auth.roles;
+      const knownPermissions = new Set([
+        ...(backend.auth.type === "none" ? [] : backend.auth.permissions),
+        ...Object.values(backend.authorization.rolePermissions).flat(),
+      ]);
       for (const role of endpoint.roles) {
         if (!knownRoles.includes(role)) {
           diagnostics.push(
@@ -120,7 +128,7 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
         }
       }
       for (const permission of endpoint.permissions) {
-        if (!knownPermissions.includes(permission)) {
+        if (!knownPermissions.has(permission)) {
           diagnostics.push(
             createDiagnostic(
               "UNKNOWN_ENDPOINT_PERMISSION",

@@ -166,6 +166,62 @@ describe("generate command orchestration", () => {
     );
   });
 
+  it("integrates Better Auth, authorization, and Cloudflare runtime compatibility", async () => {
+    const root = await makeTempDirectory();
+    const configPath = join(root, "nordix.config.yaml");
+    const output = join(root, "generated");
+    const authConfiguration = configuration
+      .replace(
+        "version: 1.0.0",
+        "version: 1.0.0\ndatabases:\n  commerce-db:\n    engine: postgres\n    provider: neon",
+      )
+      .replace(
+        "    framework: hono",
+        '    framework: hono\n    persistence:\n      database: commerce-db\n      orm: drizzle\n    authentication:\n      plugin: better-auth\n      methods: [email-password]\n    authorization:\n      roles: [admin, customer]\n      defaultRole: customer\n      rolePermissions:\n        admin: ["*"]\n        customer: [orders:read]',
+      );
+    await writeFile(configPath, authConfiguration, "utf8");
+
+    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
+      const directoryName = args[2];
+      if (directoryName && args[0] === "create") {
+        const appDirectory = resolve(cwd, basename(directoryName));
+        await mkdir(appDirectory, { recursive: true });
+        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
+        await writeFile(
+          join(appDirectory, "wrangler.jsonc"),
+          '{\n  // Keep scaffold metadata.\n  "compatibility_date": "2026-01-01"\n}\n',
+          "utf8",
+        );
+      }
+      return "";
+    });
+
+    await runGenerate(configPath, output, runner);
+
+    const apiRoot = join(output, "apps", "api");
+    const wrangler = await readFile(join(apiRoot, "wrangler.jsonc"), "utf8");
+    expect(wrangler).toContain("// Keep scaffold metadata.");
+    expect(wrangler).toContain('"compatibility_flags": [\n    "nodejs_compat"\n  ]');
+    const apiPackage = JSON.parse(await readFile(join(apiRoot, "package.json"), "utf8"));
+    expect(apiPackage.dependencies["better-auth"]).toBe("^1.7.7");
+    expect(apiPackage.dependencies["@better-auth/drizzle-adapter"]).toBe("^1.7.7");
+    expect(await readFile(join(apiRoot, "src", "index.ts"), "utf8")).toContain(
+      "createAuth(c.env, c.executionCtx)",
+    );
+    expect(
+      await readFile(
+        join(apiRoot, "src", "presentation", "controllers", "user.controller.ts"),
+        "utf8",
+      ),
+    ).toContain("Authentication is required");
+    expect(
+      await readFile(
+        join(apiRoot, "src", "presentation", "controllers", "user.controller.ts"),
+        "utf8",
+      ),
+    ).toContain("A trusted Origin header is required for state-changing requests");
+  });
+
   it("rejects an unregistered ORM before creating output or scaffolding", async () => {
     const root = await makeTempDirectory();
     const configPath = join(root, "nordix.config.yaml");

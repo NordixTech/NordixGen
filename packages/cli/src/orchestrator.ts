@@ -6,6 +6,7 @@ import {
   type NordixConfig,
   type PluginCompositionResult,
   PluginRegistry,
+  betterAuthPlugin,
   cleanArchitecturePlugin,
   composeBackendPlugins,
   drizzleOrmPlugin,
@@ -13,7 +14,9 @@ import {
   normalizeBackends,
   normalizeFrontends,
   parseNordixYaml,
+  rbacPbacPlugin,
 } from "@nordixgen/core";
+import { applyEdits, modify, parse } from "jsonc-parser";
 import pc from "picocolors";
 import { type CommandRunner, runCommand } from "./process.js";
 
@@ -464,6 +467,8 @@ export async function runGenerate(
   pluginRegistry.register(honoFrameworkPlugin);
   pluginRegistry.register(cleanArchitecturePlugin);
   pluginRegistry.register(drizzleOrmPlugin);
+  pluginRegistry.register(betterAuthPlugin);
+  pluginRegistry.register(rbacPbacPlugin);
 
   for (const app of applications) {
     if (!["nextjs", "next.js", "hono"].includes(app.framework.toLowerCase())) {
@@ -498,6 +503,9 @@ export async function runGenerate(
     await mkdir(dirname(appTarget), { recursive: true });
     const composition = app.kind === "backend" ? backendCompositions.get(app.name) : undefined;
     await scaffold(app, appTarget, runner, composition?.frameworkContext);
+    if (app.kind === "backend" && app.authentication?.plugin === "better-auth") {
+      await enableHonoAuthenticationRuntime(appTarget);
+    }
     if (composition) {
       await composition.virtualFileSystem.emit(repo.root);
       await installCompositionDependencies(appTarget, composition.runtimeDependencies, runner);
@@ -590,4 +598,43 @@ export async function runGenerate(
     }
   }
   outro(`Generated ${config.name} in ${target}`);
+}
+
+async function enableHonoAuthenticationRuntime(applicationRoot: string): Promise<void> {
+  const configurationPath = join(applicationRoot, "wrangler.jsonc");
+  let source: string;
+  try {
+    source = await readFile(configurationPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    throw new Error(
+      "Hono scaffolding did not create wrangler.jsonc. Better Auth requires the Cloudflare Workers nodejs_compat flag; generation stopped before writing project files.",
+    );
+  }
+
+  const parseErrors: { error: number; offset: number; length: number }[] = [];
+  const configuration: unknown = parse(source, parseErrors, {
+    allowTrailingComma: true,
+    disallowComments: false,
+  });
+  if (parseErrors.length > 0 || typeof configuration !== "object" || configuration === null) {
+    throw new Error(
+      "Could not safely update wrangler.jsonc for Better Auth. Fix the scaffold's JSONC configuration and retry.",
+    );
+  }
+
+  const currentFlags = (configuration as Record<string, unknown>).compatibility_flags;
+  if (
+    currentFlags !== undefined &&
+    (!Array.isArray(currentFlags) || !currentFlags.every((flag) => typeof flag === "string"))
+  ) {
+    throw new Error('wrangler.jsonc "compatibility_flags" must be an array of strings.');
+  }
+  const flags = [...new Set([...((currentFlags as string[] | undefined) ?? []), "nodejs_compat"])];
+  if (flags.length === (currentFlags as string[] | undefined)?.length) return;
+
+  const edits = modify(source, ["compatibility_flags"], flags, {
+    formattingOptions: { insertSpaces: true, tabSize: 2 },
+  });
+  await writeFile(configurationPath, applyEdits(source, edits), "utf8");
 }

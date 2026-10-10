@@ -40,3 +40,4 @@ coverage/
 # Generated sandbox/examples during tests
 sandbox/
 tmp/
+examples/

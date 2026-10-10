@@ -31,6 +31,13 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
   const controllerDirectory = posix.join(framework.codeRoot, architecture.directories.controller);
   const healthControllerPath = posix.join(controllerDirectory, "health.controller.ts");
   const routesPath = posix.join(controllerDirectory, "routes.ts");
+  const hasAuthentication = context.availableCapabilities.has("authentication:better-auth");
+  const infrastructureDirectory = posix.join(
+    framework.codeRoot,
+    architecture.directories.infrastructure,
+  );
+  const authFilePath = posix.join(infrastructureDirectory, "auth/auth.ts");
+  const authorizationPath = posix.join(infrastructureDirectory, "authorization/policy.ts");
 
   const model = context.domainModel;
 
@@ -173,6 +180,11 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
         'import { Hono } from "hono";',
         'import { zValidator } from "@hono/zod-validator";',
         'import { z } from "zod";',
+        ...(hasAuthentication
+          ? [
+              `import { createAuth, isTrustedAuthOrigin, type AuthEnvironment } from "${relativeImport(controllerPath, authFilePath)}";`,
+            ]
+          : []),
         `import { problemResponse } from "${problemImport}";`,
         `import { Create${entityName}Schema, Update${entityName}Schema, ${entityName}IdSchema } from "${dtoImport}";`,
         ...useCaseImports,
@@ -187,6 +199,16 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
         "",
         `export function create${entityName}Controller(deps?: ${entityName}ControllerDependencies): Hono {`,
         "  const router = new Hono();",
+        ...(hasAuthentication
+          ? [
+              '  router.use("*", async (c, next) => {',
+              "    const session = await createAuth(c.env as AuthEnvironment).api.getSession({ headers: c.req.raw.headers });",
+              '    if (!session) return problemResponse(c, 401, "Unauthorized", "Authentication is required");',
+              '    if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && !isTrustedAuthOrigin(c.req.header("origin"), c.env as AuthEnvironment)) return problemResponse(c, 403, "Forbidden", "A trusted Origin header is required for state-changing requests");',
+              "    await next();",
+              "  });",
+            ]
+          : []),
         "",
         "  router.post(",
         '    "/",',
@@ -319,6 +341,8 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
     const hasPathParams = endpoint.pathParams.length > 0;
     const hasQueryParams = endpoint.queryParams.length > 0 || endpoint.pagination !== undefined;
     const hasRequestBody = endpoint.requestBody !== undefined;
+    const isSecured =
+      endpoint.authRequired || endpoint.roles.length > 0 || endpoint.permissions.length > 0;
     const httpMethod = endpoint.method.toLowerCase();
     const honoPath = endpoint.path.replace(/\{([^{}]+)\}/g, ":$1");
 
@@ -328,6 +352,21 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
     if (hasRequestBody) dtoImportsList.push("RequestBodySchema");
 
     const validatorsList: string[] = [];
+    const authorizationHandlers = isSecured
+      ? [
+          "    async (c, next) => {",
+          "      const session = await createAuth(c.env as AuthEnvironment, c.executionCtx).api.getSession({ headers: c.req.raw.headers });",
+          '      if (!session) return problemResponse(c, 401, "Unauthorized", "Authentication is required");',
+          '      if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && !isTrustedAuthOrigin(c.req.header("origin"), c.env as AuthEnvironment)) return problemResponse(c, 403, "Forbidden", "A trusted Origin header is required for state-changing requests");',
+          ...(endpoint.roles.length > 0 || endpoint.permissions.length > 0
+            ? [
+                `      if (!isAuthorized(session.user, { roles: ${JSON.stringify(endpoint.roles)}, permissions: ${JSON.stringify(endpoint.permissions)} })) return problemResponse(c, 403, "Forbidden", "The authenticated user is not authorized for this operation");`,
+              ]
+            : []),
+          "      await next();",
+          "    },",
+        ]
+      : [];
     if (hasPathParams) {
       validatorsList.push(
         '    zValidator("param", PathParamsSchema, (result, c) => {',
@@ -359,6 +398,14 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
     const controllerContent = [
       'import { Hono } from "hono";',
       'import { zValidator } from "@hono/zod-validator";',
+      ...(isSecured && hasAuthentication
+        ? [
+            `import { createAuth, isTrustedAuthOrigin, type AuthEnvironment } from "${relativeImport(controllerPath, authFilePath)}";`,
+          ]
+        : []),
+      ...(endpoint.roles.length > 0 || endpoint.permissions.length > 0
+        ? [`import { isAuthorized } from "${relativeImport(controllerPath, authorizationPath)}";`]
+        : []),
       `import { problemResponse } from "${problemImport}";`,
       ...(dtoImportsList.length > 0
         ? [`import { ${dtoImportsList.join(", ")} } from "${dtoImport}";`]
@@ -374,6 +421,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
       "",
       `  router.${httpMethod}(`,
       `    ${JSON.stringify(honoPath)},`,
+      ...authorizationHandlers,
       ...validatorsList,
       "    async (c) => {",
       `      const useCase = deps?.useCase ?? (c.get("${lowerFirst(operationName)}UseCase") as ${operationName}UseCase | undefined);`,
@@ -441,10 +489,18 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
     path: entryPoint,
     content: [
       'import { Hono } from "hono";',
+      ...(hasAuthentication
+        ? [
+            'import { cors } from "hono/cors";',
+            `import { createAuth, isTrustedAuthOrigin, type AuthEnvironment } from "${relativeImport(entryPoint, authFilePath)}";`,
+          ]
+        : []),
       `import { problemResponse } from "${problemImportInIndex}";`,
       `import routes from "${routesImport}";`,
       "",
-      "const app = new Hono();",
+      ...(hasAuthentication
+        ? ["const app = new Hono<{ Bindings: AuthEnvironment }>();"]
+        : ["const app = new Hono();"]),
       "",
       "// Global RFC 7807 error handler",
       "app.onError((err, c) => {",
@@ -456,6 +512,23 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
       '  return problemResponse(c, 404, "Not Found", `Route not found: ${c.req.path}`);',
       "});",
       "",
+      ...(hasAuthentication
+        ? [
+            'app.use("*", cors({',
+            "  origin: (origin, c) => {",
+            "    return isTrustedAuthOrigin(origin, c.env) ? origin : null;",
+            "  },",
+            '  allowHeaders: ["Content-Type", "Authorization"],',
+            '  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],',
+            "  credentials: true,",
+            "  maxAge: 600,",
+            "}));",
+            "",
+            "// Better Auth owns credential, session, cookie, and CSRF handling.",
+            'app.all("/api/auth/*", (c) => createAuth(c.env, c.executionCtx).handler(c.req.raw));',
+            "",
+          ]
+        : []),
       'app.route("/", routes);',
       "",
       "export default app;",

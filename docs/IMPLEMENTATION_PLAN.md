@@ -67,7 +67,7 @@ flowchart LR
   - Sistema de árbol de archivos en memoria con operaciones idempotentes, orden de claves determinista y formateo automático.
 
 *Criterio de Aceptación / Hito Verificable:*
-- Tests unitarios con Vitest con 100% de cobertura de líneas, funciones, sentencias y ramas; incluye ciclos circulares, tipos inexistentes, errores de sintaxis y el ejemplo `examples/ecommerce.yaml`.
+- Tests unitarios con Vitest con 100% de cobertura de líneas, funciones, sentencias y ramas; incluye ciclos circulares, tipos inexistentes, errores de sintaxis y documentos YAML representativos definidos dentro de los fixtures de pruebas.
 
 ---
 
@@ -90,7 +90,7 @@ flowchart LR
   - Si faltan credenciales o permisos, detenerse con instrucciones para corregir `gh auth login`, cambiar la cuenta activa o pedir acceso. Nunca guardar ni imprimir tokens. El primer adaptador remoto implementado es GitHub; GitLab y Bitbucket quedan pendientes.
 
 *Criterio de Aceptación / Hito Verificable:*
-- Al ejecutar `nordixgen validate examples/ecommerce.yaml` el CLI valida y muestra un resumen con spinner de Clack sin errores.
+- Al ejecutar `nordixgen validate <config.yaml>` el CLI valida el archivo YAML proporcionado y muestra un resumen con spinner de Clack sin errores.
 - El generador crea scaffolds upstream de Next.js 15 y Hono y ensambla los repositorios/workspaces definidos en `repositories`; Git init y creación remota son opt-in.
 - Para `createRemote: true`, comprobar identidad y permiso de creación antes de la generación; comprobar URL e intentar `git push --dry-run` antes del primer push. El permiso de push no puede confirmarse por completo antes de crear un repositorio nuevo, porque depende de sus reglas.
 

@@ -393,8 +393,6 @@ The authentication plugin must coordinate with the other plugins through declare
 - The **ORM and database plugins** provide supported persistence adapters, schema ownership, and migration capabilities. For the first combination, Better Auth uses its Drizzle adapter and the backend's selected database. Authentication-owned tables and migrations must be integrated without silently overwriting or duplicating application schema.
 - The **core composer and compatibility registry** verify these requirements before generation. A missing authentication plugin, unsupported framework/runtime/ORM/database combination, or requested capability that the selected plugin does not provide is a blocking diagnostic before files are written.
 
-**Alcance del ejemplo:** la forma YAML siguiente es el diseño objetivo de Phase 4.11; no describe lo que acepta el parser actual. Phase 4.11 actualizará el esquema y la implementación.
-
 ```yaml
 backends:
   - name: core-api
@@ -407,11 +405,18 @@ backends:
       plugin: better-auth
       methods: [email-password, username-password]
       identityProviders: [google, github]
+      features: [email-verification, password-recovery, two-factor]
     authorization:
       roles: [admin, customer]
+      defaultRole: customer
+      rolePermissions:
+        admin: ["*"]
+        customer: [orders:read]
 ```
 
 `authentication.plugin` selects NordixGen's authentication generator plugin. `methods` declares local sign-in methods; `identityProviders` lists optional external identity providers. Provider client IDs/secrets, the Better Auth secret, database credentials, and mail delivery credentials belong in environment variables or a secret manager, never in YAML. `authorization` declares application policy inputs and is separate from authentication; the former asks what an authenticated identity may do, the latter establishes the identity.
+
+The current implementation supports `email-password` and `username-password` methods; Google and GitHub identity providers; and the `email-verification`, `password-recovery`, and `two-factor` features. `authorization.defaultRole` must name a declared role when roles are configured. `rolePermissions` maps each declared role to the permissions enforced by generated server-side policy checks. A configured authentication backend protects generated entity CRUD routes by default; custom endpoints remain public unless `authRequired`, `roles`, or `permissions` explicitly secure them. Protected state-changing requests require an `Origin` matching `BETTER_AUTH_URL` or `AUTH_TRUSTED_ORIGINS`; Better Auth independently protects its own authentication endpoints.
 
 1. **Identity and sign-in:**
    - Better Auth owns account verification, credential checks, session creation/revocation, password reset, and any enabled MFA behavior; NordixGen must configure and integrate the library rather than reimplement its security protocols.
@@ -628,7 +633,7 @@ flowchart TD
 
 ## 🔬 8. Ejemplo Avanzado de YAML y Capacidades Objetivo
 
-El bloque `authentication`/`authorization` de este ejemplo presenta la forma prevista para Phase 4.11 y todavía no valida contra el esquema actual. El resto del ejemplo ilustra las capacidades declaradas en las secciones anteriores.
+El bloque `authentication`/`authorization` de este ejemplo presenta la configuración disponible desde Phase 4.11. El resto del ejemplo ilustra las capacidades declaradas en las secciones anteriores.
 
 ```yaml
 # yaml-language-server: $schema=./nordix.schema.json

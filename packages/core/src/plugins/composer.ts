@@ -438,6 +438,31 @@ export function composeBackendPlugins(
     { pluginId: backend.framework, configuration: { applicationRoot: backend.path } },
     { pluginId: backend.architecture },
   ];
+  if (backend.authentication) {
+    selections.push({
+      pluginId: backend.authentication.plugin,
+      configuration: {
+        applicationRoot: backend.path,
+        projectName: config.name,
+        authentication: backend.authentication,
+        authorization: backend.authorization,
+      },
+    });
+  }
+  const hasAuthorizationPolicies =
+    backend.authorization.roles.length > 0 ||
+    Object.values(backend.authorization.rolePermissions).some(
+      (permissions) => permissions.length > 0,
+    );
+  if (hasAuthorizationPolicies) {
+    selections.push({
+      pluginId: backend.authorization.plugin,
+      configuration: {
+        applicationRoot: backend.path,
+        authorization: backend.authorization,
+      },
+    });
+  }
   const externalCapabilities: string[] = [];
   const domainModel = buildBackendDomainModel(config, backendName);
   let persistence: Omit<PersistenceContext, "directories"> | undefined;
