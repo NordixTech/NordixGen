@@ -70,7 +70,11 @@ function referencedField(
 }
 
 function queryFieldSchema(field: FieldDefinition, model: DomainModelContext): string {
-  const schema = fieldSchema({ ...field, required: true, default: undefined } as FieldDefinition, model, false);
+  const schema = fieldSchema(
+    { ...field, required: true, default: undefined } as FieldDefinition,
+    model,
+    false,
+  );
   if (field.type === "number") return schema.replace("z.number()", "z.coerce.number()");
   if (field.type === "boolean") {
     return 'z.enum(["true", "false"]).transform((value) => value === "true")';
@@ -497,7 +501,7 @@ export function generateApplicationFiles(
   const adapterDirectory = posix.join(codeRoot, context.architecture.directories.adapter);
   const hasDynamicDefaults =
     Object.values(model.entities).some(
-        (entity) =>
+      (entity) =>
         entity &&
         (entity.timestamps.createdAt ||
           entity.timestamps.updatedAt ||

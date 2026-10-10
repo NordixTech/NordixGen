@@ -96,7 +96,8 @@ async function main() {
     "joined User filter returned an unrelated customer",
   );
 
-  const sampleItem = summary.items.find((item) => item.joins.OrderItem?.length > 0)?.joins.OrderItem[0];
+  const sampleItem = summary.items.find((item) => item.joins.OrderItem?.length > 0)?.joins
+    .OrderItem[0];
   assert(sampleItem, "joined summary did not return any seeded OrderItem");
   const quantityResponse = await request(
     `/api/orders/summary?itemQuantity=${sampleItem.quantity}&pageSize=25`,
@@ -106,21 +107,25 @@ async function main() {
   const byQuantity = await readJson(quantityResponse);
   assert(byQuantity.items.length > 0, "OrderItem filter returned no matching orders");
   assert(
-    byQuantity.items.every((item) => item.joins.OrderItem.some((orderItem) => orderItem.quantity === sampleItem.quantity)),
+    byQuantity.items.every((item) =>
+      item.joins.OrderItem.some((orderItem) => orderItem.quantity === sampleItem.quantity),
+    ),
     "OrderItem filter returned an order without the requested quantity",
   );
 
-  const pendingResponse = await request(
-    "/api/orders/summary?status=pending&page=1&pageSize=25",
-    { cookie: customer.cookie },
-  );
+  const pendingResponse = await request("/api/orders/summary?status=pending&page=1&pageSize=25", {
+    cookie: customer.cookie,
+  });
   assertStatus(pendingResponse, 200, "filter and pagination on Order entity");
   const pending = await readJson(pendingResponse);
   assert(
     pending.items.every((item) => item.entity.status === "pending"),
     "root entity filter returned an order with a different status",
   );
-  assert(pending.total >= pending.items.length, "filtered page total is smaller than returned items");
+  assert(
+    pending.total >= pending.items.length,
+    "filtered page total is smaller than returned items",
+  );
   console.log("PASS joins, root and many-to-one/one-to-many filters, pagination, decimal mapping");
 
   const createResponse = await request("/orders", {

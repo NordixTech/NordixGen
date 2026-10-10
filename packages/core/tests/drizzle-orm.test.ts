@@ -282,13 +282,19 @@ describe("Drizzle ORM plugin", () => {
     config.entities.Order.fields.total = { type: "number", format: "decimal" };
     config.entities.Order.fields.submittedAt = { type: "date", default: { kind: "now" } };
     config.entities.OrderItem.fields.unitPrice = { type: "number", format: "decimal" };
-    config.endpoints[0]!.joins[1]!.fields.push("unitPrice");
+    const summaryEndpoint = config.endpoints[0];
+    if (!summaryEndpoint) throw new Error("Order summary endpoint fixture is missing.");
+    const orderItemJoin = summaryEndpoint.joins[1];
+    if (!orderItemJoin) throw new Error("OrderItem join fixture is missing.");
+    orderItemJoin.fields.push("unitPrice");
     config.entities.User.timestamps = { createdAt: false, updatedAt: false };
     config.entities.User.fields.verifiedAt = { type: "date", default: "2026-01-01T00:00:00Z" };
     config.entities.User.fields.lastSeenAt = { type: "date", default: { kind: "now" } };
     config.entities.User.fields.credit = { type: "number", format: "decimal" };
-    config.endpoints[0]!.joins[0]!.fields.push("credit");
-    config.endpoints[0]!.queryParams.push({
+    const userJoin = summaryEndpoint.joins[0];
+    if (!userJoin) throw new Error("User join fixture is missing.");
+    userJoin.fields.push("credit");
+    summaryEndpoint.queryParams.push({
       name: "quantity",
       field: { entity: "OrderItem", field: "quantity" },
       required: false,
@@ -373,9 +379,7 @@ describe("Drizzle ORM plugin", () => {
     expect(queryAdapter).toContain(
       "conditions.push(inArray(schema.OrderTable.customer_id, matchingRows));",
     );
-    expect(queryAdapter).toContain(
-      "conditions.push(inArray(schema.OrderTable.id, matchingRows));",
-    );
+    expect(queryAdapter).toContain("conditions.push(inArray(schema.OrderTable.id, matchingRows));");
     expect(queryAdapter).toContain(
       "User: row.customer == null ? null : { ...row.customer, credit: Number(row.customer.credit) },",
     );
@@ -618,29 +622,32 @@ describe("Drizzle ORM plugin", () => {
     ).toBeDefined();
   });
 
-  it.each([null, {}])("does not require a clock for unsupported date default %s", (defaultValue) => {
-    const context = createDrizzleContext();
-    const baseUser = buildIntermediateRepresentation(createValidConfig()).entities.User;
-    if (!baseUser) throw new Error("User fixture entity is missing.");
-    context.domainModel = {
-      enums: {},
-      entities: {
-        User: {
-          ...baseUser,
-          fields: {
-            observedAt: { type: "date", required: true, unique: false, default: defaultValue },
+  it.each([null, {}])(
+    "does not require a clock for unsupported date default %s",
+    (defaultValue) => {
+      const context = createDrizzleContext();
+      const baseUser = buildIntermediateRepresentation(createValidConfig()).entities.User;
+      if (!baseUser) throw new Error("User fixture entity is missing.");
+      context.domainModel = {
+        enums: {},
+        entities: {
+          User: {
+            ...baseUser,
+            fields: {
+              observedAt: { type: "date", required: true, unique: false, default: defaultValue },
+            },
+            relations: {},
+            timestamps: { createdAt: false, updatedAt: false },
           },
-          relations: {},
-          timestamps: { createdAt: false, updatedAt: false },
         },
-      },
-      endpoints: [],
-    };
+        endpoints: [],
+      };
 
-    const files = generateDrizzleAdapterFiles(context, createValidPersistenceContext());
-    const dependencies = files.find((file) => file.path.endsWith("create-route-dependencies.ts"));
-    expect(dependencies?.content).not.toContain("SystemClock");
-  });
+      const files = generateDrizzleAdapterFiles(context, createValidPersistenceContext());
+      const dependencies = files.find((file) => file.path.endsWith("create-route-dependencies.ts"));
+      expect(dependencies?.content).not.toContain("SystemClock");
+    },
+  );
 
   it("creates a related-entity subquery for one-to-many filters", () => {
     const representation = buildIntermediateRepresentation(createValidConfig());
@@ -667,7 +674,11 @@ describe("Drizzle ORM plugin", () => {
           roles: [],
           permissions: [],
           queryParams: [
-            { name: "quantity", field: { entity: "OrderItem", field: "quantity" }, required: false },
+            {
+              name: "quantity",
+              field: { entity: "OrderItem", field: "quantity" },
+              required: false,
+            },
           ],
           pathParams: [],
           joins: [{ entity: "OrderItem", type: "left", fields: ["quantity"] }],

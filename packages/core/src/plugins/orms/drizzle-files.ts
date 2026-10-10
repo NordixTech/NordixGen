@@ -263,10 +263,11 @@ export function generateDrizzleAdapterFiles(
     "export function createRouteDependencies(connectionString: string) {",
     "  const db = createDrizzleDatabase(connectionString);",
   ];
-  const needsSystemClock = Object.values(model.entities).some((entity) =>
-    entity.timestamps.createdAt ||
-    entity.timestamps.updatedAt ||
-    Object.values(entity.fields).some((field) => field.type === "date" && hasNowDefault(field)),
+  const needsSystemClock = Object.values(model.entities).some(
+    (entity) =>
+      entity.timestamps.createdAt ||
+      entity.timestamps.updatedAt ||
+      Object.values(entity.fields).some((field) => field.type === "date" && hasNowDefault(field)),
   );
   if (needsSystemClock) {
     const clockAdapterPath = posix.join(adapterDirectory, "system-clock.adapter.ts");
@@ -503,7 +504,8 @@ export function generateDrizzleAdapterFiles(
       Object.entries(model.entities[entityName]?.fields ?? {})
         .filter(
           ([, field]) =>
-            field.type === "number" && (field.format === "decimal" || field.precision !== undefined),
+            field.type === "number" &&
+            (field.format === "decimal" || field.precision !== undefined),
         )
         .map(([fieldName]) => fieldName);
     const mainDecimalFields = decimalFields(endpoint.entity);
@@ -533,24 +535,26 @@ export function generateDrizzleAdapterFiles(
       const relName = resolveJoinRelName(join.entity);
       const fieldsSelection = Object.fromEntries(join.fields.map((f) => [f, true]));
       joinsQueryConfig.push(`        ${relName}: { columns: ${JSON.stringify(fieldsSelection)} },`);
-      const joinDecimalFields = decimalFields(join.entity).filter((field) => join.fields.includes(field));
+      const joinDecimalFields = decimalFields(join.entity).filter((field) =>
+        join.fields.includes(field),
+      );
       const relationType = Object.values(mainEntity.relations).find(
         (relation) => relation.target === join.entity,
       )?.type;
       const joinValue = `row.${relName} ?? null`;
-      const mappedDecimals = joinDecimalFields.length > 0
-        ? joinDecimalFields.map((field) => `${field}: Number(value.${field})`).join(", ")
-        : undefined;
-      const joinResult = relationType === "one-to-many"
-        ? mappedDecimals
-          ? `Array.isArray(row.${relName}) ? row.${relName}.map((value: any) => ({ ...value, ${mappedDecimals} })) : ${joinValue}`
-          : joinValue
-        : mappedDecimals
-          ? `row.${relName} == null ? null : { ...row.${relName}, ${joinDecimalFields.map((field) => `${field}: Number(row.${relName}.${field})`).join(", ")} }`
-          : joinValue;
-      joinResultMappings.push(
-        `        ${join.entity}: ${joinResult},`,
-      );
+      const mappedDecimals =
+        joinDecimalFields.length > 0
+          ? joinDecimalFields.map((field) => `${field}: Number(value.${field})`).join(", ")
+          : undefined;
+      const joinResult =
+        relationType === "one-to-many"
+          ? mappedDecimals
+            ? `Array.isArray(row.${relName}) ? row.${relName}.map((value: any) => ({ ...value, ${mappedDecimals} })) : ${joinValue}`
+            : joinValue
+          : mappedDecimals
+            ? `row.${relName} == null ? null : { ...row.${relName}, ${joinDecimalFields.map((field) => `${field}: Number(row.${relName}.${field})`).join(", ")} }`
+            : joinValue;
+      joinResultMappings.push(`        ${join.entity}: ${joinResult},`);
       const relation = Object.values(mainEntity.relations).find(
         (candidate) => candidate.target === join.entity,
       );
@@ -560,7 +564,7 @@ export function generateDrizzleAdapterFiles(
           `      else if (filter.entity === ${JSON.stringify(join.entity)}) {`,
           `        const table = schema.${join.entity}Table as any;`,
           "        if (table[filter.field]) {",
-          `          const matchingRows = this.db.select({ id: table.id }).from(table).where(eq(table[filter.field], filter.value));`,
+          "          const matchingRows = this.db.select({ id: table.id }).from(table).where(eq(table[filter.field], filter.value));",
           `          conditions.push(inArray(schema.${endpoint.entity}Table.${foreignKey}, matchingRows));`,
           "        }",
           "      }",
@@ -579,9 +583,10 @@ export function generateDrizzleAdapterFiles(
       }
     }
 
-    const mainEntityResult = mainDecimalFields.length > 0
-      ? ` { ...row, ${mainDecimalFields.map((field) => `${field}: Number(row.${field})`).join(", ")} }`
-      : "row";
+    const mainEntityResult =
+      mainDecimalFields.length > 0
+        ? ` { ...row, ${mainDecimalFields.map((field) => `${field}: Number(row.${field})`).join(", ")} }`
+        : "row";
 
     const adapterContent = [
       'import { and, eq, inArray, isNull, sql } from "drizzle-orm";',
