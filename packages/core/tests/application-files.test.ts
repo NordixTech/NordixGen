@@ -267,14 +267,14 @@ describe("Clean Architecture application artifacts", () => {
       ),
     ).not.toThrow();
 
-    const entity = domainEntity("User");
-    entity.fields.role = { type: "enum", enumName: "Missing" };
     const createEndpoint = endpointDefinition({
       method: "POST",
-      requestBody: { useCase: { entity: "User", operation: "create" } },
+      requestBody: { role: { type: "enum", enumName: "Missing" } },
     });
     expect(() =>
-      generateApplicationFiles(applicationContext({ User: entity }, [createEndpoint])),
+      generateApplicationFiles(
+        applicationContext({ User: domainEntity("User") }, [createEndpoint]),
+      ),
     ).toThrow('Domain model is missing enum "Missing".');
   });
   it.each([
