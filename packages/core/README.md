@@ -13,7 +13,7 @@ pnpm --filter @nordixgen/core build
 pnpm generate:schema
 ```
 
-The example configuration is in [`examples/ecommerce.yaml`](../../examples/ecommerce.yaml). The schema generator writes [`nordix.schema.json`](../../nordix.schema.json) for YAML editor autocomplete.
+Provide your project configuration as a YAML file (for example, `nordix.config.yaml`). The schema generator writes [`nordix.schema.json`](../../nordix.schema.json) for YAML editor autocomplete.
 
 Database resources are named under `databases`; each backend can optionally select a resource and ORM under `persistence`. The former root-level `database` property is no longer supported, and the intermediate representation uses format version 3 for this shape change. ORM identifiers are checked against registered, compatible plugins during composition. Keep credentials and connection strings in environment configuration, never in YAML.
 
@@ -28,7 +28,7 @@ import {
   VirtualFileSystem,
 } from "@nordixgen/core";
 
-const source = await readFile("examples/ecommerce.yaml", "utf8");
+const source = await readFile("nordix.config.yaml", "utf8");
 const result = parseNordixYaml(source);
 
 if (!result.success) {
