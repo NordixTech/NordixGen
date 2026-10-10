@@ -43,7 +43,13 @@ export const honoFrameworkPlugin: GeneratorPlugin = {
     id: "hono",
     version: "1.0.0",
     role: "framework",
-    provides: ["language:typescript", "runtime:cloudflare-workers", "module:esm"],
+    provides: [
+      "language:typescript",
+      "runtime:cloudflare-workers",
+      "module:esm",
+      "framework:hono-auth-handler",
+      "runtime:cloudflare-nodejs-compat",
+    ],
     dependencies: {
       hono: "^4.7.2",
       "@hono/zod-validator": "^0.4.3",

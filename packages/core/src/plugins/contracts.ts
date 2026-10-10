@@ -3,7 +3,13 @@ import type {
   NordixIntermediateRepresentation,
 } from "../intermediate-representation.js";
 
-export const PLUGIN_ROLES = ["architecture", "framework", "orm", "authentication"] as const;
+export const PLUGIN_ROLES = [
+  "architecture",
+  "framework",
+  "orm",
+  "authentication",
+  "authorization",
+] as const;
 
 export type PluginRole = (typeof PLUGIN_ROLES)[number];
 

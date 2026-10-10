@@ -119,6 +119,105 @@ export const AuthSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }).strict(),
 ]);
 
+export const AuthenticationSchema = z
+  .object({
+    plugin: SlugSchema,
+    methods: z.array(z.string().min(1)).min(1).default(["email-password"]),
+    identityProviders: z.array(z.string().min(1)).default([]),
+    features: z.array(z.string().min(1)).default([]),
+  })
+  .strict()
+  .superRefine((authentication, context) => {
+    for (const [field, values] of Object.entries({
+      methods: authentication.methods,
+      identityProviders: authentication.identityProviders,
+      features: authentication.features,
+    })) {
+      if (new Set(values).size !== values.length) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `${field} must not contain duplicate values.`,
+        });
+      }
+    }
+    const allowedValues: Record<string, readonly string[]> = {
+      methods: ["email-password", "username-password"],
+      identityProviders: ["google", "github"],
+      features: ["email-verification", "password-recovery", "two-factor"],
+    };
+    for (const [field, values] of Object.entries({
+      methods: authentication.methods,
+      identityProviders: authentication.identityProviders,
+      features: authentication.features,
+    })) {
+      values.forEach((value, index) => {
+        if (allowedValues[field]?.includes(value)) return;
+        const description =
+          value === "pin"
+            ? "PIN authentication is unsupported; use a maintained credential flow instead."
+            : `Unsupported ${field} value "${value}" for the Better Auth Golden Path.`;
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field, index],
+          message: description,
+        });
+      });
+    }
+    if (
+      authentication.methods.includes("username-password") &&
+      !authentication.methods.includes("email-password")
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["methods"],
+        message:
+          "Better Auth username sign-in extends the email/password account flow; enable email-password too.",
+      });
+    }
+  });
+
+export const AuthorizationSchema = z
+  .object({
+    plugin: SlugSchema.default("rbac-pbac"),
+    roles: z.array(SlugSchema).default([]),
+    defaultRole: SlugSchema.optional(),
+    rolePermissions: z.record(SlugSchema, z.array(z.string().min(1))).default({}),
+  })
+  .strict()
+  .superRefine((authorization, context) => {
+    if (new Set(authorization.roles).size !== authorization.roles.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["roles"],
+        message: "Authorization roles must not contain duplicates.",
+      });
+    }
+    if (authorization.roles.length > 0 && !authorization.defaultRole) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["defaultRole"],
+        message: "Declare a least-privilege defaultRole when authorization roles are configured.",
+      });
+    }
+    if (authorization.defaultRole && !authorization.roles.includes(authorization.defaultRole)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["defaultRole"],
+        message: `Default role "${authorization.defaultRole}" must be declared under roles.`,
+      });
+    }
+    for (const role of Object.keys(authorization.rolePermissions)) {
+      if (!authorization.roles.includes(role)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["rolePermissions", role],
+          message: `Permission grants reference undeclared role "${role}".`,
+        });
+      }
+    }
+  });
+
 export const BackendSchema = z
   .object({
     name: SlugSchema,
@@ -127,6 +226,8 @@ export const BackendSchema = z
     repository: SlugSchema,
     path: PathSchema,
     auth: AuthSchema.default({ type: "none" }),
+    authentication: AuthenticationSchema.optional(),
+    authorization: AuthorizationSchema.default({}),
     persistence: z
       .object({
         database: SlugSchema,
@@ -395,6 +496,11 @@ export function normalizeBackends(config: NordixConfig): BackendDefinition[] {
       name: "backend",
       architecture: config.backend.architecture ?? "clean",
       auth: config.backend.auth ?? { type: "none" },
+      authorization: config.backend.authorization ?? {
+        plugin: "rbac-pbac",
+        roles: [],
+        rolePermissions: {},
+      },
     });
   }
   return backends.sort((left, right) => left.name.localeCompare(right.name));

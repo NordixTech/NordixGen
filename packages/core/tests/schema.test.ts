@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  AuthenticationSchema,
+  AuthorizationSchema,
   BackendSchema,
   EndpointSchema,
   EntitySchema,
@@ -13,6 +15,49 @@ import {
 import { createValidConfig } from "./fixtures.js";
 
 describe("Nordix configuration schemas", () => {
+  it("validates authorization role defaults and grant references", () => {
+    expect(AuthorizationSchema.safeParse({ roles: ["admin"] }).success).toBe(false);
+    expect(
+      AuthorizationSchema.safeParse({
+        roles: ["admin", "admin"],
+        defaultRole: "admin",
+      }).success,
+    ).toBe(false);
+    expect(
+      AuthorizationSchema.safeParse({
+        roles: ["admin"],
+        defaultRole: "customer",
+        rolePermissions: { guest: ["orders:read"] },
+      }).success,
+    ).toBe(false);
+    expect(
+      AuthorizationSchema.safeParse({
+        roles: ["admin"],
+        defaultRole: "admin",
+        rolePermissions: { admin: ["orders:read"] },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects incomplete or unsupported Better Auth sign-in capabilities", () => {
+    expect(
+      AuthenticationSchema.safeParse({ plugin: "better-auth", methods: ["username-password"] })
+        .success,
+    ).toBe(false);
+    expect(
+      AuthenticationSchema.safeParse({
+        plugin: "better-auth",
+        methods: ["email-password", "magic-link"],
+      }).success,
+    ).toBe(false);
+    expect(
+      AuthenticationSchema.safeParse({
+        plugin: "better-auth",
+        methods: ["email-password", "email-password"],
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts supported field types and rejects unsupported ones", () => {
     const values = [
       { type: "string" },

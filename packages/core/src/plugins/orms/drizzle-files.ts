@@ -185,6 +185,9 @@ export function generateDrizzleSchemaFiles(
     ...(enumDeclarations.length > 0 ? [...enumDeclarations, ""] : []),
     ...tableDefinitions.flatMap((t) => [t, ""]),
     ...(relationDefinitions.length > 0 ? [...relationDefinitions, ""] : []),
+    ...(context.availableCapabilities.has("authentication:better-auth")
+      ? ['export * from "./auth-schema.js";', ""]
+      : []),
   ].join("\n");
 
   files.push({
@@ -493,7 +496,7 @@ export function generateDrizzleMigrationFiles(
     '  console.log("Migrations applied successfully.");',
     "}",
     "",
-    'if (import.meta.url === `file://${process.argv[1]}`) {',
+    "if (import.meta.url === `file://${process.argv[1]}`) {",
     "  runMigrations().catch((error) => {",
     '    console.error("Migration failed:", error);',
     "    process.exit(1);",
@@ -604,7 +607,8 @@ export function generateDrizzleSeedFiles(
           valueExpression = "faker.string.uuid()";
           break;
         case "json":
-          valueExpression = '{ meta: faker.lorem.word(), count: faker.number.int({ min: 1, max: 10 }) }';
+          valueExpression =
+            "{ meta: faker.lorem.word(), count: faker.number.int({ min: 1, max: 10 }) }";
           break;
         case "enum": {
           const enumValues = model.enums[field.enumName];
@@ -614,7 +618,9 @@ export function generateDrizzleSeedFiles(
       }
 
       if (field.required === false && field.default === undefined) {
-        fieldAssignments.push(`        ${fieldName}: faker.datatype.boolean() ? ${valueExpression} : null,`);
+        fieldAssignments.push(
+          `        ${fieldName}: faker.datatype.boolean() ? ${valueExpression} : null,`,
+        );
       } else {
         fieldAssignments.push(`        ${fieldName}: ${valueExpression},`);
       }
@@ -665,7 +671,7 @@ ${fieldAssignments.join("\n")}
     "  return seeded;",
     "}",
     "",
-    'if (import.meta.url === `file://${process.argv[1]}`) {',
+    "if (import.meta.url === `file://${process.argv[1]}`) {",
     "  seedDatabase().catch((error) => {",
     '    console.error("Seeding failed:", error);',
     "    process.exit(1)",
