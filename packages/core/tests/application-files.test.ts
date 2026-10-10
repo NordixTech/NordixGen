@@ -277,6 +277,19 @@ describe("Clean Architecture application artifacts", () => {
       ),
     ).toThrow('Domain model is missing enum "Missing".');
   });
+
+  it("generates a static date default for a custom endpoint body", () => {
+    const endpoint = endpointDefinition({
+      method: "POST",
+      requestBody: { scheduledAt: { type: "date", default: "2026-10-10T00:00:00Z" } },
+    });
+    const files = generateApplicationFiles(
+      applicationContext({ User: domainEntity("User") }, [endpoint]),
+    );
+    expect(files.find((file) => file.path.endsWith("PostTest.dto.ts"))?.content).toContain(
+      'z.coerce.date().default(() => new Date("2026-10-10T00:00:00Z"))',
+    );
+  });
   it.each([
     [
       "missing entity",
