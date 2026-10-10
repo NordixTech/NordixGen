@@ -255,6 +255,28 @@ describe("Clean Architecture application artifacts", () => {
       ),
     ).toThrow('Domain model is missing field "User.missing".');
   });
+
+  it("handles malformed use case references and rejects missing enum definitions", () => {
+    const malformedEndpoint = endpointDefinition({
+      method: "POST",
+      requestBody: { useCase: null } as never,
+    });
+    expect(() =>
+      generateApplicationFiles(
+        applicationContext({ User: domainEntity("User") }, [malformedEndpoint]),
+      ),
+    ).not.toThrow();
+
+    const entity = domainEntity("User");
+    entity.fields.role = { type: "enum", enumName: "Missing" };
+    const createEndpoint = endpointDefinition({
+      method: "POST",
+      requestBody: { useCase: { entity: "User", operation: "create" } },
+    });
+    expect(() =>
+      generateApplicationFiles(applicationContext({ User: entity }, [createEndpoint])),
+    ).toThrow('Domain model is missing enum "Missing".');
+  });
   it.each([
     [
       "missing entity",

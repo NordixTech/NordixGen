@@ -231,7 +231,9 @@ export const EndpointSchema = z
   })
   .strict()
   .superRefine((endpoint, context) => {
-    const pathNames = [...endpoint.path.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1] ?? "");
+    const pathNames = [...endpoint.path.matchAll(/\{([^{}]+)\}/g)].map((match) =>
+      match.slice(1).join(""),
+    );
     if (/[{}]/.test(endpoint.path.replace(/\{[^{}]+\}/g, ""))) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

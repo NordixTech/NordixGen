@@ -305,6 +305,7 @@ describe("config validation", () => {
       { name: "userUpdatedAt", field: { entity: "User", field: "updatedAt" } },
       { name: "wrongEnum", field: { entity: "Order", field: "status" }, enumName: "UserRole" },
       { name: "externalValue", field: { entity: "External", field: "value" } },
+      { name: "missingEntity", field: { entity: "Missing", field: "value" } },
     ];
     config.backends.push({
       name: "other-api",
@@ -354,7 +355,21 @@ describe("config validation", () => {
         orderStatus: { field: { entity: "Order", field: "status" } },
         unknownField: { field: { entity: "Order", field: "unknown" } },
         externalValue: { field: { entity: "External", field: "value" } },
+        freeText: { type: "string" },
       },
+      joins: [],
+    });
+    config.endpoints.push({
+      backend: "core-api",
+      path: "/api/orders/create-body-mismatch",
+      method: "PATCH",
+      entity: "Order",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [],
+      pathParams: [],
+      requestBody: { useCase: { entity: "Order", operation: "create" } },
       joins: [],
     });
     const codes = validateNordixConfig(config).diagnostics.map((diagnostic) => diagnostic.code);
