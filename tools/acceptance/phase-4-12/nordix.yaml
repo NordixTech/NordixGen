@@ -1,0 +1,221 @@
+# yaml-language-server: $schema=../../../nordix.schema.json
+name: nordix-phase-four-acceptance
+version: 1.0.0
+description: End-to-end stress fixture for the Hono, Clean, Drizzle, Neon, Better Auth, and RBAC golden path.
+
+repositories:
+  - name: workspace
+    path: .
+    initializeGit: false
+    createRemote: false
+
+backends:
+  - name: api
+    framework: hono
+    architecture: clean
+    repository: workspace
+    path: apps/api
+    persistence:
+      database: commerce-db
+      orm: drizzle
+    authentication:
+      plugin: better-auth
+      methods: [email-password, username-password]
+      features: [two-factor]
+    authorization:
+      plugin: rbac-pbac
+      roles: [admin, customer]
+      defaultRole: customer
+      rolePermissions:
+        admin: ["*"]
+        customer: [orders:read, orders:create]
+
+databases:
+  commerce-db:
+    engine: postgres
+    provider: neon
+
+enums:
+  UserRole: [admin, customer]
+  ProductStatus: [draft, published, archived]
+  OrderStatus: [pending, paid, shipped, cancelled]
+
+entities:
+  User:
+    backend: api
+    fields:
+      email:
+        type: string
+        required: true
+        unique: true
+        maxLength: 254
+      displayName:
+        type: string
+        required: true
+        maxLength: 120
+      role:
+        type: enum
+        enumName: UserRole
+        default: customer
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
+
+  Category:
+    backend: api
+    fields:
+      name:
+        type: string
+        required: true
+        unique: true
+        maxLength: 100
+      description:
+        type: string
+        required: false
+        maxLength: 500
+    timestamps:
+      createdAt: true
+      updatedAt: false
+    softDelete: boolean
+
+  Product:
+    backend: api
+    fields:
+      name:
+        type: string
+        required: true
+        maxLength: 180
+      sku:
+        type: string
+        required: true
+        unique: true
+        maxLength: 32
+      price:
+        type: number
+        format: decimal
+        precision: 12
+        scale: 2
+        required: true
+      status:
+        type: enum
+        enumName: ProductStatus
+        default: draft
+      metadata:
+        type: json
+        required: false
+    relations:
+      category:
+        type: many-to-one
+        target: Category
+        foreignKey: category_id
+        onDelete: set-null
+        required: false
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
+
+  Order:
+    backend: api
+    fields:
+      orderNumber:
+        type: string
+        required: true
+        unique: true
+        maxLength: 32
+      status:
+        type: enum
+        enumName: OrderStatus
+        default: pending
+      total:
+        type: number
+        format: decimal
+        required: true
+      submittedAt:
+        type: date
+        default:
+          kind: now
+    relations:
+      customer:
+        type: many-to-one
+        target: User
+        foreignKey: customer_id
+        onDelete: restrict
+        required: true
+      items:
+        type: one-to-many
+        target: OrderItem
+        foreignKey: order_id
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
+
+  OrderItem:
+    backend: api
+    fields:
+      quantity:
+        type: number
+        format: integer
+        default: 1
+      unitPrice:
+        type: number
+        format: decimal
+        required: true
+    relations:
+      order:
+        type: many-to-one
+        target: Order
+        foreignKey: order_id
+        onDelete: cascade
+        required: true
+      product:
+        type: many-to-one
+        target: Product
+        foreignKey: product_id
+        onDelete: restrict
+        required: true
+    timestamps:
+      createdAt: true
+      updatedAt: false
+
+endpoints:
+  - backend: api
+    path: /api/orders/summary
+    method: GET
+    operationId: getOrderSummary
+    summary: Filter and paginate orders with customers and line items.
+    entity: Order
+    authRequired: true
+    roles: [admin, customer]
+    permissions: [orders:read]
+    queryParams:
+      - name: status
+        field:
+          entity: Order
+          field: status
+        required: false
+      - name: customerEmail
+        field:
+          entity: User
+          field: email
+        required: false
+      - name: itemQuantity
+        field:
+          entity: OrderItem
+          field: quantity
+        required: false
+    pagination:
+      strategy: offset
+      pageParam: page
+      pageSizeParam: pageSize
+      defaultPageSize: 25
+      maxPageSize: 100
+    joins:
+      - entity: User
+        type: inner
+        fields: [id, email, displayName]
+      - entity: OrderItem
+        type: left
+        fields: [id, quantity, unitPrice]

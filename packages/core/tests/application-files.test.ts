@@ -14,8 +14,7 @@ import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
 import { PluginRegistry } from "../src/plugins/registry.js";
 import { createValidConfig } from "./fixtures.js";
 
-function composeFixture() {
-  const config = createValidConfig();
+function composeFixture(config = createValidConfig()) {
   config.entities.User.fields.level = { type: "number", format: "integer" };
   config.entities.Order.fields.submittedAt = { type: "date", default: { kind: "now" } };
   const summaryEndpoint = config.endpoints[0];
@@ -117,6 +116,8 @@ describe("Clean Architecture application artifacts", () => {
 
     expect(create).toContain("CreateUserSchema.parse(input)");
     expect(create).toContain("this.repository.create");
+    expect(create).toContain("createdAt: this.clock.now()");
+    expect(create).toContain("updatedAt: this.clock.now()");
     expect(list).toContain("this.repository.findMany(filter)");
     expect(list).not.toContain("findPage");
     expect(update).toContain("UpdateUserRequestSchema.parse(input)");
@@ -129,6 +130,30 @@ describe("Clean Architecture application artifacts", () => {
     expect(result.runtimeDependencies).toMatchObject({ zod: "^3.24.2" });
     expect(create).not.toMatch(/hono|drizzle/i);
     expect(list).not.toMatch(/hono|drizzle/i);
+  });
+
+  it("does not inject a clock when entities only have fixed date values", () => {
+    const config = createValidConfig();
+    for (const entity of Object.values(config.entities)) {
+      entity.timestamps = { createdAt: false, updatedAt: false };
+    }
+    config.entities.Order.fields.submittedAt = {
+      type: "date",
+      default: "2026-01-01T00:00:00Z",
+    };
+    config.entities.User.fields.verifiedAt = {
+      type: "date",
+      default: "2026-01-01T00:00:00Z",
+    };
+
+    const result = composeFixture(config);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const files = result.virtualFileSystem.snapshot();
+    expect(
+      files["apps/api-core/src/application/use-cases/User/create-user.use-case.ts"],
+    ).not.toContain("verifiedAt: parsed.verifiedAt ?? this.clock.now()");
   });
 
   it("generates joined endpoint DTOs, query ports, validation, and authorization metadata", () => {
@@ -162,8 +187,10 @@ describe("Clean Architecture application artifacts", () => {
 
     const mutationDto = files[`${root}/dtos/endpoints/PostApiOrdersOrderIdNotes.dto.ts`];
     expect(mutationDto).toContain('"orderId": z.string().uuid()');
-    expect(mutationDto).toContain('"revision": z.number()');
-    expect(mutationDto).toContain('"includeArchived": z.boolean().optional()');
+    expect(mutationDto).toContain('"revision": z.coerce.number()');
+    expect(mutationDto).toContain(
+      '"includeArchived": z.enum(["true", "false"]).transform((value) => value === "true").optional()',
+    );
     expect(mutationDto).toContain('"status": z.enum(["PENDING", "PAID"])');
     expect(mutationDto).toContain('"note": z.string()');
     expect(mutationDto).toContain("RequestBodySchema");

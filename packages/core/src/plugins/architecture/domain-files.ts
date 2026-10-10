@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import type { FieldDefinition } from "../../configuration/schema.js";
 import type { DomainModelContext, GeneratedFile, PluginContributionContext } from "../contracts.js";
+import { entityFieldsWithRelationKeys } from "../entity-fields.js";
 
 function typeForField(field: FieldDefinition): string {
   switch (field.type) {
@@ -28,7 +29,8 @@ function relativeImport(fromDirectory: string, targetPath: string): string {
 function entityFile(name: string, model: DomainModelContext): string {
   const entity = model.entities[name];
   if (!entity) throw new Error(`Domain model is missing entity "${name}".`);
-  const fields = Object.entries(entity.fields).map(([fieldName, field]) => {
+  const declaredFields = entityFieldsWithRelationKeys(entity);
+  const fields = Object.entries(declaredFields).map(([fieldName, field]) => {
     const nullable = fieldName !== "id" && field.required === false ? " | null" : "";
     return `  ${JSON.stringify(fieldName)}: ${typeForField(field)}${nullable};`;
   });
@@ -39,16 +41,27 @@ function entityFile(name: string, model: DomainModelContext): string {
     ...(entity.softDelete === "boolean" ? ["isDeleted"] : []),
     ...(entity.softDelete === "timestamp" ? ["deletedAt"] : []),
   ];
-  const optionalCreateFields = Object.entries(entity.fields)
+  const optionalCreateFields = Object.entries(declaredFields)
     .filter(
       ([fieldName, field]) =>
         !generatedFields.includes(fieldName) &&
         (field.required === false || field.default !== undefined),
     )
     .map(([fieldName]) => fieldName);
+  const timestampFields = [
+    ...(entity.timestamps.createdAt ? ["createdAt"] : []),
+    ...(entity.timestamps.updatedAt ? ["updatedAt"] : []),
+  ];
+  const omittedOnCreate = [
+    "id",
+    ...(entity.softDelete === "boolean" ? ["isDeleted"] : []),
+    ...(entity.softDelete === "timestamp" ? ["deletedAt"] : []),
+    ...optionalCreateFields,
+  ];
+  const optionalCreateInputFields = [...optionalCreateFields, ...timestampFields];
   const enumNames = [
     ...new Set(
-      Object.values(entity.fields)
+      Object.values(declaredFields)
         .filter((field) => field.type === "enum")
         .map((field) => field.enumName),
     ),
@@ -64,9 +77,9 @@ function entityFile(name: string, model: DomainModelContext): string {
     ...fields,
     "}",
     "",
-    `export type Create${name}Input = Omit<${name}, ${[...generatedFields, ...optionalCreateFields].map((field) => JSON.stringify(field)).join(" | ")}>${
-      optionalCreateFields.length > 0
-        ? ` & Partial<Pick<${name}, ${optionalCreateFields.map((field) => JSON.stringify(field)).join(" | ")}>>`
+    `export type Create${name}Input = Omit<${name}, ${omittedOnCreate.map((field) => JSON.stringify(field)).join(" | ")}>${
+      optionalCreateInputFields.length > 0
+        ? ` & Partial<Pick<${name}, ${optionalCreateInputFields.map((field) => JSON.stringify(field)).join(" | ")}>>`
         : ""
     };`,
     "",

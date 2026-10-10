@@ -145,7 +145,7 @@ The parent issue is [#5: Phase 4: Plugin Hono + Drizzle ORM (Golden Path Backend
 9. [#19 Hono presentation](https://github.com/NordixTech/NordixGen/issues/19): routes/controllers, `@hono/zod-validator`, use-case dispatch, and RFC 7807 responses.
 10. [#20 Migrations and seeders](https://github.com/NordixTech/NordixGen/issues/20): Drizzle Kit, reproducible scripts, and topological ordering for foreign keys and synthetic data.
 11. [#21 Authentication and authorization](https://github.com/NordixTech/NordixGen/issues/21): implement Better Auth as the first authentication plugin and Golden Path; compose it through framework, architecture, ORM, database, and core capability contracts; support its validated sign-in/session/provider features and a separate server-side RBAC/PBAC policy capability. Reject unsupported combinations and credential methods (including PIN unless a secure supported integration is validated). Do not implement authentication cryptography/protocols from scratch.
-12. [#22 Golden Path integration and acceptance](https://github.com/NordixTech/NordixGen/issues/22): full generation from the example, install/build/typecheck, `wrangler dev`, CRUD, joins, soft delete, migrations, seeders, and authentication.
+12. [#22 Golden Path integration and acceptance](https://github.com/NordixTech/NordixGen/issues/22): full generation from the example, install/build/typecheck, `wrangler dev`, CRUD, joins, soft delete, migrations, seeders, and authentication. Reproduce the checks with the [Phase 4.12 acceptance runbook](phase-4-12-acceptance.md).
 
 #### Phase acceptance criteria
 
