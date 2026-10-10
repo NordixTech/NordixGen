@@ -144,9 +144,11 @@ function objectShape(
     );
 }
 
-function entityDtoFile(name: string, model: DomainModelContext): string {
-  const entity = model.entities[name];
-  if (!entity) throw new Error(`Domain model is missing entity "${name}".`);
+function entityDtoFile(
+  name: string,
+  entity: DomainModelContext["entities"][string],
+  model: DomainModelContext,
+): string {
   const generated = new Set([
     "id",
     ...(entity.timestamps.createdAt ? ["createdAt"] : []),
@@ -525,7 +527,7 @@ export function generateApplicationFiles(
       .map(([fieldName]) => fieldName);
     files.push({
       path: posix.join(dtoDirectory, `${name}.dto.ts`),
-      content: entityDtoFile(name, model),
+      content: entityDtoFile(name, entity, model),
     });
     files.push(
       ...crudUseCaseFiles(name, useCaseDirectory, dtoDirectory, portDirectory, dynamicDefaults),

@@ -36,6 +36,7 @@ function composeFixture() {
         field: { entity: "Order", field: "submittedAt" },
         required: false,
       },
+      submittedAtRequired: { field: { entity: "Order", field: "submittedAt" } },
     },
     joins: [],
   });
@@ -289,6 +290,17 @@ describe("Clean Architecture application artifacts", () => {
     expect(files.find((file) => file.path.endsWith("PostTest.dto.ts"))?.content).toContain(
       'z.coerce.date().default(() => new Date("2026-10-10T00:00:00Z"))',
     );
+  });
+
+  it("generates optional enum query parameters and tolerates unresolved create contracts", () => {
+    const context = applicationContext({ User: domainEntity("User") }, [
+      endpointDefinition({
+        queryParams: [{ name: "role", type: "enum", enumName: "UserRole", required: false }],
+        requestBody: { useCase: { entity: "Missing", operation: "create" } },
+      }),
+    ]);
+    context.domainModel.enums.UserRole = ["admin", "member"];
+    expect(() => generateApplicationFiles(context)).not.toThrow();
   });
   it.each([
     [
