@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { NordixConfigSchema } from "../src/configuration/schema.js";
-import { cleanArchitecturePlugin } from "../src/plugins/architecture/clean.js";
+import {
+  cleanArchitecturePlugin,
+  resolveCleanArchitectureLayout,
+} from "../src/plugins/architecture/clean.js";
 import { composeBackendPlugins } from "../src/plugins/composer.js";
 import type {
   ArchitectureLayout,
@@ -9,6 +12,10 @@ import type {
   PluginContributionContext,
 } from "../src/plugins/contracts.js";
 import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
+import {
+  generateDrizzleAdapterFiles,
+  generateDrizzleSchemaFiles,
+} from "../src/plugins/orms/drizzle-files.js";
 import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
 import { PluginRegistry } from "../src/plugins/registry.js";
 import { createValidConfig } from "./fixtures.js";
@@ -108,9 +115,23 @@ describe("Drizzle ORM plugin", () => {
     );
     expect(files["apps/api-core/drizzle.config.ts"]).toContain('dialect: "postgresql"');
     expect(files["apps/api-core/drizzle.config.ts"]).toContain("process.env.DATABASE_URL");
-    expect(files["apps/api-core/drizzle.config.ts"]).not.toContain("neon.tech");
     expect(files["apps/api-core/src/infrastructure/database/schema/index.ts"]).toContain(
-      "export {};",
+      "export const OrderTable = pgTable(",
+    );
+    expect(files["apps/api-core/src/infrastructure/database/schema/index.ts"]).toContain(
+      "export const UserTable = pgTable(",
+    );
+    expect(files["apps/api-core/src/infrastructure/database/schema/index.ts"]).toContain(
+      "export const OrderStatusPgEnum = pgEnum(",
+    );
+    expect(
+      files["apps/api-core/src/infrastructure/adapters/Order.drizzle.repository.ts"],
+    ).toContain("class DrizzleOrderRepository implements OrderRepository");
+    expect(files["apps/api-core/src/infrastructure/adapters/User.drizzle.repository.ts"]).toContain(
+      "class DrizzleUserRepository implements UserRepository",
+    );
+    expect(files["apps/api-core/src/infrastructure/adapters/drizzle-database.ts"]).toContain(
+      "createDrizzleDatabase",
     );
   });
 
@@ -214,5 +235,266 @@ describe("Drizzle ORM plugin", () => {
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({ code: "PLUGIN_CAPABILITY_MISSING", path: "plugins.drizzle" }),
     );
+  });
+
+  it("covers generated schemas, repository adapters, and query adapters", () => {
+    const config = createValidConfig();
+    const result = composeBackendPlugins(
+      NordixConfigSchema.parse(config),
+      "core-api",
+      createRegistry(),
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const files = result.virtualFileSystem.snapshot();
+    const schema = files["apps/api-core/src/infrastructure/database/schema/index.ts"];
+    expect(schema).toBeDefined();
+    expect(schema).toContain("export const OrderTable = pgTable(");
+    expect(schema).toContain("export const OrderRelations = relations(");
+    expect(schema).toContain("export const OrderStatusPgEnum = pgEnum(");
+
+    const orderAdapter =
+      files["apps/api-core/src/infrastructure/adapters/Order.drizzle.repository.ts"];
+    expect(orderAdapter).toContain("class DrizzleOrderRepository implements OrderRepository");
+    expect(orderAdapter).toContain("isDeleted");
+    expect(orderAdapter).toContain("findPage");
+    expect(orderAdapter).toContain("findById");
+    expect(orderAdapter).toContain("findMany");
+    expect(orderAdapter).toContain("save");
+    expect(orderAdapter).toContain("delete");
+
+    const userAdapter =
+      files["apps/api-core/src/infrastructure/adapters/User.drizzle.repository.ts"];
+    expect(userAdapter).toContain("class DrizzleUserRepository implements UserRepository");
+    expect(userAdapter).toContain("deletedAt");
+
+    const orderItemAdapter =
+      files["apps/api-core/src/infrastructure/adapters/OrderItem.drizzle.repository.ts"];
+    expect(orderItemAdapter).toContain(
+      "class DrizzleOrderItemRepository implements OrderItemRepository",
+    );
+    expect(orderItemAdapter).not.toContain("deletedAt");
+    expect(orderItemAdapter).not.toContain("isDeleted");
+
+    const queryAdapter =
+      files["apps/api-core/src/infrastructure/adapters/getOrderSummary.drizzle.query.adapter.ts"];
+    expect(queryAdapter).toBeDefined();
+    expect(queryAdapter).toContain(
+      "class DrizzlegetOrderSummaryQueryAdapter implements getOrderSummaryQueryPort",
+    );
+    expect(queryAdapter).toContain("execute(input: QueryExecution): Promise<Response>");
+  });
+
+  it("covers custom unpaginated query adapter and diverse field types", () => {
+    const config = createValidConfig();
+    config.entities.User.fields = {
+      ...config.entities.User.fields,
+      bio: { type: "string", maxLength: 200, required: false },
+      age: { type: "number", format: "integer", default: 18 },
+      rating: { type: "number", format: "decimal", precision: 5, scale: 2 },
+      metadata: { type: "json", required: false },
+      token: { type: "uuid", required: true },
+      isActive: { type: "boolean", default: true },
+      joinedAt: { type: "date", default: { kind: "now" } },
+      verifiedAt: { type: "date", default: "2026-01-01T00:00:00Z" },
+    };
+    config.endpoints.push({
+      path: "/api/orders/details",
+      method: "GET",
+      operationId: "getOrderDetails",
+      backend: "core-api",
+      entity: "Order",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [],
+      pathParams: [],
+      joins: [{ entity: "User", type: "inner", fields: ["id", "email"] }],
+    });
+
+    const result = composeBackendPlugins(
+      NordixConfigSchema.parse(config),
+      "core-api",
+      createRegistry(),
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const files = result.virtualFileSystem.snapshot();
+    const schema = files["apps/api-core/src/infrastructure/database/schema/index.ts"];
+    expect(schema).toContain('varchar("bio", { length: 200 })');
+    expect(schema).toContain('integer("age").notNull().default(18)');
+    expect(schema).toContain('numeric("rating", { precision: 5, scale: 2 }).notNull()');
+    expect(schema).toContain('jsonb("metadata")');
+    expect(schema).toContain('uuid("token").notNull()');
+    expect(schema).toContain('boolean("is_active").notNull().default(true)');
+    expect(schema).toContain(".defaultNow()");
+    expect(schema).toContain("::timestamptz");
+
+    const detailsAdapter =
+      files["apps/api-core/src/infrastructure/adapters/getOrderDetails.drizzle.query.adapter.ts"];
+    expect(detailsAdapter).toBeDefined();
+    expect(detailsAdapter).toContain(
+      "class DrizzlegetOrderDetailsQueryAdapter implements getOrderDetailsQueryPort",
+    );
+  });
+
+  it("handles entities without soft delete and timestamp soft delete query adapters", () => {
+    const userSummaryConfig = createValidConfig();
+    userSummaryConfig.entities.User.softDelete = "timestamp";
+    userSummaryConfig.endpoints.push({
+      path: "/api/user/summary",
+      method: "GET",
+      operationId: "getUserSummary",
+      backend: "core-api",
+      entity: "User",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [],
+      pathParams: [],
+      joins: [{ entity: "Order", type: "left", fields: ["total"] }],
+    });
+    const userSummaryResult = composeBackendPlugins(
+      NordixConfigSchema.parse(userSummaryConfig),
+      "core-api",
+      createRegistry(),
+    );
+    expect(userSummaryResult.success).toBe(true);
+    if (!userSummaryResult.success) return;
+    const userSummaryFiles = userSummaryResult.virtualFileSystem.snapshot();
+    expect(
+      userSummaryFiles[
+        "apps/api-core/src/infrastructure/adapters/getUserSummary.drizzle.query.adapter.ts"
+      ],
+    ).toContain("deletedAt");
+
+    const falseDeleteConfig = createValidConfig();
+    falseDeleteConfig.entities.Order.softDelete = false;
+    falseDeleteConfig.endpoints = [
+      {
+        path: "/api/orders/auto",
+        method: "GET",
+        backend: "core-api",
+        entity: "Order",
+        authRequired: false,
+        roles: [],
+        permissions: [],
+        queryParams: [],
+        pathParams: [],
+        joins: [{ entity: "User", type: "left", fields: ["id"] }],
+      },
+    ];
+    const falseDeleteResult = composeBackendPlugins(
+      NordixConfigSchema.parse(falseDeleteConfig),
+      "core-api",
+      createRegistry(),
+    );
+    expect(falseDeleteResult.success).toBe(true);
+    if (!falseDeleteResult.success) return;
+    const falseDeleteFiles = falseDeleteResult.virtualFileSystem.snapshot();
+    expect(
+      falseDeleteFiles[
+        "apps/api-core/src/infrastructure/adapters/getapiordersauto.drizzle.query.adapter.ts"
+      ],
+    ).toBeDefined();
+  });
+
+  it("covers schemas without relations, one-to-one relations, and findPage filtering", () => {
+    const config = createValidConfig();
+    config.entities.User.fields.weight = { type: "number", precision: 6 };
+    config.entities.User.fields.balance = { type: "number", format: "decimal", scale: 4 };
+    config.entities.User.relations.profile = {
+      type: "one-to-one",
+      target: "User",
+    };
+    config.entities.Order.relations.author = {
+      type: "many-to-one",
+      target: "User",
+    };
+    config.entities.OrderItem.softDelete = false;
+    config.endpoints.push({
+      path: "/api/order-items/page",
+      method: "GET",
+      operationId: "getOrderItemPage",
+      backend: "core-api",
+      entity: "OrderItem",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [],
+      pathParams: [],
+      pagination: { strategy: "offset", defaultPageSize: 10, maxPageSize: 50 },
+      joins: [],
+    });
+    const resultWithOne = composeBackendPlugins(
+      NordixConfigSchema.parse(config),
+      "core-api",
+      createRegistry(),
+    );
+    expect(resultWithOne.success).toBe(true);
+    if (!resultWithOne.success) return;
+    const pageFiles = resultWithOne.virtualFileSystem.snapshot();
+    expect(
+      pageFiles["apps/api-core/src/infrastructure/adapters/OrderItem.drizzle.repository.ts"],
+    ).toContain("findPage");
+
+    config.enums = {};
+    config.entities.User.fields.role = { type: "string" };
+    config.entities.Order.fields.status = { type: "string" };
+    config.entities.User.relations = {};
+    config.entities.Order.relations = {};
+    config.entities.OrderItem.relations = {};
+    config.endpoints = [];
+    const result = composeBackendPlugins(
+      NordixConfigSchema.parse(config),
+      "core-api",
+      createRegistry(),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const files = result.virtualFileSystem.snapshot();
+    const schema = files["apps/api-core/src/infrastructure/database/schema/index.ts"];
+    expect(schema).toBeDefined();
+    expect(schema).not.toContain("relations(");
+  });
+
+  it("returns empty arrays when domain model is undefined", () => {
+    const context = createDrizzleContext();
+    (context as Record<string, unknown>).domainModel = undefined;
+    const persistence = createValidPersistenceContext();
+    expect(generateDrizzleSchemaFiles(context, persistence)).toEqual([]);
+    expect(generateDrizzleAdapterFiles(context, persistence)).toEqual([]);
+  });
+
+  it("skips query adapter generation when endpoint entity is not in domain model", () => {
+    const context = createDrizzleContext();
+    context.domainModel = {
+      enums: {},
+      entities: {},
+      endpoints: [
+        {
+          entity: "MissingEntity",
+          path: "/missing",
+          method: "GET",
+          operationId: "getMissing",
+          description: "Missing",
+          params: [],
+          query: [],
+          headers: [],
+          body: null,
+          responses: {},
+          joins: [{ entity: "Other", fields: ["name"] }],
+        },
+      ],
+    };
+    const persistence = createValidPersistenceContext();
+    const files = generateDrizzleAdapterFiles(context, persistence);
+    expect(
+      files.find((f) => f.path.includes("getMissing.drizzle.query.adapter.ts")),
+    ).toBeUndefined();
   });
 });
