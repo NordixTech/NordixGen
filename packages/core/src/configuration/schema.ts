@@ -59,6 +59,8 @@ export const RelationSchema = z
   })
   .strict();
 
+export const SoftDeleteSchema = z.union([z.literal(false), z.enum(["boolean", "timestamp"])]);
+
 export const EntitySchema = z
   .object({
     backend: SlugSchema,
@@ -72,7 +74,7 @@ export const EntitySchema = z
       })
       .strict()
       .default({}),
-    softDelete: z.boolean().default(false),
+    softDelete: SoftDeleteSchema.default(false),
   })
   .strict();
 
@@ -142,28 +144,79 @@ export const DatabaseSchema = z
   })
   .strict();
 
-const ParameterSchema = z
+export const EntityFieldReferenceSchema = z
   .object({
-    name: IdentifierSchema,
-    type: z.enum(["string", "number", "boolean", "date", "uuid", "json", "enum"]),
-    required: z.boolean().default(true),
-    enumName: IdentifierSchema.optional(),
+    entity: IdentifierSchema,
+    field: IdentifierSchema,
   })
   .strict();
+
+const ParameterShapeSchema = z
+  .object({
+    name: IdentifierSchema,
+    type: z.enum(["string", "number", "boolean", "date", "uuid", "json", "enum"]).optional(),
+    field: EntityFieldReferenceSchema.optional(),
+    required: z.boolean().default(true),
+    enumName: IdentifierSchema.optional(),
+    operator: z.enum(["eq", "ne", "in", "gt", "gte", "lt", "lte", "contains"]).optional(),
+  })
+  .strict();
+
+const ParameterSchema = ParameterShapeSchema.refine(
+  (parameter) => parameter.type !== undefined || parameter.field !== undefined,
+  {
+    message: "A parameter must declare either a type or an entity field reference.",
+  },
+);
+
+const PathParameterSchema = ParameterShapeSchema.extend({
+  required: z.literal(true).default(true),
+}).refine((parameter) => parameter.type !== undefined || parameter.field !== undefined, {
+  message: "A parameter must declare either a type or an entity field reference.",
+});
+
+export const PaginationSchema = z
+  .object({
+    strategy: z.literal("offset").default("offset"),
+    pageParam: IdentifierSchema.default("page"),
+    pageSizeParam: IdentifierSchema.default("pageSize"),
+    defaultPageSize: z.number().int().positive().default(25),
+    maxPageSize: z.number().int().positive().default(100),
+  })
+  .strict();
+
+const RequestBodySchema = z.union([
+  z.record(
+    IdentifierSchema,
+    z.union([
+      FieldSchema,
+      z.object({ field: EntityFieldReferenceSchema, required: z.boolean().optional() }).strict(),
+    ]),
+  ),
+  z
+    .object({
+      useCase: z
+        .object({ entity: IdentifierSchema, operation: z.enum(["create", "update"]) })
+        .strict(),
+    })
+    .strict(),
+]);
 
 export const EndpointSchema = z
   .object({
     backend: SlugSchema,
     path: z.string().startsWith("/"),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+    operationId: IdentifierSchema.optional(),
     summary: z.string().optional(),
     entity: IdentifierSchema,
     authRequired: z.boolean().default(false),
     roles: z.array(SlugSchema).default([]),
     permissions: z.array(z.string().min(1)).default([]),
     queryParams: z.array(ParameterSchema).default([]),
-    pathParams: z.array(ParameterSchema).default([]),
-    requestBody: z.record(IdentifierSchema, FieldSchema).optional(),
+    pathParams: z.array(PathParameterSchema).default([]),
+    requestBody: RequestBodySchema.optional(),
+    pagination: PaginationSchema.optional(),
     joins: z
       .array(
         z
@@ -176,7 +229,61 @@ export const EndpointSchema = z
       )
       .default([]),
   })
-  .strict();
+  .strict()
+  .superRefine((endpoint, context) => {
+    const pathNames = [...endpoint.path.matchAll(/\{([^{}]+)\}/g)].map((match) =>
+      match.slice(1).join(""),
+    );
+    if (/[{}]/.test(endpoint.path.replace(/\{[^{}]+\}/g, ""))) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["path"],
+        message: "Path templates must use balanced `{parameter}` placeholders.",
+      });
+    }
+    const parameterNames = endpoint.pathParams.map((parameter) => parameter.name);
+    for (const name of new Set(pathNames)) {
+      if (!parameterNames.includes(name)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["pathParams"],
+          message: `Path placeholder "${name}" must have a matching path parameter.`,
+        });
+      }
+    }
+    for (const name of new Set(parameterNames)) {
+      if (!pathNames.includes(name)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["pathParams"],
+          message: `Path parameter "${name}" must match its corresponding path placeholder.`,
+        });
+      }
+    }
+    if (new Set(pathNames).size !== pathNames.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["path"],
+        message: "Path parameter placeholders must be unique.",
+      });
+    }
+    if (endpoint.pagination) {
+      if (endpoint.pagination.defaultPageSize > endpoint.pagination.maxPageSize) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["pagination", "defaultPageSize"],
+          message: "defaultPageSize cannot exceed maxPageSize.",
+        });
+      }
+      if (endpoint.pagination.pageParam === endpoint.pagination.pageSizeParam) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["pagination", "pageSizeParam"],
+          message: "Pagination parameter names must be different.",
+        });
+      }
+    }
+  });
 
 const EnumValuesSchema = z
   .array(z.string().min(1))
@@ -259,6 +366,7 @@ export const NordixConfigSchema = z
 export type FieldDefinition = z.infer<typeof FieldSchema>;
 export type RelationDefinition = z.infer<typeof RelationSchema>;
 export type EntityDefinition = z.infer<typeof EntitySchema>;
+export type SoftDeleteStrategy = z.infer<typeof SoftDeleteSchema>;
 export type FrontendDefinition = z.infer<typeof FrontendSchema>;
 export type BackendDefinition = z.infer<typeof BackendSchema>;
 export type EndpointDefinition = z.infer<typeof EndpointSchema>;

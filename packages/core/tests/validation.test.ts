@@ -55,6 +55,7 @@ describe("config validation", () => {
       numberValue: { type: "number", default: 2 },
       booleanValue: { type: "boolean", default: false },
       dateValue: { type: "date", default: "2026-10-07T00:00:00Z" },
+      dateNowValue: { type: "date", default: { kind: "now" } },
       uuidValue: { type: "uuid", default: "550e8400-e29b-41d4-a716-446655440000" },
       jsonValue: { type: "json", default: { nested: [1, true] } },
       enumValue: { type: "enum", enumName: "OrderStatus", default: "PENDING" },
@@ -219,8 +220,12 @@ describe("config validation", () => {
 
   it("validates endpoint entities, roles, duplicate routes, join projections, and enum parameters", () => {
     const config = createValidConfig();
+    const originalEndpoint = config.endpoints[0];
+    if (!originalEndpoint) throw new Error("Fixture is incomplete.");
+    originalEndpoint.path = "/api/orders/summary/{status}";
+    originalEndpoint.pathParams = [{ name: "status", field: { entity: "Order", field: "status" } }];
     config.endpoints.push({
-      path: "/api/orders/summary",
+      path: "/api/orders/summary/{status}",
       method: "GET",
       backend: "core-api",
       entity: "Missing",
@@ -284,6 +289,102 @@ describe("config validation", () => {
     endpoint.permissions = ["orders:read"];
     expect(validateNordixConfig(config).diagnostics.map((item) => item.code)).toEqual(
       expect.arrayContaining(["UNKNOWN_ENDPOINT_ROLE", "UNKNOWN_ENDPOINT_PERMISSION"]),
+    );
+  });
+  it("validates endpoint field bindings, operation reuse, pagination, and body references", () => {
+    const config = createValidConfig();
+    const summary = config.endpoints[0];
+    if (!summary) throw new Error("Fixture endpoint is missing.");
+    summary.operationId = "readOrders";
+    summary.pagination = { strategy: "offset" };
+    summary.queryParams = [
+      { name: "badType", field: { entity: "Order", field: "status" }, type: "string" },
+      { name: "missing", field: { entity: "Order", field: "missing" } },
+      { name: "orderDeleted", field: { entity: "Order", field: "isDeleted" } },
+      { name: "userDeletedAt", field: { entity: "User", field: "deletedAt" } },
+      { name: "userUpdatedAt", field: { entity: "User", field: "updatedAt" } },
+      { name: "wrongEnum", field: { entity: "Order", field: "status" }, enumName: "UserRole" },
+      { name: "externalValue", field: { entity: "External", field: "value" } },
+      { name: "missingEntity", field: { entity: "Missing", field: "value" } },
+    ];
+    config.backends.push({
+      name: "other-api",
+      framework: "hono",
+      repository: "commerce",
+      path: "apps/other-api",
+    });
+    config.entities.External = { backend: "other-api", fields: { value: { type: "string" } } };
+    config.endpoints.push({
+      backend: "core-api",
+      path: "/api/orders/{orderId}",
+      method: "GET",
+      operationId: "readOrders",
+      entity: "Order",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [],
+      pathParams: [{ name: "orderId", field: { entity: "Order", field: "id" } }],
+      joins: [],
+    });
+    config.endpoints.push({
+      backend: "core-api",
+      path: "/api/orders/custom",
+      method: "POST",
+      entity: "Order",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [{ name: "page", type: "number" }],
+      pathParams: [],
+      pagination: { strategy: "offset", pageParam: "page" },
+      requestBody: { useCase: { entity: "User", operation: "update" } },
+      joins: [],
+    });
+    config.endpoints.push({
+      backend: "core-api",
+      path: "/api/orders/body",
+      method: "PATCH",
+      entity: "Order",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [],
+      pathParams: [],
+      requestBody: {
+        orderStatus: { field: { entity: "Order", field: "status" } },
+        unknownField: { field: { entity: "Order", field: "unknown" } },
+        externalValue: { field: { entity: "External", field: "value" } },
+        freeText: { type: "string" },
+      },
+      joins: [],
+    });
+    config.endpoints.push({
+      backend: "core-api",
+      path: "/api/orders/create-body-mismatch",
+      method: "PATCH",
+      entity: "Order",
+      authRequired: false,
+      roles: [],
+      permissions: [],
+      queryParams: [],
+      pathParams: [],
+      requestBody: { useCase: { entity: "Order", operation: "create" } },
+      joins: [],
+    });
+    const codes = validateNordixConfig(config).diagnostics.map((diagnostic) => diagnostic.code);
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        "DUPLICATE_OPERATION_ID",
+        "ENDPOINT_FIELD_TYPE_MISMATCH",
+        "UNKNOWN_ENDPOINT_FIELD_REFERENCE",
+        "PAGINATION_REQUIRES_GET",
+        "PAGINATION_PARAMETER_CONFLICT",
+        "CROSS_BACKEND_FIELD_REFERENCE",
+        "ENDPOINT_FIELD_ENUM_MISMATCH",
+        "UNKNOWN_REQUEST_BODY_ENTITY",
+        "REQUEST_BODY_OPERATION_METHOD_MISMATCH",
+      ]),
     );
   });
 });

@@ -17,8 +17,29 @@ import { createValidConfig } from "./fixtures.js";
 function composeFixture() {
   const config = createValidConfig();
   config.entities.User.fields.level = { type: "number", format: "integer" };
+  config.entities.Order.fields.submittedAt = { type: "date", default: { kind: "now" } };
   const summaryEndpoint = config.endpoints[0];
   if (summaryEndpoint) summaryEndpoint.permissions = ["orders:read"];
+  config.endpoints.push({
+    backend: "core-api",
+    path: "/api/orders/custom",
+    method: "POST",
+    operationId: "createOrderWithCustomBody",
+    entity: "Order",
+    authRequired: false,
+    roles: [],
+    permissions: [],
+    queryParams: [],
+    pathParams: [],
+    requestBody: {
+      submittedAt: {
+        field: { entity: "Order", field: "submittedAt" },
+        required: false,
+      },
+      submittedAtRequired: { field: { entity: "Order", field: "submittedAt" } },
+    },
+    joins: [],
+  });
   config.endpoints.push({
     backend: "core-api",
     path: "/",
@@ -33,7 +54,7 @@ function composeFixture() {
   });
   config.endpoints.push({
     backend: "core-api",
-    path: "/api/orders/:orderId/notes",
+    path: "/api/orders/{orderId}/notes",
     method: "POST",
     entity: "Order",
     authRequired: true,
@@ -44,20 +65,34 @@ function composeFixture() {
       { name: "includeArchived", type: "boolean", required: false },
       { name: "status", type: "enum", enumName: "OrderStatus", required: true },
     ],
-    pathParams: [{ name: "orderId", type: "uuid", required: true }],
+    pathParams: [{ name: "orderId", field: { entity: "Order", field: "id" }, required: true }],
     requestBody: { note: { type: "string", minLength: 1, maxLength: 50, required: true } },
     joins: [],
   });
   config.endpoints.push({
     backend: "core-api",
-    path: "/api/orders/:orderId/notes",
+    path: "/api/orders/{orderId}/notes",
     method: "PATCH",
     entity: "Order",
     authRequired: true,
     roles: [],
     permissions: [],
     queryParams: [],
-    pathParams: [{ name: "orderId", type: "uuid", required: true }],
+    pathParams: [{ name: "orderId", field: { entity: "Order", field: "id" }, required: true }],
+    joins: [],
+  });
+  config.endpoints.push({
+    backend: "core-api",
+    path: "/api/orders",
+    method: "POST",
+    operationId: "createOrder",
+    entity: "Order",
+    authRequired: false,
+    roles: [],
+    permissions: [],
+    queryParams: [],
+    pathParams: [],
+    requestBody: { useCase: { entity: "Order", operation: "create" } },
     joins: [],
   });
   const registry = new PluginRegistry();
@@ -68,7 +103,7 @@ function composeFixture() {
 }
 
 describe("Clean Architecture application artifacts", () => {
-  it("generates validated CRUD use cases, DTOs, and pagination ports", () => {
+  it("generates validated unpaginated CRUD use cases and DTOs by default", () => {
     const result = composeFixture();
     expect(result.success).toBe(true);
     if (!result.success) return;
@@ -82,15 +117,15 @@ describe("Clean Architecture application artifacts", () => {
 
     expect(create).toContain("CreateUserSchema.parse(input)");
     expect(create).toContain("this.repository.create");
-    expect(list).toContain("(page - 1) * pageSize");
-    expect(list).toContain("this.repository.findPage");
+    expect(list).toContain("this.repository.findMany(filter)");
+    expect(list).not.toContain("findPage");
     expect(update).toContain("UpdateUserRequestSchema.parse(input)");
     expect(dto).toContain('import { z } from "zod";');
     expect(dto).toContain("CreateUserSchema = z.object");
     expect(dto).toContain("UserResponseSchema = z.object");
-    expect(dto).toContain("PaginationInputSchema.extend");
+    expect(dto).not.toContain("PaginationInputSchema");
     expect(repository).toContain("create(input: CreateUserInput): Promise<User>");
-    expect(repository).toContain("findPage(filter: Partial<User>, offset: number, limit: number)");
+    expect(repository).not.toContain("findPage");
     expect(result.runtimeDependencies).toMatchObject({ zod: "^3.24.2" });
     expect(create).not.toMatch(/hono|drizzle/i);
     expect(list).not.toMatch(/hono|drizzle/i);
@@ -102,13 +137,15 @@ describe("Clean Architecture application artifacts", () => {
     if (!result.success) return;
     const files = result.virtualFileSystem.snapshot();
     const root = "apps/api-core/src/application/use-cases";
-    const endpoint = "GetApiOrdersSummary";
+    const endpoint = "GetOrderSummary";
     const dto = files[`${root}/dtos/endpoints/${endpoint}.dto.ts`];
     const useCase = files[`${root}/${endpoint}.use-case.ts`];
     const port = files[`apps/api-core/src/application/ports/outbound/${endpoint}.query.port.ts`];
 
     expect(dto).toContain("QueryParamsSchema = z.object");
     expect(dto).toContain('"status": z.enum(["PENDING", "PAID"])');
+    expect(dto).toContain('"pageSize": z.coerce.number().int().positive().max(80).default(20)');
+    expect(dto).toContain("export const QueryFilterBindings = [");
     expect(dto).toContain('"User": z.object');
     expect(dto).toContain('"email": UserResponseSchema.shape["email"]');
     expect(dto).toContain('"OrderItem": z.array');
@@ -116,8 +153,10 @@ describe("Clean Architecture application artifacts", () => {
     expect(dto).toContain('"roles": [\n    "admin"');
     expect(dto).toContain('"permissions": [\n    "orders:read"');
     expect(useCase).toContain("InputSchema.parse(rawInput)");
-    expect(useCase).toContain("ResponseSchema.parse(await this.query.execute(input))");
-    expect(port).toContain("export interface GetApiOrdersSummaryQueryPort");
+    expect(useCase).toContain("ResponseSchema.parse(result)");
+    expect(useCase).toContain('field: "status"');
+    expect(useCase).toContain('limit: input.query["pageSize"]');
+    expect(port).toContain("export interface GetOrderSummaryQueryPort");
     expect(useCase).not.toMatch(/hono|drizzle/i);
     expect(port).not.toMatch(/hono|drizzle/i);
 
@@ -128,6 +167,12 @@ describe("Clean Architecture application artifacts", () => {
     expect(mutationDto).toContain('"status": z.enum(["PENDING", "PAID"])');
     expect(mutationDto).toContain('"note": z.string()');
     expect(mutationDto).toContain("RequestBodySchema");
+    const customBodyUseCase = files[`${root}/CreateOrderWithCustomBody.use-case.ts`];
+    expect(customBodyUseCase).toContain("this.clock.now()");
+    expect(customBodyUseCase).toContain("submittedAt: input.body.submittedAt ?? this.clock.now()");
+    expect(files["apps/api-core/src/application/ports/outbound/clock.port.ts"]).toContain(
+      "now(): Date",
+    );
     expect(files[`${root}/dtos/endpoints/GetEndpoint.dto.ts`]).toBeDefined();
   });
 
@@ -172,6 +217,91 @@ describe("Clean Architecture application artifacts", () => {
     }
   }, 15_000);
 
+  it("injects a clock for dynamic date defaults declared directly on an endpoint body", () => {
+    const endpoint = endpointDefinition({
+      method: "POST",
+      requestBody: {
+        scheduledAt: { type: "date", default: { kind: "now" } },
+      },
+    });
+    const files = generateApplicationFiles(
+      applicationContext({ User: domainEntity("User") }, [endpoint]),
+    );
+    expect(files.find((file) => file.path.endsWith("clock.port.ts"))?.content).toContain(
+      "now(): Date",
+    );
+    expect(files.find((file) => file.path.endsWith("PostTest.use-case.ts"))?.content).toContain(
+      "scheduledAt: input.body.scheduledAt ?? this.clock.now()",
+    );
+  });
+
+  it("generates update request DTO references and rejects missing referenced body fields", () => {
+    const updateEndpoint = endpointDefinition({
+      method: "PATCH",
+      requestBody: { useCase: { entity: "User", operation: "update" } },
+    });
+    const files = generateApplicationFiles(
+      applicationContext({ User: domainEntity("User") }, [updateEndpoint]),
+    );
+    expect(files.find((file) => file.path.endsWith("PatchTest.dto.ts"))?.content).toContain(
+      "UpdateUserSchema",
+    );
+
+    const invalidEndpoint = endpointDefinition({
+      requestBody: { missing: { field: { entity: "User", field: "missing" } } },
+    });
+    expect(() =>
+      generateApplicationFiles(
+        applicationContext({ User: domainEntity("User") }, [invalidEndpoint]),
+      ),
+    ).toThrow('Domain model is missing field "User.missing".');
+  });
+
+  it("handles malformed use case references and rejects missing enum definitions", () => {
+    const malformedEndpoint = endpointDefinition({
+      method: "POST",
+      requestBody: { useCase: null } as never,
+    });
+    expect(() =>
+      generateApplicationFiles(
+        applicationContext({ User: domainEntity("User") }, [malformedEndpoint]),
+      ),
+    ).not.toThrow();
+
+    const createEndpoint = endpointDefinition({
+      method: "POST",
+      requestBody: { role: { type: "enum", enumName: "Missing" } },
+    });
+    expect(() =>
+      generateApplicationFiles(
+        applicationContext({ User: domainEntity("User") }, [createEndpoint]),
+      ),
+    ).toThrow('Domain model is missing enum "Missing".');
+  });
+
+  it("generates a static date default for a custom endpoint body", () => {
+    const endpoint = endpointDefinition({
+      method: "POST",
+      requestBody: { scheduledAt: { type: "date", default: "2026-10-10T00:00:00Z" } },
+    });
+    const files = generateApplicationFiles(
+      applicationContext({ User: domainEntity("User") }, [endpoint]),
+    );
+    expect(files.find((file) => file.path.endsWith("PostTest.dto.ts"))?.content).toContain(
+      'z.coerce.date().default(() => new Date("2026-10-10T00:00:00Z"))',
+    );
+  });
+
+  it("generates optional enum query parameters and tolerates unresolved create contracts", () => {
+    const context = applicationContext({ User: domainEntity("User") }, [
+      endpointDefinition({
+        queryParams: [{ name: "role", type: "enum", enumName: "UserRole", required: false }],
+        requestBody: { useCase: { entity: "Missing", operation: "create" } },
+      }),
+    ]);
+    context.domainModel.enums.UserRole = ["admin", "member"];
+    expect(() => generateApplicationFiles(context)).not.toThrow();
+  });
   it.each([
     [
       "missing entity",

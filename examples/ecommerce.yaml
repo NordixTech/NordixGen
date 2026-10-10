@@ -92,8 +92,10 @@ entities:
         type: enum
         enumName: UserRole
         default: CUSTOMER
-    timestamps: { createdAt: true, updatedAt: true }
-    softDelete: true
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
 
   Product:
     backend: core-api
@@ -121,8 +123,10 @@ entities:
         target: Category
         foreignKey: category_id
         onDelete: set-null
-    timestamps: { createdAt: true, updatedAt: true }
-    softDelete: true
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
 
   Category:
     backend: core-api
@@ -131,8 +135,10 @@ entities:
         type: string
         required: true
         unique: true
-    timestamps: { createdAt: true, updatedAt: false }
-    softDelete: true
+    timestamps:
+      createdAt: true
+      updatedAt: false
+    softDelete: timestamp
 
   Order:
     backend: core-api
@@ -155,8 +161,10 @@ entities:
         type: one-to-many
         target: OrderItem
         foreignKey: order_id
-    timestamps: { createdAt: true, updatedAt: true }
-    softDelete: true
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
 
   OrderItem:
     backend: core-api
@@ -180,7 +188,9 @@ entities:
         target: Product
         foreignKey: product_id
         onDelete: restrict
-    timestamps: { createdAt: true, updatedAt: true }
+    timestamps:
+      createdAt: true
+      updatedAt: true
 
 endpoints:
   - path: /api/orders/summary

@@ -45,8 +45,11 @@ export function createValidConfig() {
           role: { type: "enum", enumName: "UserRole", default: "CUSTOMER" },
         },
         relations: {},
-        timestamps: { createdAt: true, updatedAt: true },
-        softDelete: true,
+        timestamps: {
+          createdAt: true,
+          updatedAt: true,
+        },
+        softDelete: "timestamp",
       },
       Order: {
         backend: "core-api",
@@ -63,8 +66,11 @@ export function createValidConfig() {
           },
           items: { type: "one-to-many", target: "OrderItem", foreignKey: "order_id" },
         },
-        timestamps: { createdAt: true, updatedAt: true },
-        softDelete: true,
+        timestamps: {
+          createdAt: true,
+          updatedAt: true,
+        },
+        softDelete: "boolean",
       },
       OrderItem: {
         backend: "core-api",
@@ -88,11 +94,15 @@ export function createValidConfig() {
       {
         path: "/api/orders/summary",
         method: "GET",
+        operationId: "getOrderSummary",
         backend: "core-api",
         entity: "Order",
         authRequired: true,
         roles: ["admin"],
-        queryParams: [{ name: "status", type: "enum", enumName: "OrderStatus", required: false }],
+        queryParams: [
+          { name: "status", field: { entity: "Order", field: "status" }, required: false },
+        ],
+        pagination: { strategy: "offset", defaultPageSize: 20, maxPageSize: 80 },
         joins: [
           { entity: "User", type: "inner", fields: ["id", "email"] },
           { entity: "OrderItem", type: "left", fields: ["quantity"] },
@@ -135,8 +145,10 @@ entities:
     fields:
       email: { type: string, unique: true }
       role: { type: enum, enumName: UserRole, default: CUSTOMER }
-    timestamps: { createdAt: true, updatedAt: true }
-    softDelete: true
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
   Order:
     backend: core-api
     fields:

@@ -14,7 +14,14 @@ function defaultMatchesFieldType(
     case "boolean":
       return typeof value === "boolean";
     case "date":
-      return typeof value === "string" && !Number.isNaN(Date.parse(value));
+      return (
+        (typeof value === "string" && !Number.isNaN(Date.parse(value))) ||
+        (typeof value === "object" &&
+          value !== null &&
+          !Array.isArray(value) &&
+          "kind" in value &&
+          value.kind === "now")
+      );
     case "uuid":
       return (
         typeof value === "string" &&
@@ -40,7 +47,8 @@ export function validateEntities(config: NordixConfig): ConfigDiagnostic[] {
     const generatedFields = new Set(["id"]);
     if (entity.timestamps.createdAt) generatedFields.add("createdAt");
     if (entity.timestamps.updatedAt) generatedFields.add("updatedAt");
-    if (entity.softDelete) generatedFields.add("deletedAt");
+    if (entity.softDelete === "boolean") generatedFields.add("isDeleted");
+    if (entity.softDelete === "timestamp") generatedFields.add("deletedAt");
 
     if (!backendNames.has(entity.backend)) {
       relationDiagnostics.push(
