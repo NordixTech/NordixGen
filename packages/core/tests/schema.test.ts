@@ -169,6 +169,13 @@ describe("Nordix configuration schemas", () => {
     expect(
       EndpointSchema.safeParse({
         ...endpoint,
+        path: "/orders/{orderId",
+        pathParams: [{ name: "orderId", type: "uuid" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      EndpointSchema.safeParse({
+        ...endpoint,
         pathParams: [{ name: "orderId", type: "uuid" }],
         pagination: {
           pageParam: "page",

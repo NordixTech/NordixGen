@@ -490,18 +490,10 @@ export function generateApplicationFiles(
         ),
     ) ||
     model.endpoints.some((endpoint) => {
-      const reference = requestBodyUseCase(endpoint.requestBody);
-      if (reference?.operation === "create") {
-        return Object.values(model.entities[reference.entity]?.fields ?? {}).some(
-          (field) => field.type === "date" && isNowDefault(field.default),
-        );
-      }
-      if (endpoint.requestBody && !reference && !("useCase" in endpoint.requestBody)) {
-        return Object.values(requestBodyFields(endpoint.requestBody, model) ?? {}).some(
-          (field) => field.type === "date" && isNowDefault(field.default),
-        );
-      }
-      return false;
+      if (!endpoint.requestBody || requestBodyUseCase(endpoint.requestBody)) return false;
+      return Object.values(requestBodyFields(endpoint.requestBody, model) ?? {}).some(
+        (field) => field.type === "date" && isNowDefault(field.default),
+      );
     });
   const files: GeneratedFile[] = [];
   if (hasDynamicDefaults) {

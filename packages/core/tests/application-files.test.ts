@@ -216,6 +216,45 @@ describe("Clean Architecture application artifacts", () => {
     }
   }, 15_000);
 
+  it("injects a clock for dynamic date defaults declared directly on an endpoint body", () => {
+    const endpoint = endpointDefinition({
+      method: "POST",
+      requestBody: {
+        scheduledAt: { type: "date", default: { kind: "now" } },
+      },
+    });
+    const files = generateApplicationFiles(
+      applicationContext({ User: domainEntity("User") }, [endpoint]),
+    );
+    expect(files.find((file) => file.path.endsWith("clock.port.ts"))?.content).toContain(
+      "now(): Date",
+    );
+    expect(files.find((file) => file.path.endsWith("PostTest.use-case.ts"))?.content).toContain(
+      "scheduledAt: input.body.scheduledAt ?? this.clock.now()",
+    );
+  });
+
+  it("generates update request DTO references and rejects missing referenced body fields", () => {
+    const updateEndpoint = endpointDefinition({
+      method: "PATCH",
+      requestBody: { useCase: { entity: "User", operation: "update" } },
+    });
+    const files = generateApplicationFiles(
+      applicationContext({ User: domainEntity("User") }, [updateEndpoint]),
+    );
+    expect(files.find((file) => file.path.endsWith("PatchTest.dto.ts"))?.content).toContain(
+      "UpdateUserSchema",
+    );
+
+    const invalidEndpoint = endpointDefinition({
+      requestBody: { missing: { field: { entity: "User", field: "missing" } } },
+    });
+    expect(() =>
+      generateApplicationFiles(
+        applicationContext({ User: domainEntity("User") }, [invalidEndpoint]),
+      ),
+    ).toThrow('Domain model is missing field "User.missing".');
+  });
   it.each([
     [
       "missing entity",
