@@ -116,10 +116,14 @@ function canonicalEntity(name: string, entity: EntityDefinition): NordixEntityRe
 export function buildBackendDomainModel(
   config: NordixConfig,
   backendName: string,
-): Pick<NordixIntermediateRepresentation, "enums" | "entities" | "endpoints"> {
+): Pick<NordixIntermediateRepresentation, "enums" | "entities" | "endpoints"> & {
+  readonly entityOrder?: readonly string[];
+} {
+  const backendEntities = Object.fromEntries(
+    Object.entries(config.entities).filter(([, entity]) => entity.backend === backendName),
+  );
   const entities = Object.fromEntries(
-    Object.entries(config.entities)
-      .filter(([, entity]) => entity.backend === backendName)
+    Object.entries(backendEntities)
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([name, entity]) => [name, canonicalEntity(name, entity)]),
   );
@@ -132,6 +136,7 @@ export function buildBackendDomainModel(
         (left, right) =>
           left.path.localeCompare(right.path) || left.method.localeCompare(right.method),
       ),
+    entityOrder: sortEntitiesTopologically(backendEntities),
   };
 }
 
@@ -170,6 +175,9 @@ export function sortEntitiesTopologically(entities: Record<string, EntityDefinit
           `Relation graph refers to unknown entity "${missing}".`,
         ),
       ]);
+    }
+    if (edge.dependency === edge.dependent) {
+      continue;
     }
     const children = dependents.get(edge.dependency) as Set<string>;
     if (!children.has(edge.dependent)) {

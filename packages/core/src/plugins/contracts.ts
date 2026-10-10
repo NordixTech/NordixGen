@@ -89,6 +89,7 @@ export interface DomainModelContext {
   readonly enums: Readonly<Record<string, readonly string[]>>;
   readonly entities: Readonly<Record<string, NordixEntityRepresentation>>;
   readonly endpoints: NordixIntermediateRepresentation["endpoints"];
+  readonly entityOrder?: readonly string[];
 }
 
 /** Backend persistence details made available to ORM plugins during generation. */

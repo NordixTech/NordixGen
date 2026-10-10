@@ -1,6 +1,11 @@
 import { posix } from "node:path";
 import type { GeneratorPlugin, PluginContributionContext } from "../contracts.js";
-import { generateDrizzleAdapterFiles, generateDrizzleSchemaFiles } from "./drizzle-files.js";
+import {
+  generateDrizzleAdapterFiles,
+  generateDrizzleMigrationFiles,
+  generateDrizzleSchemaFiles,
+  generateDrizzleSeedFiles,
+} from "./drizzle-files.js";
 
 const DATABASE_URL_ENVIRONMENT_VARIABLE = "DATABASE_URL";
 const DRIZZLE_SCHEMA_DIRECTORY = "database/schema";
@@ -31,7 +36,9 @@ export const drizzleOrmPlugin: GeneratorPlugin = {
     ],
     dependencies: {
       "drizzle-orm": "^0.39.0",
+      "drizzle-kit": "^0.30.5",
       "@neondatabase/serverless": "^0.10.4",
+      "@faker-js/faker": "^9.5.0",
     },
   },
   contribute(context: PluginContributionContext) {
@@ -65,8 +72,10 @@ export const drizzleOrmPlugin: GeneratorPlugin = {
 
     const schemaFiles = generateDrizzleSchemaFiles(context, persistence);
     const adapterFiles = generateDrizzleAdapterFiles(context, persistence);
+    const migrationFiles = generateDrizzleMigrationFiles(context, persistence);
+    const seedFiles = generateDrizzleSeedFiles(context, persistence);
 
-    return [configFile, ...schemaFiles, ...adapterFiles];
+    return [configFile, ...schemaFiles, ...adapterFiles, ...migrationFiles, ...seedFiles];
   },
 };
 
