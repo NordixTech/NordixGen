@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { NordixConfigSchema } from "../src/configuration/schema.js";
 import { cleanArchitecturePlugin } from "../src/plugins/architecture/clean.js";
+import { generateHonoFiles } from "../src/plugins/frameworks/hono-files.js";
 import { composeBackendPlugins, composePlugins } from "../src/plugins/composer.js";
 import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
 import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
@@ -109,6 +110,29 @@ describe("Hono framework plugin", () => {
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({ code: "PLUGIN_CONTRIBUTION_FAILED", path: "plugins.hono" }),
     );
+  });
+
+  it("generates the framework-only bootstrap when no auth or ORM is selected", () => {
+    const selection = { pluginId: "hono", configuration: { applicationRoot: "apps/api" } };
+    const framework = honoFrameworkPlugin.createFrameworkContext?.(selection);
+    if (!framework) throw new Error("Hono framework context is unavailable.");
+    const architecture = cleanArchitecturePlugin.resolveArchitectureLayout?.(framework, {
+      pluginId: "clean",
+    });
+    if (!architecture) throw new Error("Clean architecture layout is unavailable.");
+
+    const files = generateHonoFiles({
+      selection,
+      framework,
+      architecture,
+      availableCapabilities: new Set(),
+      domainModel: { entities: {}, enums: {}, endpoints: [] },
+    });
+    const entrypoint = files.find((file) => file.path === "apps/api/src/index.ts")?.content;
+
+    expect(entrypoint).toContain('import routes from "./presentation/controllers/routes.js"');
+    expect(entrypoint).toContain("const app = new Hono();");
+    expect(entrypoint).toContain('app.route("/", routes);');
   });
 
   it("declares hono and @hono/zod-validator runtime dependencies", () => {
@@ -223,7 +247,7 @@ describe("Hono framework plugin", () => {
     expect(index).toContain("app.notFound((");
     expect(index).toContain('problemResponse(c, 500, "Internal Server Error"');
     expect(index).toContain('problemResponse(c, 404, "Not Found"');
-    expect(index).toContain('app.route("/", routes);');
+    expect(index).toContain("createRouteDependencies(c.env.DATABASE_URL)");
 
     // 6. Dependencies merged in result
     expect(result.runtimeDependencies).toMatchObject({

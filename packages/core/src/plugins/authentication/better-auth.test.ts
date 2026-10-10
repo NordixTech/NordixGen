@@ -79,7 +79,7 @@ describe("Better Auth plugin composition", () => {
     const files = result.virtualFileSystem.snapshot();
     expect(files["apps/api/src/infrastructure/auth/auth.ts"]).toContain("minPasswordLength: 15");
     expect(files["apps/api/src/infrastructure/database/schema/index.ts"]).toContain(
-      'export * from "./auth-schema.js";',
+      'export * from "./auth-schema";',
     );
     expect(files["apps/api/src/presentation/controllers/order.controller.ts"]).toContain(
       "Authentication is required",

@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import type { EndpointDefinition, FieldDefinition } from "../../configuration/schema.js";
 import type { DomainModelContext, GeneratedFile, PluginContributionContext } from "../contracts.js";
+import { entityFieldsWithRelationKeys } from "../entity-fields.js";
 
 function importPath(fromFile: string, targetFile: string): string {
   const path = posix.relative(posix.dirname(fromFile), targetFile.replace(/\.ts$/, ".js"));
@@ -68,6 +69,15 @@ function referencedField(
   return model.entities[parameter.field.entity]?.fields[parameter.field.field];
 }
 
+function queryFieldSchema(field: FieldDefinition, model: DomainModelContext): string {
+  const schema = fieldSchema({ ...field, required: true, default: undefined } as FieldDefinition, model, false);
+  if (field.type === "number") return schema.replace("z.number()", "z.coerce.number()");
+  if (field.type === "boolean") {
+    return 'z.enum(["true", "false"]).transform((value) => value === "true")';
+  }
+  return schema;
+}
+
 function requestBodyUseCase(body: EndpointDefinition["requestBody"]):
   | {
       entity: string;
@@ -116,7 +126,7 @@ function parameterSchema(
 ): string {
   const sourceField = referencedField(parameter, model);
   if (sourceField) {
-    return `${fieldSchema({ ...sourceField, required: true, default: undefined } as FieldDefinition, model, false)}${parameter.required ? "" : ".optional()"}`;
+    return `${queryFieldSchema(sourceField, model)}${parameter.required ? "" : ".optional()"}`;
   }
   if (parameter.type === "enum") {
     const values = parameter.enumName ? model.enums[parameter.enumName] : undefined;
@@ -128,7 +138,7 @@ function parameterSchema(
     required: true,
     unique: false,
   } as FieldDefinition;
-  return `${fieldSchema(field, model)}${parameter.required ? "" : ".optional()"}`;
+  return `${queryFieldSchema(field, model)}${parameter.required ? "" : ".optional()"}`;
 }
 
 function objectShape(
@@ -156,9 +166,10 @@ function entityDtoFile(
     ...(entity.softDelete === "boolean" ? ["isDeleted"] : []),
     ...(entity.softDelete === "timestamp" ? ["deletedAt"] : []),
   ]);
-  const fields = objectShape(entity.fields, model, new Set(), false);
-  const createFields = objectShape(entity.fields, model, generated);
-  const filterFields = Object.entries(entity.fields)
+  const declaredFields = entityFieldsWithRelationKeys(entity);
+  const fields = objectShape(declaredFields, model, new Set(), false);
+  const createFields = objectShape(declaredFields, model, generated);
+  const filterFields = Object.entries(declaredFields)
     .filter(([name]) => !generated.has(name))
     .map(
       ([name, field]) =>
@@ -198,6 +209,7 @@ function crudUseCaseFiles(
   dtoDirectory: string,
   portDirectory: string,
   dynamicDefaults: readonly string[],
+  timestamps: { createdAt: boolean; updatedAt: boolean },
 ): GeneratedFile[] {
   const folder = posix.join(useCaseDirectory, name);
   const portPath = posix.join(portDirectory, `${name}.repository.ts`);
@@ -209,9 +221,9 @@ function crudUseCaseFiles(
     {
       operation: "Create",
       filename: "create",
-      body: `const parsed = Create${name}Schema.parse(input);\n    const entity = await this.repository.create({ ...parsed${dynamicDefaults.map((field) => `, ${field}: parsed.${field} ?? this.clock.now()`).join("")} });\n    return ${name}ResponseSchema.parse(entity);`,
+      body: `const parsed = Create${name}Schema.parse(input);\n    const entity = await this.repository.create({ ...parsed${dynamicDefaults.map((field) => `, ${field}: parsed.${field} ?? this.clock.now()`).join("")}${timestamps.createdAt ? ", createdAt: this.clock.now()" : ""}${timestamps.updatedAt ? ", updatedAt: this.clock.now()" : ""} });\n    return ${name}ResponseSchema.parse(entity);`,
       signature: `input: unknown): Promise<${name}Response>`,
-      imports: `import { Create${name}Schema, ${name}ResponseSchema } from "${dtoImport(posix.join(folder, "create.ts"))}";\nimport type { ${name}Response } from "${dtoImport(posix.join(folder, "create.ts"))}";${dynamicDefaults.length > 0 ? `\nimport type { Clock } from "${importPath(posix.join(folder, "create.ts"), posix.join(portDirectory, "clock.port.ts"))}";` : ""}`,
+      imports: `import { Create${name}Schema, ${name}ResponseSchema } from "${dtoImport(posix.join(folder, "create.ts"))}";\nimport type { ${name}Response } from "${dtoImport(posix.join(folder, "create.ts"))}";${dynamicDefaults.length > 0 || timestamps.createdAt || timestamps.updatedAt ? `\nimport type { Clock } from "${importPath(posix.join(folder, "create.ts"), posix.join(portDirectory, "clock.port.ts"))}";` : ""}`,
     },
     {
       operation: "Get",
@@ -251,7 +263,7 @@ function crudUseCaseFiles(
       `import type { ${name}Repository } from "${repositoryImport(filePath)}";`,
       "",
       `export class ${definition.operation}${name}UseCase {`,
-      `  constructor(private readonly repository: ${name}Repository${definition.operation === "Create" && dynamicDefaults.length > 0 ? ", private readonly clock: Clock" : ""}) {}`,
+      `  constructor(private readonly repository: ${name}Repository${definition.operation === "Create" && (dynamicDefaults.length > 0 || timestamps.createdAt || timestamps.updatedAt) ? ", private readonly clock: Clock" : ""}) {}`,
       `  async execute(${definition.signature} {`,
       `    ${body.split("\n").join("\n    ")}`,
       "  }",
@@ -485,11 +497,13 @@ export function generateApplicationFiles(
   const adapterDirectory = posix.join(codeRoot, context.architecture.directories.adapter);
   const hasDynamicDefaults =
     Object.values(model.entities).some(
-      (entity) =>
+        (entity) =>
         entity &&
-        Object.values(entity.fields).some(
-          (field) => field.type === "date" && isNowDefault(field.default),
-        ),
+        (entity.timestamps.createdAt ||
+          entity.timestamps.updatedAt ||
+          Object.values(entity.fields).some(
+            (field) => field.type === "date" && isNowDefault(field.default),
+          )),
     ) ||
     model.endpoints.some((endpoint) => {
       if (!endpoint.requestBody || requestBodyUseCase(endpoint.requestBody)) return false;
@@ -530,7 +544,10 @@ export function generateApplicationFiles(
       content: entityDtoFile(name, entity, model),
     });
     files.push(
-      ...crudUseCaseFiles(name, useCaseDirectory, dtoDirectory, portDirectory, dynamicDefaults),
+      ...crudUseCaseFiles(name, useCaseDirectory, dtoDirectory, portDirectory, dynamicDefaults, {
+        createdAt: entity.timestamps.createdAt,
+        updatedAt: entity.timestamps.updatedAt,
+      }),
     );
   }
   for (const endpoint of model.endpoints) {

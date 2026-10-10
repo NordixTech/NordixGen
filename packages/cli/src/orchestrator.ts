@@ -297,20 +297,46 @@ async function installCompositionDependencies(
   dependencies: Readonly<Record<string, string>>,
   runner: CommandRunner,
 ): Promise<void> {
-  if (Object.keys(dependencies).length === 0) return;
   const manifestPath = join(applicationRoot, "package.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
     dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    scripts?: Record<string, string>;
   };
   const updated = { ...manifest.dependencies };
+  const updatedDevDependencies = { ...manifest.devDependencies };
   let changed = false;
   for (const [name, version] of Object.entries(dependencies)) {
     if (updated[name] === version) continue;
     updated[name] = version;
     changed = true;
   }
+  const developmentDependencies = {
+    "@types/node": "^24.0.0",
+    tsx: "^4.20.6",
+    typescript: "^5.8.2",
+  };
+  for (const [name, version] of Object.entries(developmentDependencies)) {
+    if (updatedDevDependencies[name] === version) continue;
+    updatedDevDependencies[name] = version;
+    changed = true;
+  }
+  const scripts = {
+    ...manifest.scripts,
+    build: "tsc --noEmit",
+    typecheck: "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/infrastructure/database/migrate.ts",
+    "db:seed": "tsx src/infrastructure/database/seed.ts",
+  };
+  for (const [name, command] of Object.entries(scripts)) {
+    if (manifest.scripts?.[name] === command) continue;
+    changed = true;
+  }
   if (!changed) return;
   manifest.dependencies = updated;
+  manifest.devDependencies = updatedDevDependencies;
+  manifest.scripts = scripts;
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   await runner("pnpm", ["install"], applicationRoot);
 }
