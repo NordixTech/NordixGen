@@ -14,7 +14,9 @@ import type {
 import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
 import {
   generateDrizzleAdapterFiles,
+  generateDrizzleMigrationFiles,
   generateDrizzleSchemaFiles,
+  generateDrizzleSeedFiles,
 } from "../src/plugins/orms/drizzle-files.js";
 import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
 import { PluginRegistry } from "../src/plugins/registry.js";
@@ -468,6 +470,8 @@ describe("Drizzle ORM plugin", () => {
     const persistence = createValidPersistenceContext();
     expect(generateDrizzleSchemaFiles(context, persistence)).toEqual([]);
     expect(generateDrizzleAdapterFiles(context, persistence)).toEqual([]);
+    expect(generateDrizzleMigrationFiles(context, persistence)).toEqual([]);
+    expect(generateDrizzleSeedFiles(context, persistence)).toEqual([]);
   });
 
   it("skips query adapter generation when endpoint entity is not in domain model", () => {
@@ -496,5 +500,72 @@ describe("Drizzle ORM plugin", () => {
     expect(
       files.find((f) => f.path.includes("getMissing.drizzle.query.adapter.ts")),
     ).toBeUndefined();
+  });
+
+  it("generates migration runner, README, and deterministic topological seeders", () => {
+    const config = createValidConfig();
+    config.entities.User.fields.name = { type: "string" };
+    config.entities.User.fields.shortCode = { type: "string", maxLength: 10 };
+    config.entities.User.fields.bio = { type: "string", maxLength: 200 };
+    config.entities.User.fields.age = { type: "number", format: "integer" };
+    config.entities.User.fields.score = { type: "number", format: "float" };
+    config.entities.User.fields.isActive = { type: "boolean" };
+    config.entities.User.fields.birthDate = { type: "date" };
+    config.entities.User.fields.externalId = { type: "uuid" };
+    config.entities.User.fields.metadata = { type: "json" };
+    config.entities.User.fields.optionalNotes = { type: "string", required: false };
+
+    const result = composeBackendPlugins(
+      NordixConfigSchema.parse(config),
+      "core-api",
+      createRegistry(),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const files = result.virtualFileSystem.snapshot();
+    const migrateFile = files["apps/api-core/src/infrastructure/database/migrate.ts"];
+    const readmeFile = files["apps/api-core/src/infrastructure/database/README.md"];
+    const seedFile = files["apps/api-core/src/infrastructure/database/seed.ts"];
+
+    expect(migrateFile).toBeDefined();
+    expect(migrateFile).toContain("runMigrations");
+    expect(migrateFile).toContain("drizzle-orm/neon-http/migrator");
+
+    expect(readmeFile).toBeDefined();
+    expect(readmeFile).toContain("# Database Management & Migrations");
+    expect(readmeFile).toContain("pnpm drizzle-kit generate");
+
+    expect(seedFile).toBeDefined();
+    expect(seedFile).toContain("@faker-js/faker");
+    expect(seedFile).toContain("faker.seed(seedValue);");
+    expect(seedFile).toContain("faker.internet.email()");
+    expect(seedFile).toContain("faker.person.fullName()");
+    expect(seedFile).toContain("faker.string.alphanumeric(10)");
+    expect(seedFile).toContain("faker.number.int({ min: 1, max: 1000 })");
+    expect(seedFile).toContain("faker.datatype.boolean()");
+    expect(seedFile).toContain("faker.string.uuid()");
+    expect(seedFile).toContain("faker.helpers.arrayElement");
+
+    // Verify topological order in seeder: User before Order before OrderItem
+    const userIndex = seedFile.indexOf("// Seed User");
+    const orderIndex = seedFile.indexOf("// Seed Order");
+    const orderItemIndex = seedFile.indexOf("// Seed OrderItem");
+    expect(userIndex).toBeGreaterThan(-1);
+    expect(orderIndex).toBeGreaterThan(userIndex);
+    expect(orderItemIndex).toBeGreaterThan(orderIndex);
+  });
+
+  it("handles empty entities and fallback order in seed generation", () => {
+    const context = createDrizzleContext();
+    context.domainModel = {
+      enums: {},
+      entities: {},
+      endpoints: [],
+    };
+    const persistence = createValidPersistenceContext();
+    const files = generateDrizzleSeedFiles(context, persistence);
+    expect(files).toHaveLength(1);
+    expect(files[0]?.content).toContain("export async function seedDatabase");
   });
 });

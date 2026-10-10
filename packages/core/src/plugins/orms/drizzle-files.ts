@@ -462,3 +462,217 @@ export function generateDrizzleAdapterFiles(
 
   return files;
 }
+
+export function generateDrizzleMigrationFiles(
+  context: PluginContributionContext,
+  persistence: NonNullable<PluginContributionContext["persistence"]>,
+): readonly GeneratedFile[] {
+  const model = context.domainModel;
+  if (!model) return [];
+
+  const infrastructureDir = persistence.directories.infrastructure;
+  const dbDir = posix.join(infrastructureDir, "database");
+  const migratePath = posix.join(dbDir, "migrate.ts");
+  const readmePath = posix.join(dbDir, "README.md");
+
+  const migrateContent = [
+    'import { neon } from "@neondatabase/serverless";',
+    'import { drizzle } from "drizzle-orm/neon-http";',
+    'import { migrate } from "drizzle-orm/neon-http/migrator";',
+    "",
+    `const connectionString = process.env.${persistence.connectionStringEnvironmentVariable};`,
+    "if (!connectionString) {",
+    `  throw new Error("Set ${persistence.connectionStringEnvironmentVariable} before running database migrations.");`,
+    "}",
+    "",
+    "export async function runMigrations(): Promise<void> {",
+    "  const sql = neon(connectionString);",
+    "  const db = drizzle(sql);",
+    '  console.log("Applying pending Drizzle migrations...");',
+    '  await migrate(db, { migrationsFolder: "./drizzle" });',
+    '  console.log("Migrations applied successfully.");',
+    "}",
+    "",
+    'if (import.meta.url === `file://${process.argv[1]}`) {',
+    "  runMigrations().catch((error) => {",
+    '    console.error("Migration failed:", error);',
+    "    process.exit(1);",
+    "  });",
+    "}",
+    "",
+  ].join("\n");
+
+  const readmeContent = [
+    "# Database Management & Migrations",
+    "",
+    `Target database: **${persistence.database.name}** (${persistence.database.engine} via ${persistence.database.provider}).`,
+    "",
+    "## 1. Generate Migrations",
+    "Generate SQL migration files from Drizzle schema definitions:",
+    "```bash",
+    "pnpm drizzle-kit generate",
+    "```",
+    "",
+    "## 2. Apply Migrations",
+    `Apply pending migrations using the \`${persistence.connectionStringEnvironmentVariable}\` connection string:`,
+    "```bash",
+    "pnpm tsx src/infrastructure/database/migrate.ts",
+    "```",
+    "",
+    "## 3. Seed Database",
+    "Seed deterministic synthetic fixtures generated according to domain contracts:",
+    "```bash",
+    "pnpm tsx src/infrastructure/database/seed.ts",
+    "```",
+    "",
+  ].join("\n");
+
+  return [
+    { path: migratePath, content: migrateContent },
+    { path: readmePath, content: readmeContent },
+  ];
+}
+
+export function generateDrizzleSeedFiles(
+  context: PluginContributionContext,
+  persistence: NonNullable<PluginContributionContext["persistence"]>,
+): readonly GeneratedFile[] {
+  const model = context.domainModel;
+  if (!model) return [];
+
+  const infrastructureDir = persistence.directories.infrastructure;
+  const dbDir = posix.join(infrastructureDir, "database");
+  const seedPath = posix.join(dbDir, "seed.ts");
+  const schemaIndexPath = posix.join(infrastructureDir, "database/schema/index.ts");
+  const adapterDirectory = persistence.directories.adapter;
+  const dbClientPath = posix.join(adapterDirectory, "drizzle-database.ts");
+
+  const orderedEntityNames = (model.entityOrder ?? Object.keys(model.entities)).filter(
+    (name) => name in model.entities,
+  );
+
+  const entitySeeders: string[] = [];
+  for (const entityName of orderedEntityNames) {
+    const entity = model.entities[entityName] as NonNullable<
+      (typeof model.entities)[keyof typeof model.entities]
+    >;
+
+    const fieldAssignments: string[] = [];
+
+    for (const [fieldName, field] of Object.entries(entity.fields)) {
+      if (fieldName === "id") continue;
+      if (fieldName === "createdAt" || fieldName === "updatedAt") {
+        fieldAssignments.push(`        ${fieldName}: faker.date.recent(),`);
+        continue;
+      }
+      if (fieldName === "isDeleted") {
+        fieldAssignments.push(`        ${fieldName}: false,`);
+        continue;
+      }
+      if (fieldName === "deletedAt") {
+        fieldAssignments.push(`        ${fieldName}: null,`);
+        continue;
+      }
+
+      let valueExpression = "faker.lorem.word()";
+      switch (field.type) {
+        case "string":
+          if (fieldName.toLowerCase().includes("email")) {
+            valueExpression = "faker.internet.email()";
+          } else if (fieldName.toLowerCase().includes("name")) {
+            valueExpression = "faker.person.fullName()";
+          } else if (field.maxLength !== undefined && field.maxLength <= 20) {
+            valueExpression = `faker.string.alphanumeric(${field.maxLength})`;
+          } else {
+            valueExpression = "faker.lorem.sentence()";
+          }
+          break;
+        case "number":
+          if (field.format === "integer") {
+            valueExpression = "faker.number.int({ min: 1, max: 1000 })";
+          } else {
+            valueExpression = "faker.number.float({ min: 1, max: 1000, fractionDigits: 2 })";
+          }
+          break;
+        case "boolean":
+          valueExpression = "faker.datatype.boolean()";
+          break;
+        case "date":
+          valueExpression = "faker.date.recent()";
+          break;
+        case "uuid":
+          valueExpression = "faker.string.uuid()";
+          break;
+        case "json":
+          valueExpression = '{ meta: faker.lorem.word(), count: faker.number.int({ min: 1, max: 10 }) }';
+          break;
+        case "enum": {
+          const enumValues = model.enums[field.enumName];
+          valueExpression = `faker.helpers.arrayElement(${JSON.stringify(enumValues)})`;
+          break;
+        }
+      }
+
+      if (field.required === false && field.default === undefined) {
+        fieldAssignments.push(`        ${fieldName}: faker.datatype.boolean() ? ${valueExpression} : null,`);
+      } else {
+        fieldAssignments.push(`        ${fieldName}: ${valueExpression},`);
+      }
+    }
+
+    // Assign foreign keys from previously seeded parent entities
+    for (const [relName, rel] of Object.entries(entity.relations)) {
+      if (rel.type === "many-to-one" || rel.type === "one-to-one") {
+        const foreignKeyCol = rel.foreignKey ?? `${rel.target.toLowerCase()}_id`;
+        fieldAssignments.push(
+          `        ${foreignKeyCol}: seeded.${rel.target}.length > 0 ? faker.helpers.arrayElement(seeded.${rel.target}).id : null,`,
+        );
+      }
+    }
+
+    entitySeeders.push(`    // Seed ${entityName} (deterministic synthetic records)
+    seeded.${entityName} = [];
+    for (let i = 0; i < 5; i++) {
+      const record = {
+${fieldAssignments.join("\n")}
+      };
+      const [inserted] = await db.insert(schema.${entityName}Table).values(record as any).returning();
+      if (inserted) {
+        seeded.${entityName}.push(inserted);
+      }
+    }
+    console.log(\`Seeded \${seeded.${entityName}.length} records for ${entityName}\`);`);
+  }
+
+  const seedContent = [
+    'import { faker } from "@faker-js/faker";',
+    `import { createDrizzleDatabase } from "${importPath(seedPath, dbClientPath)}";`,
+    `import * as schema from "${importPath(seedPath, schemaIndexPath)}";`,
+    "",
+    `const connectionString = process.env.${persistence.connectionStringEnvironmentVariable};`,
+    "if (!connectionString) {",
+    `  throw new Error("Set ${persistence.connectionStringEnvironmentVariable} before running database seed.");`,
+    "}",
+    "",
+    "export async function seedDatabase(options?: { seed?: number }): Promise<Record<string, any[]>> {",
+    "  const seedValue = options?.seed ?? 42;",
+    "  faker.seed(seedValue);",
+    "  const db = createDrizzleDatabase(connectionString);",
+    "  const seeded: Record<string, any[]> = {};",
+    "",
+    ...entitySeeders,
+    "",
+    "  return seeded;",
+    "}",
+    "",
+    'if (import.meta.url === `file://${process.argv[1]}`) {',
+    "  seedDatabase().catch((error) => {",
+    '    console.error("Seeding failed:", error);',
+    "    process.exit(1)",
+    "  });",
+    "}",
+    "",
+  ].join("\n");
+
+  return [{ path: seedPath, content: seedContent }];
+}
