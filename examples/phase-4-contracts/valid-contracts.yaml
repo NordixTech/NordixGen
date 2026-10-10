@@ -1,0 +1,160 @@
+# yaml-language-server: $schema=../../nordix.schema.json
+name: nordix-phase-four-contracts
+version: 1.0.0
+description: Example exercising explicit entity and endpoint contracts.
+
+repositories:
+  - name: workspace
+    path: .
+
+backends:
+  - name: api
+    framework: hono
+    architecture: clean
+    repository: workspace
+    path: apps/api
+    auth:
+      type: none
+    persistence:
+      database: commerce-db
+      orm: drizzle
+
+databases:
+  commerce-db:
+    engine: postgres
+    provider: neon
+
+enums:
+  OrderStatus: [PENDING, PAID, CANCELLED]
+  UserStatus: [ACTIVE, SUSPENDED]
+
+entities:
+  User:
+    backend: api
+    fields:
+      email:
+        type: string
+        unique: true
+      status:
+        type: enum
+        enumName: UserStatus
+        default: ACTIVE
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: boolean
+
+  Order:
+    backend: api
+    fields:
+      status:
+        type: enum
+        enumName: OrderStatus
+        default: PENDING
+      total:
+        type: number
+        format: decimal
+      submittedAt:
+        type: date
+        default:
+          kind: now
+    relations:
+      customer:
+        type: many-to-one
+        target: User
+        foreignKey: customer_id
+        onDelete: restrict
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
+
+  OrderNote:
+    backend: api
+    fields:
+      message:
+        type: string
+        minLength: 1
+        maxLength: 500
+    # softDelete is omitted here; false is the default.
+
+endpoints:
+  - backend: api
+    path: /api/orders/summary
+    method: GET
+    operationId: getOrderSummary
+    entity: Order
+    queryParams:
+      - name: orderStatus
+        field:
+          entity: Order
+          field: status
+        required: false
+      - name: userStatus
+        field:
+          entity: User
+          field: status
+        required: false
+    pagination:
+      strategy: offset
+      pageParam: page
+      pageSizeParam: pageSize
+      defaultPageSize: 20
+      maxPageSize: 100
+    joins:
+      - entity: User
+        type: left
+        fields: [id, email, status]
+
+  - backend: api
+    path: /api/orders/{orderId}
+    method: GET
+    operationId: getOrderById
+    entity: Order
+    pathParams:
+      - name: orderId
+        field:
+          entity: Order
+          field: id
+
+  - backend: api
+    path: /api/orders
+    method: POST
+    operationId: createOrder
+    entity: Order
+    requestBody:
+      useCase:
+        entity: Order
+        operation: create
+
+  - backend: api
+    path: /api/orders/{orderId}
+    method: PATCH
+    operationId: updateOrder
+    entity: Order
+    pathParams:
+      - name: orderId
+        field:
+          entity: Order
+          field: id
+    requestBody:
+      useCase:
+        entity: Order
+        operation: update
+
+  - backend: api
+    path: /api/orders/{orderId}/notes
+    method: POST
+    operationId: addOrderNote
+    entity: OrderNote
+    pathParams:
+      - name: orderId
+        field:
+          entity: Order
+          field: id
+    requestBody:
+      message:
+        field:
+          entity: OrderNote
+          field: message
+        required: true
