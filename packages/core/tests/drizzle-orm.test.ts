@@ -520,6 +520,11 @@ describe("Drizzle ORM plugin", () => {
       target: "User",
     };
     config.entities.OrderItem.softDelete = false;
+    config.pagination.compact = {
+      strategy: "offset",
+      defaultPageSize: 10,
+      maxPageSize: 50,
+    };
     config.endpoints.push({
       path: "/api/order-items/page",
       method: "GET",
@@ -531,7 +536,7 @@ describe("Drizzle ORM plugin", () => {
       permissions: [],
       queryParams: [],
       pathParams: [],
-      pagination: { strategy: "offset", defaultPageSize: 10, maxPageSize: 50 },
+      pagination: "compact",
       joins: [],
     });
     const resultWithOne = composeBackendPlugins(

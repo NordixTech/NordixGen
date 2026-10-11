@@ -14,6 +14,44 @@
     "description": {
       "type": "string"
     },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "const": "offset",
+            "default": "offset"
+          },
+          "pageParam": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+            "default": "page"
+          },
+          "pageSizeParam": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+            "default": "pageSize"
+          },
+          "defaultPageSize": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "default": 25
+          },
+          "maxPageSize": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "default": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+      },
+      "default": {}
+    },
     "organizations": {
       "type": "array",
       "items": {
@@ -376,6 +414,84 @@
             "type": "none"
           }
         },
+        "authentication": {
+          "type": "object",
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "methods": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "default": [
+                "email-password"
+              ]
+            },
+            "identityProviders": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": []
+            },
+            "features": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": []
+            }
+          },
+          "required": [
+            "plugin"
+          ],
+          "additionalProperties": false
+        },
+        "authorization": {
+          "type": "object",
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "default": "rbac-pbac"
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "default": []
+            },
+            "defaultRole": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "rolePermissions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "default": {}
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
         "persistence": {
           "type": "object",
           "properties": {
@@ -511,6 +627,84 @@
             "default": {
               "type": "none"
             }
+          },
+          "authentication": {
+            "type": "object",
+            "properties": {
+              "plugin": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "methods": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "default": [
+                  "email-password"
+                ]
+              },
+              "identityProviders": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "default": []
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "default": []
+              }
+            },
+            "required": [
+              "plugin"
+            ],
+            "additionalProperties": false
+          },
+          "authorization": {
+            "type": "object",
+            "properties": {
+              "plugin": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$",
+                "default": "rbac-pbac"
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "default": []
+              },
+              "defaultRole": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "rolePermissions": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "default": {}
+              }
+            },
+            "additionalProperties": false,
+            "default": {}
           },
           "persistence": {
             "type": "object",
@@ -1440,35 +1634,8 @@
             ]
           },
           "pagination": {
-            "type": "object",
-            "properties": {
-              "strategy": {
-                "type": "string",
-                "const": "offset",
-                "default": "offset"
-              },
-              "pageParam": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
-                "default": "page"
-              },
-              "pageSizeParam": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
-                "default": "pageSize"
-              },
-              "defaultPageSize": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "default": 25
-              },
-              "maxPageSize": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "default": 100
-              }
-            },
-            "additionalProperties": false
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
           },
           "joins": {
             "type": "array",

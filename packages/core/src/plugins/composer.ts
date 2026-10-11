@@ -1,5 +1,4 @@
-import type { NordixConfig } from "../configuration/schema.js";
-import { normalizeBackends } from "../configuration/schema.js";
+import { type NordixConfig, normalizeBackends } from "../configuration/schema.js";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
 import { buildBackendDomainModel } from "../intermediate-representation.js";
 import { VirtualFileSystem, normalizeVirtualPath } from "../virtual-file-system.js";
@@ -419,10 +418,11 @@ export function composePlugins(options: ComposePluginsOptions): PluginCompositio
 
 /** Resolves the plugin IDs and database capabilities declared by one backend's YAML config. */
 export function composeBackendPlugins(
-  config: NordixConfig,
+  inputConfig: NordixConfig,
   backendName: string,
   registry: PluginRegistry,
 ): PluginCompositionResult {
+  const config = inputConfig;
   const backend = normalizeBackends(config).find((candidate) => candidate.name === backendName);
   if (!backend) {
     return fail([

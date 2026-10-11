@@ -241,30 +241,6 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
         }
       }
     }
-    if (endpoint.pagination) {
-      if (endpoint.method !== "GET") {
-        diagnostics.push(
-          createDiagnostic(
-            "PAGINATION_REQUIRES_GET",
-            `${endpointPath}.pagination`,
-            "Pagination is only supported on GET collection endpoints.",
-          ),
-        );
-      }
-      const queryNames = new Set(endpoint.queryParams.map((parameter) => parameter.name));
-      if (
-        queryNames.has(endpoint.pagination.pageParam) ||
-        queryNames.has(endpoint.pagination.pageSizeParam)
-      ) {
-        diagnostics.push(
-          createDiagnostic(
-            "PAGINATION_PARAMETER_CONFLICT",
-            `${endpointPath}.pagination`,
-            "Pagination query parameter names must not collide with declared query parameters.",
-          ),
-        );
-      }
-    }
     if (endpoint.requestBody) {
       if (isRequestBodyUseCase(endpoint.requestBody)) {
         const reference = endpoint.requestBody.useCase;

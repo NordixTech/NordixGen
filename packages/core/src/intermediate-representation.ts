@@ -2,11 +2,12 @@ import {
   type EntityDefinition,
   type FieldDefinition,
   type NordixConfig,
+  type NormalizedNordixConfig,
   type RelationDefinition,
   normalizeBackends,
   normalizeFrontends,
 } from "./configuration/schema.js";
-import { validateNordixConfig } from "./configuration/validate.js";
+import { normalizePaginationConfig, validateNordixConfig } from "./configuration/validate.js";
 import { type ConfigDiagnostic, createDiagnostic, formatDiagnostic } from "./diagnostics.js";
 
 export interface NordixEntityRepresentation {
@@ -40,7 +41,7 @@ export interface NordixIntermediateRepresentation {
   entities: Record<string, NordixEntityRepresentation>;
   dependencyEdges: NordixDependencyEdge[];
   entityOrder: string[];
-  endpoints: NordixConfig["endpoints"];
+  endpoints: NormalizedNordixConfig["endpoints"];
 }
 
 export class NordixConfigError extends Error {
@@ -130,8 +131,8 @@ export function buildBackendDomainModel(
   return {
     enums: sortedRecord(config.enums),
     entities,
-    endpoints: config.endpoints
-      .filter((endpoint) => endpoint.backend === backendName)
+    endpoints: normalizePaginationConfig(config)
+      .endpoints.filter((endpoint) => endpoint.backend === backendName)
       .sort(
         (left, right) =>
           left.path.localeCompare(right.path) || left.method.localeCompare(right.method),
@@ -218,6 +219,7 @@ export function buildIntermediateRepresentation(input: unknown): NordixIntermedi
   const validation = validateNordixConfig(input);
   if (!validation.success) throw new NordixConfigError(validation.diagnostics);
   const config = validation.config;
+  const normalizedConfig = validation.normalizedConfig;
   const entityEntries = Object.entries(config.entities).sort(([left], [right]) =>
     left.localeCompare(right),
   );
@@ -249,7 +251,7 @@ export function buildIntermediateRepresentation(input: unknown): NordixIntermedi
     entities,
     dependencyEdges: edges,
     entityOrder: sortEntitiesTopologically(config.entities),
-    endpoints: [...config.endpoints].sort(
+    endpoints: normalizedConfig.endpoints.sort(
       (left, right) =>
         left.path.localeCompare(right.path) || left.method.localeCompare(right.method),
     ),

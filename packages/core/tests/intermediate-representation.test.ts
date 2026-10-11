@@ -31,6 +31,34 @@ describe("Nordix Intermediate Representation", () => {
     ]);
   });
 
+  it("stores resolved pagination options in the IR and omits profiles and unpaginated values", () => {
+    const config = createValidConfig();
+    const { pagination: paginationProfiles, ...normalizedConfig } = config;
+    const unpaginatedEndpoint = {
+      ...normalizedConfig.endpoints[0],
+      operationId: "getOrdersWithoutPagination",
+      path: "/api/orders/unpaginated",
+      pagination: undefined,
+    };
+    normalizedConfig.endpoints.push(unpaginatedEndpoint as (typeof config.endpoints)[number]);
+    const ir = buildIntermediateRepresentation({
+      ...normalizedConfig,
+      pagination: paginationProfiles,
+    });
+    expect(
+      ir.endpoints.find((endpoint) => endpoint.operationId === "getOrderSummary")?.pagination,
+    ).toEqual({
+      strategy: "offset",
+      pageParam: "page",
+      pageSizeParam: "pageSize",
+      defaultPageSize: 20,
+      maxPageSize: 80,
+    });
+    expect(
+      ir.endpoints.find((endpoint) => endpoint.operationId === "getOrdersWithoutPagination"),
+    ).toMatchObject({ pagination: undefined });
+  });
+
   it("produces canonical output when entity and object keys are reordered", () => {
     const first = createValidConfig();
     const firstRepository = first.repositories[0];

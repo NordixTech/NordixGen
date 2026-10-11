@@ -372,7 +372,24 @@ Los endpoints aceptan un `operationId` estable para nombrar los artefactos gener
 
 Los parámetros declarados con `field` heredan el tipo y las restricciones del campo de entidad. En consultas con joins, `entity` identifica sin ambigüedad la fuente. `operator` permite seleccionar la operación del filtro (`eq`, `ne`, `in`, comparaciones u `contains`). Los parámetros sin vínculo siguen pudiendo declarar un tipo explícito para valores que no representan directamente un campo.
 
-La paginación por offset se activa solo cuando el endpoint contiene `pagination`; define estrategia, nombres de parámetros y límites. En su ausencia, el contrato de consulta devuelve una colección sin sobrecarga de paginación. Los valores `now` de campos fecha se expresan como `default: { kind: now }` y se resuelven en ejecución mediante un puerto `Clock`, lo que permite inyectar tiempo determinista en pruebas.
+La paginación por offset se activa solo cuando un endpoint referencia un perfil declarado en el mapa raíz `pagination`. Cada perfil nombra la estrategia, los parámetros de página y tamaño, y los límites; la referencia se resuelve durante la validación a opciones normalizadas antes de llegar a la IR y los plugins. Un endpoint sin referencia permanece sin paginar y su contrato devuelve una colección sin sobrecarga de paginación. Los perfiles solo aplican a endpoints GET de colección sin parámetros de ruta. Los campos `pageParam` y `pageSizeParam` deben ser distintos y no pueden colisionar con los query params del endpoint; `defaultPageSize` no puede superar `maxPageSize`. Las definiciones inline antiguas dejaron de aceptarse: muévelas a `pagination.<nombre>` y reemplaza las opciones del endpoint por `pagination: <nombre>`. Los valores `now` de campos fecha se expresan como `default: { kind: now }` y se resuelven en ejecución mediante un puerto `Clock`, lo que permite inyectar tiempo determinista en pruebas.
+
+```yaml
+pagination:
+  standard:
+    strategy: offset
+    pageParam: page
+    pageSizeParam: pageSize
+    defaultPageSize: 25
+    maxPageSize: 100
+
+endpoints:
+  - backend: api
+    path: /api/orders
+    method: GET
+    entity: Order
+    pagination: standard
+```
 
 Los DTO de endpoint viven bajo `dtos/endpoints` y se nombran a partir del `operationId`; son contratos específicos de la operación y no reemplazan los DTO de entidad. Reutilizar un esquema de creación o actualización es explícito mediante `requestBody.useCase`. Los cuerpos personalizados también son explícitos y no habilitan asignación masiva.
 

@@ -284,7 +284,25 @@ export const PaginationSchema = z
     defaultPageSize: z.number().int().positive().default(25),
     maxPageSize: z.number().int().positive().default(100),
   })
-  .strict();
+  .strict()
+  .superRefine((pagination, context) => {
+    if (pagination.defaultPageSize > pagination.maxPageSize) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["defaultPageSize"],
+        message: "defaultPageSize cannot exceed maxPageSize.",
+      });
+    }
+    if (pagination.pageParam === pagination.pageSizeParam) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pageSizeParam"],
+        message: "Pagination parameter names must be different.",
+      });
+    }
+  });
+
+export const PaginationProfileReferenceSchema = IdentifierSchema;
 
 const RequestBodySchema = z.union([
   z.record(
@@ -317,7 +335,7 @@ export const EndpointSchema = z
     queryParams: z.array(ParameterSchema).default([]),
     pathParams: z.array(PathParameterSchema).default([]),
     requestBody: RequestBodySchema.optional(),
-    pagination: PaginationSchema.optional(),
+    pagination: PaginationProfileReferenceSchema.optional(),
     joins: z
       .array(
         z
@@ -368,22 +386,6 @@ export const EndpointSchema = z
         message: "Path parameter placeholders must be unique.",
       });
     }
-    if (endpoint.pagination) {
-      if (endpoint.pagination.defaultPageSize > endpoint.pagination.maxPageSize) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["pagination", "defaultPageSize"],
-          message: "defaultPageSize cannot exceed maxPageSize.",
-        });
-      }
-      if (endpoint.pagination.pageParam === endpoint.pagination.pageSizeParam) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["pagination", "pageSizeParam"],
-          message: "Pagination parameter names must be different.",
-        });
-      }
-    }
   });
 
 const EnumValuesSchema = z
@@ -417,6 +419,7 @@ export const NordixConfigSchema = z
     name: SlugSchema,
     version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
     description: z.string().optional(),
+    pagination: z.record(IdentifierSchema, PaginationSchema).default({}),
     organizations: z.array(OrganizationSchema).default([]),
     repositories: z.array(RepositorySchema).min(1),
     frontend: FrontendSchema.omit({ name: true }).optional(),
@@ -468,12 +471,19 @@ export type FieldDefinition = z.infer<typeof FieldSchema>;
 export type RelationDefinition = z.infer<typeof RelationSchema>;
 export type EntityDefinition = z.infer<typeof EntitySchema>;
 export type SoftDeleteStrategy = z.infer<typeof SoftDeleteSchema>;
+export type PaginationDefinition = z.infer<typeof PaginationSchema>;
 export type FrontendDefinition = z.infer<typeof FrontendSchema>;
 export type BackendDefinition = z.infer<typeof BackendSchema>;
 export type EndpointDefinition = z.infer<typeof EndpointSchema>;
 export type OrganizationDefinition = z.infer<typeof OrganizationSchema>;
 export type RepositoryDefinition = z.infer<typeof RepositorySchema>;
 export type NordixConfig = z.infer<typeof NordixConfigSchema>;
+export type NormalizedEndpointDefinition = Omit<EndpointDefinition, "pagination"> & {
+  pagination?: PaginationDefinition;
+};
+export type NormalizedNordixConfig = Omit<NordixConfig, "endpoints"> & {
+  endpoints: NormalizedEndpointDefinition[];
+};
 
 export function normalizeFrontends(config: NordixConfig): FrontendDefinition[] {
   const frontends = [...config.frontends];
