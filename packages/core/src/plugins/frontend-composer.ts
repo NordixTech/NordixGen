@@ -1,4 +1,4 @@
-import type { FrontendDefinition, NormalizedEndpointDefinition } from "../configuration/schema.js";
+import type { FrontendDefinition } from "../configuration/schema.js";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
 import { VirtualFileSystem, normalizeVirtualPath } from "../virtual-file-system.js";
 import type { GeneratedFile } from "./contracts.js";
@@ -60,10 +60,22 @@ function validateFrameworkContext(
   }
 }
 
+function clientStatePluginId(frontend: FrontendDefinition): string | undefined {
+  if (typeof frontend.stateManagement === "object") {
+    return frontend.stateManagement.client === "none" ? undefined : frontend.stateManagement.client;
+  }
+  if (frontend.stateManagement === "zustand" || frontend.stateManagement === "context") {
+    return frontend.stateManagement;
+  }
+  return undefined;
+}
+
 function selectedPlugins(
   frontend: FrontendDefinition,
   registry: FrontendPluginRegistry,
+  api: FrontendApiContract,
 ): { plugins: FrontendGeneratorPlugin[]; diagnostics: ConfigDiagnostic[] } {
+  const clientState = clientStatePluginId(frontend);
   const selections = [
     { role: "framework" as const, pluginId: frameworkPluginId(frontend.framework) },
     { role: "styling" as const, pluginId: frontend.styling ?? "tailwind" },
@@ -72,6 +84,10 @@ function selectedPlugins(
     typeof frontend.stateManagement === "object" &&
     frontend.stateManagement.generateHooks
       ? [{ role: "server-state" as const, pluginId: frontend.stateManagement.server }]
+      : []),
+    ...(clientState ? [{ role: "client-state" as const, pluginId: clientState }] : []),
+    ...(api.authentication
+      ? [{ role: "authentication" as const, pluginId: api.authentication.plugin }]
       : []),
   ];
   const diagnostics: ConfigDiagnostic[] = [];
@@ -126,7 +142,16 @@ export function composeFrontendPlugins(
   registry: FrontendPluginRegistry,
   api: FrontendApiContract = { endpoints: [], entities: {}, enums: {} },
 ): FrontendPluginCompositionResult {
-  const { plugins, diagnostics } = selectedPlugins(frontend, registry);
+  const { plugins, diagnostics } = selectedPlugins(frontend, registry, api);
+  if (frontend.authUI && !api.authentication) {
+    diagnostics.push(
+      createDiagnostic(
+        "FRONTEND_AUTH_UI_REQUIRES_AUTHENTICATION",
+        `frontends.${frontend.name}.authUI`,
+        "authUI requires a connected backend with an authentication plugin.",
+      ),
+    );
+  }
   if (api.endpoints.length > 0) {
     const apiPlugin = registry.get("typed-fetch");
     if (!apiPlugin || apiPlugin.descriptor.role !== "api-client") {

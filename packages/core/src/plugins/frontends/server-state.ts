@@ -1,5 +1,6 @@
 import type { FrontendGeneratorPlugin } from "../frontend-contracts.js";
 import { getFrontendOperationNames } from "../frontend-operation-names.js";
+import { frontendRootShellFiles } from "./root-shell.js";
 
 function namesFor(context: Parameters<FrontendGeneratorPlugin["contribute"]>[0]) {
   const names = getFrontendOperationNames(context.api.endpoints);
@@ -107,14 +108,7 @@ export const tanstackQueryServerStatePlugin: FrontendGeneratorPlugin = {
     const root = context.framework.codeRoot;
     return [
       { path: `${root}/lib/api/hooks.ts`, content: tanStackHooks(context) },
-      {
-        path: `${root}/app/providers.tsx`,
-        content: `"use client";\n\nimport { QueryClient, QueryClientProvider } from "@tanstack/react-query";\nimport { useState, type ReactNode } from "react";\n\nexport function Providers({ children }: { children: ReactNode }) {\n  const [queryClient] = useState(() => new QueryClient());\n  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;\n}\n`,
-      },
-      {
-        path: `${root}/app/layout.tsx`,
-        content: `import type { Metadata } from "next";\nimport type { ReactNode } from "react";\nimport "./globals.css";\nimport { Providers } from "./providers";\n\nexport const metadata: Metadata = { title: "${context.projectName}", description: "Generated with NordixGen" };\n\nexport default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {\n  return <html lang="en"><body><Providers>{children}</Providers></body></html>;\n}\n`,
-      },
+      ...frontendRootShellFiles(context, "server-state"),
     ];
   },
 };

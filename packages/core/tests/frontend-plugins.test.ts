@@ -4,8 +4,10 @@ import {
   type FrontendGeneratorPlugin,
   FrontendPluginRegistrationError,
   FrontendPluginRegistry,
+  betterAuthFrontendPlugin,
   buildFrontendApiContract,
   composeFrontendPlugins,
+  contextClientStatePlugin,
   nativeReactUiPlugin,
   nextjsFrontendPlugin,
   plainCssStylingPlugin,
@@ -14,8 +16,10 @@ import {
   tanstackQueryServerStatePlugin,
   typedFetchApiPlugin,
   validateFrontendPluginDescriptor,
+  zustandClientStatePlugin,
 } from "../src/index.js";
 import { getFrontendOperationNames } from "../src/plugins/frontend-operation-names.js";
+import { frontendRootShellOwnerRole } from "../src/plugins/frontends/root-shell.js";
 
 const frontend = (options: Record<string, unknown> = {}) =>
   FrontendSchema.parse({
@@ -112,7 +116,18 @@ describe("frontend plugin contracts", () => {
       version: "1.0.0",
       repositories: [{ name: "app", path: "." }],
       backends: [
-        { name: "api", framework: "hono", repository: "app", path: "apps/api" },
+        {
+          name: "api",
+          framework: "hono",
+          repository: "app",
+          path: "apps/api",
+          authentication: { plugin: "better-auth" },
+          authorization: {
+            roles: ["admin"],
+            defaultRole: "admin",
+            rolePermissions: { admin: ["orders:read"] },
+          },
+        },
         { name: "admin", framework: "hono", repository: "app", path: "apps/admin" },
       ],
       entities: {
@@ -170,6 +185,15 @@ describe("frontend plugin contracts", () => {
     expect(contract.entities).not.toHaveProperty("AuditLog");
     expect(contract.entities.Order?.fields).toHaveProperty("userId");
     expect(contract.entities).toHaveProperty("User");
+    expect(contract.authentication).toMatchObject({
+      plugin: "better-auth",
+      backend: "api",
+      roles: ["admin"],
+      rolePermissions: { admin: ["orders:read"] },
+    });
+    expect(
+      buildFrontendApiContract(config, frontend({ connectsTo: ["admin"] })).authentication,
+    ).toBe(undefined);
   });
 
   it("assigns collision-safe operation names and covers generated body variants", () => {
@@ -571,6 +595,7 @@ describe("frontend plugin contracts", () => {
         nativeReactUiPlugin,
         typedFetchApiPlugin,
         tanstackQueryServerStatePlugin,
+        zustandClientStatePlugin,
       ),
       stateApi,
     );
@@ -599,6 +624,7 @@ describe("frontend plugin contracts", () => {
         nativeReactUiPlugin,
         typedFetchApiPlugin,
         swrServerStatePlugin,
+        zustandClientStatePlugin,
       ),
       apiContract,
     );
@@ -608,7 +634,7 @@ describe("frontend plugin contracts", () => {
     expect(swr.virtualFileSystem.readFile("apps/store-web/src/lib/api/hooks.ts")).toContain(
       "useSWR",
     );
-    expect(swr.virtualFileSystem.listFiles()).not.toContain("apps/store-web/src/app/providers.tsx");
+    expect(swr.virtualFileSystem.listFiles()).toContain("apps/store-web/src/app/providers.tsx");
 
     const frameworkContext = nextjsFrontendPlugin.createFrameworkContext?.(frontend());
     const inactiveContext = {
@@ -630,6 +656,7 @@ describe("frontend plugin contracts", () => {
         nativeReactUiPlugin,
         typedFetchApiPlugin,
         tanstackQueryServerStatePlugin,
+        zustandClientStatePlugin,
       ),
       apiContract,
     );
@@ -671,6 +698,183 @@ describe("frontend plugin contracts", () => {
     expect(fallbackFiles.find(({ path }) => path.endsWith("/client.ts"))?.content).toContain(
       "__NORDIX_API_BASE_URL__",
     );
+  });
+
+  it("generates auth UI and secure client-state modules from the backend contract", () => {
+    const authentication = {
+      plugin: "better-auth",
+      backend: "api",
+      methods: ["email-password", "username-password"],
+      identityProviders: ["google", "github"],
+      features: ["two-factor", "password-recovery", "email-verification"],
+      roles: ["admin", "customer"],
+      defaultRole: "customer",
+      rolePermissions: { admin: ["*"], customer: ["orders:read"] },
+    };
+    const result = composeFrontendPlugins(
+      "Commerce",
+      frontend({
+        authUI: true,
+        stateManagement: { client: "zustand", server: "native-fetch", generateHooks: false },
+      }),
+      registryWith(
+        nextjsFrontendPlugin,
+        tailwindStylingPlugin,
+        nativeReactUiPlugin,
+        zustandClientStatePlugin,
+        betterAuthFrontendPlugin,
+      ),
+      { endpoints: [], entities: {}, enums: {}, authentication },
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.runtimeDependencies).toMatchObject({
+      zustand: "^5.0.8",
+      "better-auth": "^1.7.7",
+    });
+    const generated = result.virtualFileSystem.listFiles();
+    expect(generated).toContain("apps/store-web/src/app/sign-in/page.tsx");
+    expect(generated).toContain("apps/store-web/src/components/auth/session-view-sync.tsx");
+    const authClient = result.virtualFileSystem.readFile("apps/store-web/src/lib/auth/client.ts");
+    expect(authClient).toContain("usernameClient()");
+    expect(authClient).toContain("twoFactorClient()");
+    expect(authClient).toContain('credentials: "include"');
+    const permissions = result.virtualFileSystem.readFile(
+      "apps/store-web/src/lib/auth/permissions.ts",
+    );
+    expect(permissions).toContain('"orders:read"');
+    expect(permissions).toContain("Protected operations remain enforced by the generated backend.");
+    expect(result.virtualFileSystem.readFile("apps/store-web/src/app/providers.tsx")).toContain(
+      "SessionViewSync",
+    );
+
+    const contextState = composeFrontendPlugins(
+      "Commerce",
+      frontend({
+        stateManagement: { client: "context", server: "native-fetch", generateHooks: false },
+      }),
+      registryWith(
+        nextjsFrontendPlugin,
+        tailwindStylingPlugin,
+        nativeReactUiPlugin,
+        contextClientStatePlugin,
+      ),
+      { endpoints: [], entities: {}, enums: {} },
+    );
+    expect(contextState.success).toBe(true);
+    if (contextState.success) {
+      expect(contextState.virtualFileSystem.listFiles()).toContain(
+        "apps/store-web/src/stores/client-state-provider.tsx",
+      );
+      expect(
+        contextState.virtualFileSystem.readFile("apps/store-web/src/app/providers.tsx"),
+      ).toContain("ClientStateProvider");
+    }
+
+    const authOnly = composeFrontendPlugins(
+      "Commerce",
+      frontend({
+        authUI: true,
+        stateManagement: { client: "none", server: "native-fetch", generateHooks: false },
+      }),
+      registryWith(
+        nextjsFrontendPlugin,
+        tailwindStylingPlugin,
+        nativeReactUiPlugin,
+        betterAuthFrontendPlugin,
+      ),
+      {
+        endpoints: [],
+        entities: {},
+        enums: {},
+        authentication: {
+          ...authentication,
+          methods: ["email-password"],
+          identityProviders: [],
+          features: [],
+        },
+      },
+    );
+    expect(authOnly.success).toBe(true);
+    if (authOnly.success) {
+      const signIn = authOnly.virtualFileSystem.readFile(
+        "apps/store-web/src/components/auth/sign-in-form.tsx",
+      );
+      expect(signIn).toContain('import { useState, type FormEvent } from "react";');
+      expect(signIn).not.toContain("setMode");
+      expect(signIn).not.toContain("Continue with google");
+      expect(authOnly.virtualFileSystem.readFile("apps/store-web/src/app/providers.tsx")).toContain(
+        "return children;",
+      );
+    }
+  });
+
+  it("supports legacy client-state names and covers authentication plugin boundaries", () => {
+    const legacyState = composeFrontendPlugins(
+      "Commerce",
+      frontend({ stateManagement: "context" }),
+      registryWith(
+        nextjsFrontendPlugin,
+        tailwindStylingPlugin,
+        nativeReactUiPlugin,
+        contextClientStatePlugin,
+      ),
+      { endpoints: [], entities: {}, enums: {} },
+    );
+    expect(legacyState.success).toBe(true);
+
+    expect(frontendRootShellOwnerRole(new Set())).toBeUndefined();
+
+    const definition = frontend();
+    const framework = nextjsFrontendPlugin.createFrameworkContext?.(definition);
+    expect(framework).toBeDefined();
+    if (!framework) return;
+    const baseContext = {
+      projectName: "Commerce",
+      frontend: definition,
+      framework: { ...framework, conventions: {} },
+      availableCapabilities: new Set(["framework:react", "authentication:session"]),
+    };
+    expect(() =>
+      betterAuthFrontendPlugin.contribute({
+        ...baseContext,
+        api: { endpoints: [], entities: {}, enums: {} },
+      }),
+    ).toThrow("requires a connected backend authentication plugin");
+
+    const files = betterAuthFrontendPlugin.contribute({
+      ...baseContext,
+      api: {
+        endpoints: [],
+        entities: {},
+        enums: {},
+        authentication: {
+          plugin: "better-auth",
+          backend: "api",
+          methods: ["email-password"],
+          identityProviders: [],
+          features: [],
+          roles: [],
+          rolePermissions: {},
+        },
+      },
+    });
+    expect(files.find(({ path }) => path.endsWith("/lib/auth/client.ts"))?.content).toContain(
+      "__NORDIX_API_BASE_URL__",
+    );
+  });
+
+  it("rejects frontend auth UI when no connected authentication is available", () => {
+    const result = composeFrontendPlugins(
+      "Commerce",
+      frontend({ authUI: true }),
+      registryWith(nextjsFrontendPlugin, tailwindStylingPlugin, nativeReactUiPlugin),
+    );
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(result.diagnostics.map(({ code }) => code)).toContain(
+        "FRONTEND_AUTH_UI_REQUIRES_AUTHENTICATION",
+      );
   });
 
   it("supports plain CSS and safely escapes generated project text", () => {

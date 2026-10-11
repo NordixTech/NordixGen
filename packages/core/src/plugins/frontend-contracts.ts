@@ -8,6 +8,8 @@ export const FRONTEND_PLUGIN_ROLES = [
   "ui",
   "api-client",
   "server-state",
+  "client-state",
+  "authentication",
 ] as const;
 
 export type FrontendPluginRole = (typeof FRONTEND_PLUGIN_ROLES)[number];
@@ -52,10 +54,22 @@ export interface FrontendApiEntity {
   readonly relations: Readonly<Record<string, { readonly target: string; readonly type: string }>>;
 }
 
+export interface FrontendAuthenticationContract {
+  readonly plugin: string;
+  readonly backend: string;
+  readonly methods: readonly string[];
+  readonly identityProviders: readonly string[];
+  readonly features: readonly string[];
+  readonly roles: readonly string[];
+  readonly defaultRole?: string;
+  readonly rolePermissions: Readonly<Record<string, readonly string[]>>;
+}
+
 export interface FrontendApiContract {
   readonly endpoints: readonly NormalizedEndpointDefinition[];
   readonly entities: Readonly<Record<string, FrontendApiEntity>>;
   readonly enums: Readonly<Record<string, readonly string[]>>;
+  readonly authentication?: FrontendAuthenticationContract;
 }
 
 export interface FrontendGeneratorPlugin {
