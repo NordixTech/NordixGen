@@ -92,7 +92,8 @@ export const FrontendSchema = z
     name: SlugSchema,
     framework: z.string().min(1),
     type: z.enum(["web", "mobile", "desktop"]).default("web"),
-    styling: z.string().min(1).optional(),
+    styling: z.string().min(1).default("tailwind"),
+    ui: z.string().min(1).default("native"),
     stateManagement: z.union([z.string().min(1), StateManagementObjectSchema]).optional(),
     repository: SlugSchema,
     connectsTo: z.array(SlugSchema).default([]),
@@ -493,6 +494,8 @@ export function normalizeFrontends(config: NordixConfig): FrontendDefinition[] {
       name: "frontend",
       type: config.frontend.type ?? "web",
       authUI: config.frontend.authUI ?? false,
+      styling: config.frontend.styling ?? "tailwind",
+      ui: config.frontend.ui ?? "native",
     });
   }
   return frontends.sort((left, right) => left.name.localeCompare(right.name));

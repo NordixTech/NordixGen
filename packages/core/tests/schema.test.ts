@@ -91,7 +91,17 @@ describe("Nordix configuration schemas", () => {
         path: "apps/web",
         repository: "app",
       }),
-    ).toMatchObject({ type: "web", authUI: false });
+    ).toMatchObject({ type: "web", authUI: false, styling: "tailwind", ui: "native" });
+    expect(
+      FrontendSchema.parse({
+        name: "web",
+        framework: "nextjs",
+        path: "apps/web",
+        repository: "app",
+        styling: "css",
+        ui: "native",
+      }),
+    ).toMatchObject({ styling: "css", ui: "native" });
     expect(
       BackendSchema.parse({ name: "api", framework: "hono", path: "apps/api", repository: "app" }),
     ).toMatchObject({ architecture: "clean", auth: { type: "none" } });

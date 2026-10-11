@@ -3,18 +3,24 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { intro, isCancel, outro, select, text } from "@clack/prompts";
 import {
   type FrameworkContext,
+  FrontendPluginRegistry,
   type NordixConfig,
   type PluginCompositionResult,
   PluginRegistry,
   betterAuthPlugin,
   cleanArchitecturePlugin,
   composeBackendPlugins,
+  composeFrontendPlugins,
   drizzleOrmPlugin,
   honoFrameworkPlugin,
+  nativeReactUiPlugin,
+  nextjsFrontendPlugin,
   normalizeBackends,
   normalizeFrontends,
   parseNordixYaml,
+  plainCssStylingPlugin,
   rbacPbacPlugin,
+  tailwindStylingPlugin,
 } from "@nordixgen/core";
 import { applyEdits, modify, parse } from "jsonc-parser";
 import pc from "picocolors";
@@ -50,6 +56,7 @@ export function createStarterConfiguration(name: string, includeFrontend: boolea
           "    framework: nextjs",
           "    type: web",
           "    styling: tailwind",
+          "    ui: native",
           "    repository: app",
           "    connectsTo: [api]",
           "    path: apps/web",
@@ -252,32 +259,12 @@ async function scaffold(
   application: { name: string; framework: string },
   target: string,
   runner: CommandRunner,
-  frameworkContext?: FrameworkContext,
+  frameworkContext?: FrameworkContext | { scaffold: FrameworkContext["scaffold"] },
 ): Promise<void> {
   const framework = application.framework.toLowerCase();
-  if (framework === "nextjs" || framework === "next.js") {
-    await runner(
-      "pnpm",
-      [
-        "dlx",
-        "create-next-app@15.1.7",
-        basename(target),
-        "--yes",
-        "--typescript",
-        "--app",
-        "--src-dir",
-        "--tailwind",
-        "--use-pnpm",
-        "--skip-install",
-        "--disable-git",
-      ],
-      dirname(target),
-    );
-    return;
-  }
-  if (framework === "hono") {
+  if (framework === "nextjs" || framework === "next.js" || framework === "hono") {
     if (!frameworkContext) {
-      throw new Error(`Framework context for Hono is missing for "${application.name}".`);
+      throw new Error(`Framework context for "${application.name}" is missing.`);
     }
     const plan = frameworkContext.scaffold;
     await runner(
@@ -288,7 +275,7 @@ async function scaffold(
     return;
   }
   throw new Error(
-    `Unsupported framework "${application.framework}" for "${application.name}". Phase 3 supports Next.js and Hono scaffolding.`,
+    `Unsupported framework "${application.framework}" for "${application.name}". Register a framework plugin before generation.`,
   );
 }
 
@@ -341,6 +328,39 @@ async function installCompositionDependencies(
   await runner("pnpm", ["install"], applicationRoot);
 }
 
+async function installFrontendPluginDependencies(
+  applicationRoot: string,
+  dependencies: Readonly<Record<string, string>>,
+  developmentDependencies: Readonly<Record<string, string>>,
+  runner: CommandRunner,
+): Promise<void> {
+  if (Object.keys(dependencies).length === 0 && Object.keys(developmentDependencies).length === 0)
+    return;
+  const manifestPath = join(applicationRoot, "package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const updatedDependencies = { ...manifest.dependencies };
+  const updatedDevelopmentDependencies = { ...manifest.devDependencies };
+  let changed = false;
+  for (const [name, version] of Object.entries(dependencies)) {
+    if (updatedDependencies[name] === version) continue;
+    updatedDependencies[name] = version;
+    changed = true;
+  }
+  for (const [name, version] of Object.entries(developmentDependencies)) {
+    if (updatedDevelopmentDependencies[name] === version) continue;
+    updatedDevelopmentDependencies[name] = version;
+    changed = true;
+  }
+  if (!changed) return;
+  manifest.dependencies = updatedDependencies;
+  manifest.devDependencies = updatedDevelopmentDependencies;
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await runner("pnpm", ["install"], applicationRoot);
+}
+
 async function writeNordixReadme(
   repositoryRoot: string,
   projectName: string,
@@ -374,83 +394,6 @@ async function writeNordixReadme(
   await writeFile(readmePath, content, "utf8");
 }
 
-async function writeBrandedNextHomepage(
-  applicationRoot: string,
-  projectName: string,
-  frontendName: string,
-): Promise<void> {
-  const appDirectory = join(applicationRoot, "src", "app");
-  await mkdir(appDirectory, { recursive: true });
-  const source = `export const metadata = {
-  title: "${projectName} | NordixGen",
-  description: "A full-stack foundation for ${projectName}, generated with NordixGen.",
-};
-
-export default function Home() {
-  return (
-    <main className="relative isolate min-h-screen overflow-hidden bg-[#080b12] text-slate-100">
-      <div aria-hidden="true" className="pointer-events-none absolute -left-40 -top-40 h-96 w-96 rounded-full bg-cyan-400/10 blur-3xl" />
-      <div aria-hidden="true" className="pointer-events-none absolute -bottom-48 right-0 h-[32rem] w-[32rem] rounded-full bg-indigo-500/10 blur-3xl" />
-      <header className="relative mx-auto flex max-w-7xl items-center justify-between px-6 py-7 lg:px-10">
-        <a aria-label="NordixGen home" className="flex items-center gap-3" href="#top">
-          <span className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-200/20 bg-cyan-300/10 text-lg font-semibold text-cyan-200">N</span>
-          <span className="text-lg font-semibold tracking-tight">Nordix<span className="text-cyan-300">Gen</span></span>
-        </a>
-        <span className="hidden rounded-full border border-white/10 px-4 py-2 text-xs font-medium tracking-[0.2em] text-slate-400 sm:inline-flex">PROJECT STARTER</span>
-      </header>
-
-      <section id="top" className="relative mx-auto grid min-h-[78vh] max-w-7xl items-center gap-16 px-6 py-16 lg:grid-cols-[1.2fr_0.8fr] lg:px-10">
-        <div>
-          <p className="mb-7 flex items-center gap-3 text-xs font-semibold tracking-[0.24em] text-cyan-200">
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
-            BUILT WITH NORDIXGEN
-          </p>
-          <h1 className="max-w-3xl text-5xl font-semibold leading-[1.05] tracking-tight sm:text-7xl">
-            A new foundation<br />
-            <span className="bg-gradient-to-r from-cyan-200 via-sky-300 to-indigo-300 bg-clip-text text-transparent">for ${projectName}.</span>
-          </h1>
-          <p className="mt-7 max-w-xl text-lg leading-8 text-slate-400">Your architecture is ready to become a product. Start with a clean foundation, then make it unmistakably yours.</p>
-          <a className="mt-10 inline-flex items-center gap-3 rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 transition hover:bg-white" href="#project">
-            Explore your project <span aria-hidden="true">↓</span>
-          </a>
-        </div>
-
-        <aside id="project" className="rounded-3xl border border-white/10 bg-white/[0.035] p-7 shadow-2xl shadow-cyan-950/20 backdrop-blur sm:p-9">
-          <div className="flex items-center justify-between border-b border-white/10 pb-6">
-            <div>
-              <p className="text-xs font-semibold tracking-[0.2em] text-slate-500">PROJECT OVERVIEW</p>
-              <p className="mt-2 text-xl font-semibold">Your next chapter starts here.</p>
-            </div>
-            <span aria-hidden="true" className="text-2xl text-cyan-200">✦</span>
-          </div>
-          <dl className="divide-y divide-white/10">
-            <div className="flex items-center justify-between gap-4 py-5">
-              <dt className="text-sm text-slate-500">Project</dt>
-              <dd className="font-medium">${projectName}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4 py-5">
-              <dt className="text-sm text-slate-500">Frontend</dt>
-              <dd className="font-medium">${frontendName}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4 py-5">
-              <dt className="text-sm text-slate-500">Created with</dt>
-              <dd className="font-medium text-cyan-200">NordixGen</dd>
-            </div>
-          </dl>
-          <p className="mt-2 rounded-2xl bg-black/20 px-4 py-3 text-sm leading-6 text-slate-400">This is your starting point. The next phases will generate features from your entities and endpoints.</p>
-        </aside>
-      </section>
-
-      <footer className="relative mx-auto flex max-w-7xl flex-col gap-2 border-t border-white/10 px-6 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-10">
-        <span>Made with care by NordixGen.</span>
-        <span className="tracking-[0.16em]">BUILD SOMETHING GREAT</span>
-      </footer>
-    </main>
-  );
-}
-`;
-  await writeFile(join(appDirectory, "page.tsx"), source, "utf8");
-}
 export async function runGenerate(
   file: string,
   output: string,
@@ -489,17 +432,26 @@ export async function runGenerate(
     string,
     Extract<PluginCompositionResult, { success: true }>
   >();
+  const frontendCompositions = new Map<
+    string,
+    Extract<ReturnType<typeof composeFrontendPlugins>, { success: true }>
+  >();
   const pluginRegistry = new PluginRegistry();
   pluginRegistry.register(honoFrameworkPlugin);
   pluginRegistry.register(cleanArchitecturePlugin);
   pluginRegistry.register(drizzleOrmPlugin);
   pluginRegistry.register(betterAuthPlugin);
   pluginRegistry.register(rbacPbacPlugin);
+  const frontendPluginRegistry = new FrontendPluginRegistry();
+  frontendPluginRegistry.register(nextjsFrontendPlugin);
+  frontendPluginRegistry.register(tailwindStylingPlugin);
+  frontendPluginRegistry.register(plainCssStylingPlugin);
+  frontendPluginRegistry.register(nativeReactUiPlugin);
 
   for (const app of applications) {
-    if (!["nextjs", "next.js", "hono"].includes(app.framework.toLowerCase())) {
+    if (app.kind === "backend" && app.framework.toLowerCase() !== "hono") {
       throw new Error(
-        `Unsupported framework "${app.framework}" for "${app.name}". Phase 3 supports Next.js and Hono scaffolding.`,
+        `Unsupported backend framework "${app.framework}" for "${app.name}". Register a backend framework plugin before generation.`,
       );
     }
     const repo = repositories.find((item) => item.name === app.repository);
@@ -515,6 +467,16 @@ export async function runGenerate(
         );
       }
       backendCompositions.set(app.name, composition);
+    } else if (app.kind === "frontend") {
+      const composition = composeFrontendPlugins(config.name, app, frontendPluginRegistry);
+      if (!composition.success) {
+        throw new Error(
+          composition.diagnostics
+            .map((item) => `${item.code} at ${item.path}: ${item.message}`)
+            .join("\n"),
+        );
+      }
+      frontendCompositions.set(app.name, composition);
     }
   }
   for (const repository of repositories) await assertEmptyOrMissing(repository.root);
@@ -528,7 +490,14 @@ export async function runGenerate(
     const appTarget = safeResolve(repo.root, app.path);
     await mkdir(dirname(appTarget), { recursive: true });
     const composition = app.kind === "backend" ? backendCompositions.get(app.name) : undefined;
-    await scaffold(app, appTarget, runner, composition?.frameworkContext);
+    const frontendComposition =
+      app.kind === "frontend" ? frontendCompositions.get(app.name) : undefined;
+    await scaffold(
+      app,
+      appTarget,
+      runner,
+      composition?.frameworkContext ?? frontendComposition?.frameworkContext,
+    );
     if (app.kind === "backend" && app.authentication?.plugin === "better-auth") {
       await enableHonoAuthenticationRuntime(appTarget);
     }
@@ -536,8 +505,14 @@ export async function runGenerate(
       await composition.virtualFileSystem.emit(repo.root);
       await installCompositionDependencies(appTarget, composition.runtimeDependencies, runner);
     }
-    if (app.kind === "frontend" && ["nextjs", "next.js"].includes(app.framework.toLowerCase())) {
-      await writeBrandedNextHomepage(appTarget, config.name, app.name);
+    if (frontendComposition) {
+      await frontendComposition.virtualFileSystem.emit(repo.root);
+      await installFrontendPluginDependencies(
+        appTarget,
+        frontendComposition.runtimeDependencies,
+        frontendComposition.developmentDependencies,
+        runner,
+      );
     }
   }
 
