@@ -8,6 +8,7 @@ import {
   type PluginCompositionResult,
   PluginRegistry,
   betterAuthPlugin,
+  buildFrontendApiContract,
   cleanArchitecturePlugin,
   composeBackendPlugins,
   composeFrontendPlugins,
@@ -20,7 +21,10 @@ import {
   parseNordixYaml,
   plainCssStylingPlugin,
   rbacPbacPlugin,
+  swrServerStatePlugin,
   tailwindStylingPlugin,
+  tanstackQueryServerStatePlugin,
+  typedFetchApiPlugin,
 } from "@nordixgen/core";
 import { applyEdits, modify, parse } from "jsonc-parser";
 import pc from "picocolors";
@@ -447,6 +451,9 @@ export async function runGenerate(
   frontendPluginRegistry.register(tailwindStylingPlugin);
   frontendPluginRegistry.register(plainCssStylingPlugin);
   frontendPluginRegistry.register(nativeReactUiPlugin);
+  frontendPluginRegistry.register(typedFetchApiPlugin);
+  frontendPluginRegistry.register(tanstackQueryServerStatePlugin);
+  frontendPluginRegistry.register(swrServerStatePlugin);
 
   for (const app of applications) {
     if (app.kind === "backend" && app.framework.toLowerCase() !== "hono") {
@@ -468,7 +475,8 @@ export async function runGenerate(
       }
       backendCompositions.set(app.name, composition);
     } else if (app.kind === "frontend") {
-      const composition = composeFrontendPlugins(config.name, app, frontendPluginRegistry);
+      const api = buildFrontendApiContract(config, app);
+      const composition = composeFrontendPlugins(config.name, app, frontendPluginRegistry, api);
       if (!composition.success) {
         throw new Error(
           composition.diagnostics

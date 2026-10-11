@@ -1,7 +1,14 @@
 import type { FrontendDefinition } from "../configuration/schema.js";
+import type { FieldDefinition, NormalizedEndpointDefinition } from "../configuration/schema.js";
 import type { GeneratedFile, UpstreamScaffoldPlan } from "./contracts.js";
 
-export const FRONTEND_PLUGIN_ROLES = ["framework", "styling", "ui"] as const;
+export const FRONTEND_PLUGIN_ROLES = [
+  "framework",
+  "styling",
+  "ui",
+  "api-client",
+  "server-state",
+] as const;
 
 export type FrontendPluginRole = (typeof FRONTEND_PLUGIN_ROLES)[number];
 
@@ -37,6 +44,18 @@ export interface FrontendPluginContributionContext {
   readonly frontend: FrontendDefinition;
   readonly framework: FrontendFrameworkContext;
   readonly availableCapabilities: ReadonlySet<string>;
+  readonly api: FrontendApiContract;
+}
+
+export interface FrontendApiEntity {
+  readonly fields: Readonly<Record<string, FieldDefinition>>;
+  readonly relations: Readonly<Record<string, { readonly target: string; readonly type: string }>>;
+}
+
+export interface FrontendApiContract {
+  readonly endpoints: readonly NormalizedEndpointDefinition[];
+  readonly entities: Readonly<Record<string, FrontendApiEntity>>;
+  readonly enums: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface FrontendGeneratorPlugin {
