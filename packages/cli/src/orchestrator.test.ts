@@ -150,6 +150,11 @@ describe("generate command orchestration", () => {
     await runGenerate(configPath, output, runner);
 
     const apiRoot = join(output, "apps", "api");
+    const apiPackage = JSON.parse(await readFile(join(apiRoot, "package.json"), "utf8"));
+    expect(apiPackage.scripts.typecheck).toBe("tsc --noEmit");
+    expect(apiPackage.scripts.build).toBe("tsc --noEmit");
+    expect(apiPackage.scripts["db:migrate"]).toContain("migrate.ts");
+    expect(apiPackage.devDependencies.tsx).toBeDefined();
     expect(await readFile(join(apiRoot, "drizzle.config.ts"), "utf8")).toContain(
       'dialect: "postgresql"',
     );
@@ -159,6 +164,9 @@ describe("generate command orchestration", () => {
         "utf8",
       ),
     ).toContain("export");
+    expect(await readFile(join(apiRoot, "src", "index.ts"), "utf8")).toContain(
+      "createRouteDependencies(c.env.DATABASE_URL)",
+    );
     expect(runner).toHaveBeenCalledWith(
       "pnpm",
       expect.arrayContaining(["create", "hono@0.19.4"]),

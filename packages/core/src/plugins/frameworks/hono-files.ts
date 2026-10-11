@@ -32,6 +32,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
   const healthControllerPath = posix.join(controllerDirectory, "health.controller.ts");
   const routesPath = posix.join(controllerDirectory, "routes.ts");
   const hasAuthentication = context.availableCapabilities.has("authentication:better-auth");
+  const hasDrizzle = context.availableCapabilities.has("orm:drizzle");
   const infrastructureDirectory = posix.join(
     framework.codeRoot,
     architecture.directories.infrastructure,
@@ -148,6 +149,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
   const routesImports: string[] = [
     'import { Hono } from "hono";',
     `import healthController from "${relativeImport(routesPath, healthControllerPath)}";`,
+    `import { problemResponse } from "${relativeImport(routesPath, problemDetailsPath)}";`,
   ];
   const routesRegistrations: string[] = ['  routes.route("/health", healthController);'];
 
@@ -219,7 +221,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
         "    }),",
         "    async (c) => {",
         '      const input = c.req.valid("json");',
-        `      const useCase = deps?.createUseCase ?? (c.get("create${entityName}UseCase") as Create${entityName}UseCase | undefined);`,
+        "      const useCase = deps?.createUseCase;",
         "      if (!useCase) {",
         `        return problemResponse(c, 500, "Internal Server Error", "Create${entityName}UseCase not configured");`,
         "      }",
@@ -231,7 +233,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
         "  router.get(",
         '    "/",',
         "    async (c) => {",
-        `      const useCase = deps?.listUseCase ?? (c.get("list${entityName}UseCase") as List${entityName}UseCase | undefined);`,
+        "      const useCase = deps?.listUseCase;",
         "      if (!useCase) {",
         `        return problemResponse(c, 500, "Internal Server Error", "List${entityName}UseCase not configured");`,
         "      }",
@@ -250,7 +252,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
         "    }),",
         "    async (c) => {",
         '      const { id } = c.req.valid("param");',
-        `      const useCase = deps?.getUseCase ?? (c.get("get${entityName}UseCase") as Get${entityName}UseCase | undefined);`,
+        "      const useCase = deps?.getUseCase;",
         "      if (!useCase) {",
         `        return problemResponse(c, 500, "Internal Server Error", "Get${entityName}UseCase not configured");`,
         "      }",
@@ -277,7 +279,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
         "    async (c) => {",
         '      const { id } = c.req.valid("param");',
         '      const changes = c.req.valid("json");',
-        `      const useCase = deps?.updateUseCase ?? (c.get("update${entityName}UseCase") as Update${entityName}UseCase | undefined);`,
+        "      const useCase = deps?.updateUseCase;",
         "      if (!useCase) {",
         `        return problemResponse(c, 500, "Internal Server Error", "Update${entityName}UseCase not configured");`,
         "      }",
@@ -298,7 +300,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
         "    }),",
         "    async (c) => {",
         '      const { id } = c.req.valid("param");',
-        `      const useCase = deps?.deleteUseCase ?? (c.get("delete${entityName}UseCase") as Delete${entityName}UseCase | undefined);`,
+        "      const useCase = deps?.deleteUseCase;",
         "      if (!useCase) {",
         `        return problemResponse(c, 500, "Internal Server Error", "Delete${entityName}UseCase not configured");`,
         "      }",
@@ -416,7 +418,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
       `  useCase?: ${operationName}UseCase;`,
       "}",
       "",
-      `export function create${operationName}Controller(deps?: ${operationName}ControllerDependencies): Hono {`,
+      `export function create${operationName}EndpointController(deps?: ${operationName}ControllerDependencies): Hono {`,
       "  const router = new Hono();",
       "",
       `  router.${httpMethod}(`,
@@ -424,7 +426,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
       ...authorizationHandlers,
       ...validatorsList,
       "    async (c) => {",
-      `      const useCase = deps?.useCase ?? (c.get("${lowerFirst(operationName)}UseCase") as ${operationName}UseCase | undefined);`,
+      "      const useCase = deps?.useCase;",
       "      if (!useCase) {",
       `        return problemResponse(c, 500, "Internal Server Error", "${operationName}UseCase not configured");`,
       "      }",
@@ -440,7 +442,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
       "  return router;",
       "}",
       "",
-      `export default create${operationName}Controller();`,
+      `export default create${operationName}EndpointController();`,
       "",
     ].join("\n");
 
@@ -449,12 +451,13 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
       content: controllerContent,
     });
 
-    const routeVar = `${lowerFirst(operationName)}Controller`;
+    const endpointFactoryName = `create${operationName}EndpointController`;
+    const routeVar = `${lowerFirst(operationName)}EndpointController`;
     routesImports.push(
-      `import ${routeVar}, { create${operationName}Controller } from "${relativeImport(routesPath, controllerPath)}";`,
+      `import ${routeVar}, { ${endpointFactoryName} } from "${relativeImport(routesPath, controllerPath)}";`,
     );
     routesRegistrations.push(
-      `  routes.route("/", deps?.endpoints?.${lowerFirst(operationName)} ? create${operationName}Controller(deps.endpoints.${lowerFirst(operationName)}) : ${routeVar});`,
+      `  routes.route("/", deps?.endpoints?.${lowerFirst(operationName)} ? ${endpointFactoryName}(deps.endpoints.${lowerFirst(operationName)}) : ${routeVar});`,
     );
   }
 
@@ -472,6 +475,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
       "export function createRoutes(deps?: RoutesDependencies): Hono {",
       "  const routes = new Hono();",
       ...routesRegistrations,
+      '  routes.notFound((c) => problemResponse(c, 404, "Not Found", `Route not found: ${c.req.path}`));',
       "  return routes;",
       "}",
       "",
@@ -484,6 +488,11 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
   // 6. Entrypoint with RFC 7807 error and notFound handlers
   const routesImport = relativeImport(entryPoint, routesPath);
   const problemImportInIndex = relativeImport(entryPoint, problemDetailsPath);
+  const dependenciesFactoryPath = posix.join(
+    framework.codeRoot,
+    architecture.directories.adapter,
+    "create-route-dependencies.ts",
+  );
 
   files.push({
     path: entryPoint,
@@ -496,11 +505,18 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
           ]
         : []),
       `import { problemResponse } from "${problemImportInIndex}";`,
-      `import routes from "${routesImport}";`,
+      ...(hasDrizzle
+        ? [
+            `import { createRoutes } from "${routesImport}";`,
+            `import { createRouteDependencies } from "${relativeImport(entryPoint, dependenciesFactoryPath)}";`,
+          ]
+        : [`import routes from "${routesImport}";`]),
       "",
       ...(hasAuthentication
         ? ["const app = new Hono<{ Bindings: AuthEnvironment }>();"]
-        : ["const app = new Hono();"]),
+        : hasDrizzle
+          ? ["const app = new Hono<{ Bindings: { DATABASE_URL: string } }>();"]
+          : ["const app = new Hono();"]),
       "",
       "// Global RFC 7807 error handler",
       "app.onError((err, c) => {",
@@ -529,7 +545,14 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
             "",
           ]
         : []),
-      'app.route("/", routes);',
+      ...(hasDrizzle
+        ? [
+            'app.all("*", (c) => {',
+            "  const routes = createRoutes(createRouteDependencies(c.env.DATABASE_URL));",
+            "  return routes.fetch(c.req.raw, c.env, c.executionCtx);",
+            "});",
+          ]
+        : ['app.route("/", routes);']),
       "",
       "export default app;",
       "",

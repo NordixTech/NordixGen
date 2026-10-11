@@ -51,7 +51,7 @@ function authSchemaContent(
     userColumns.push('  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),');
   }
   const tables = [
-    `export const user = pgTable("user", {\n${userColumns.join("\n")}\n});`,
+    `export const authUser = pgTable("auth_user", {\n${userColumns.join("\n")}\n});`,
     [
       'export const session = pgTable("session", {',
       '  id: text("id").primaryKey(),',
@@ -61,7 +61,7 @@ function authSchemaContent(
       '  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),',
       '  ipAddress: text("ip_address"),',
       '  userAgent: text("user_agent"),',
-      '  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),',
+      '  userId: text("user_id").notNull().references(() => authUser.id, { onDelete: "cascade" }),',
       '}, (table) => [index("session_user_id_idx").on(table.userId)]);',
     ].join("\n"),
     [
@@ -69,7 +69,7 @@ function authSchemaContent(
       '  id: text("id").primaryKey(),',
       '  accountId: text("account_id").notNull(),',
       '  providerId: text("provider_id").notNull(),',
-      '  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),',
+      '  userId: text("user_id").notNull().references(() => authUser.id, { onDelete: "cascade" }),',
       '  accessToken: text("access_token"),',
       '  refreshToken: text("refresh_token"),',
       '  idToken: text("id_token"),',
@@ -97,7 +97,7 @@ function authSchemaContent(
       [
         'export const twoFactor = pgTable("twoFactor", {',
         '  id: text("id").primaryKey(),',
-        '  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),',
+        '  userId: text("user_id").notNull().references(() => authUser.id, { onDelete: "cascade" }),',
         '  secret: text("secret").notNull(),',
         '  backupCodes: text("backup_codes").notNull(),',
         '  verified: boolean("verified").notNull().default(false),',
@@ -211,7 +211,7 @@ function authRuntimeContent(
     "    baseURL: env.BETTER_AUTH_URL,",
     "    secret: env.BETTER_AUTH_SECRET,",
     "    trustedOrigins: getTrustedAuthOrigins(env),",
-    '    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema }),',
+    '    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema: { ...schema, user: schema.authUser } }),',
     `    user: { additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } } },`,
     "    emailAndPassword: {",
     "      enabled: true,",

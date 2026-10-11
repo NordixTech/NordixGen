@@ -55,10 +55,7 @@ export const drizzleOrmPlugin: GeneratorPlugin = {
       content: [
         'import { defineConfig } from "drizzle-kit";',
         "",
-        `const databaseUrl = process.env.${persistence.connectionStringEnvironmentVariable};`,
-        "if (!databaseUrl) {",
-        `  throw new Error("Set ${persistence.connectionStringEnvironmentVariable} in the environment before running Drizzle Kit.");`,
-        "}",
+        `const databaseUrl = process.env.${persistence.connectionStringEnvironmentVariable} ?? "postgresql://placeholder:placeholder@localhost:5432/placeholder";`,
         "",
         "export default defineConfig({",
         '  dialect: "postgresql",',
