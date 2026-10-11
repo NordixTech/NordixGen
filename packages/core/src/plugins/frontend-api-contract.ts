@@ -1,7 +1,8 @@
 import type { FieldDefinition, FrontendDefinition, NordixConfig } from "../configuration/schema.js";
+import { normalizeBackends } from "../configuration/schema.js";
 import { normalizePaginationConfig } from "../configuration/validate.js";
 import { buildIntermediateRepresentation } from "../intermediate-representation.js";
-import type { FrontendApiContract } from "./frontend-contracts.js";
+import type { FrontendApiContract, FrontendAuthenticationContract } from "./frontend-contracts.js";
 
 /** Builds only the normalized backend contracts visible to one frontend. */
 export function buildFrontendApiContract(
@@ -33,8 +34,29 @@ export function buildFrontendApiContract(
     }
   }
 
+  const backendByName = new Map(
+    normalizeBackends(config).map((backend) => [backend.name, backend]),
+  );
+  let authentication: FrontendAuthenticationContract | undefined;
+  for (const backendName of frontend.connectsTo) {
+    const backend = backendByName.get(backendName);
+    if (!backend?.authentication) continue;
+    authentication = {
+      plugin: backend.authentication.plugin,
+      backend: backend.name,
+      methods: backend.authentication.methods,
+      identityProviders: backend.authentication.identityProviders,
+      features: backend.authentication.features,
+      roles: backend.authorization.roles,
+      defaultRole: backend.authorization.defaultRole,
+      rolePermissions: backend.authorization.rolePermissions,
+    };
+    break;
+  }
+
   return {
     endpoints,
+    ...(authentication ? { authentication } : {}),
     entities: Object.fromEntries(
       Object.entries(representation.entities)
         .filter(([name]) => entityNames.has(name))

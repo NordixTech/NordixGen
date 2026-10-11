@@ -7,11 +7,13 @@ import {
   type NordixConfig,
   type PluginCompositionResult,
   PluginRegistry,
+  betterAuthFrontendPlugin,
   betterAuthPlugin,
   buildFrontendApiContract,
   cleanArchitecturePlugin,
   composeBackendPlugins,
   composeFrontendPlugins,
+  contextClientStatePlugin,
   drizzleOrmPlugin,
   honoFrameworkPlugin,
   nativeReactUiPlugin,
@@ -25,6 +27,7 @@ import {
   tailwindStylingPlugin,
   tanstackQueryServerStatePlugin,
   typedFetchApiPlugin,
+  zustandClientStatePlugin,
 } from "@nordixgen/core";
 import { applyEdits, modify, parse } from "jsonc-parser";
 import pc from "picocolors";
@@ -454,6 +457,9 @@ export async function runGenerate(
   frontendPluginRegistry.register(typedFetchApiPlugin);
   frontendPluginRegistry.register(tanstackQueryServerStatePlugin);
   frontendPluginRegistry.register(swrServerStatePlugin);
+  frontendPluginRegistry.register(zustandClientStatePlugin);
+  frontendPluginRegistry.register(contextClientStatePlugin);
+  frontendPluginRegistry.register(betterAuthFrontendPlugin);
 
   for (const app of applications) {
     if (app.kind === "backend" && app.framework.toLowerCase() !== "hono") {

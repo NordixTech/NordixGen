@@ -28,6 +28,10 @@ export const INCOMPATIBILITY_MATRIX: readonly IncompatibilityRule[] = [
     id: "secured-endpoint-auth",
     description: "Secured endpoints require an authenticated backend.",
   },
+  {
+    id: "frontend-auth-ui",
+    description: "Generated authentication UI requires a connected backend authentication plugin.",
+  },
 ];
 
 export function validateCompatibility(config: NordixConfig): ConfigDiagnostic[] {
@@ -59,6 +63,21 @@ export function validateCompatibility(config: NordixConfig): ConfigDiagnostic[] 
           "Generated query hooks need TanStack Query or SWR; native-fetch does not provide a query cache.",
         ),
       );
+    }
+
+    if (frontend.authUI) {
+      const hasAuthentication = frontend.connectsTo.some(
+        (backendName) => backendByName.get(backendName)?.authentication,
+      );
+      if (!hasAuthentication) {
+        diagnostics.push(
+          createDiagnostic(
+            "INCOMPATIBLE_FRONTEND_AUTH_UI",
+            `frontends.${frontend.name}.authUI`,
+            "authUI requires a connected backend with an authentication plugin.",
+          ),
+        );
+      }
     }
   }
 

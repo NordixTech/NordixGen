@@ -1,0 +1,213 @@
+import type { FrontendGeneratorPlugin } from "../frontend-contracts.js";
+import { frontendRootShellFiles } from "./root-shell.js";
+
+function source(lines: readonly string[]): string {
+  return `${lines.join("\n")}\n`;
+}
+
+function zustandUiStore(): string {
+  return source([
+    '"use client";',
+    "",
+    'import { create } from "zustand";',
+    "",
+    "export interface UiToast {",
+    "  id: string;",
+    "  message: string;",
+    '  tone: "status" | "alert";',
+    "}",
+    "",
+    "export interface UiStore {",
+    "  toasts: readonly UiToast[];",
+    "  modal: string | null;",
+    '  notify: (message: string, tone?: UiToast["tone"]) => void;',
+    "  dismissToast: (id: string) => void;",
+    "  openModal: (id: string) => void;",
+    "  closeModal: () => void;",
+    "}",
+    "",
+    "export const useUIStore = create<UiStore>((set) => ({",
+    "  toasts: [],",
+    "  modal: null,",
+    '  notify: (message, tone = "status") =>',
+    "    set((state) => ({",
+    "      toasts: [...state.toasts, { id: crypto.randomUUID(), message, tone }],",
+    "    })),",
+    "  dismissToast: (id) => set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) })),",
+    "  openModal: (id) => set({ modal: id }),",
+    "  closeModal: () => set({ modal: null }),",
+    "}));",
+  ]);
+}
+
+function zustandAuthStore(): string {
+  return source([
+    '"use client";',
+    "",
+    'import { create } from "zustand";',
+    'import { hasPermission, hasRole, type SessionUser } from "@/lib/auth/permissions";',
+    "",
+    "// Presentation-only session view. Never persist tokens, cookies, or secrets here.",
+    "// Backend authorization remains the access-control boundary.",
+    "export interface AuthViewState {",
+    "  user: SessionUser | null;",
+    "  isPending: boolean;",
+    "  setSessionView: (user: SessionUser | null, isPending: boolean) => void;",
+    "  hasPermission: (permission: string) => boolean;",
+    "  hasRole: (role: string) => boolean;",
+    "}",
+    "",
+    "export const useAuthStore = create<AuthViewState>((set, get) => ({",
+    "  user: null,",
+    "  isPending: true,",
+    "  setSessionView: (user, isPending) => set({ user, isPending }),",
+    "  hasPermission: (permission) => hasPermission(get().user, permission),",
+    "  hasRole: (role) => hasRole(get().user, role),",
+    "}));",
+  ]);
+}
+
+function zustandToaster(): string {
+  return source([
+    '"use client";',
+    "",
+    'import { useUIStore } from "@/stores/ui-store";',
+    "",
+    "export function Toaster() {",
+    "  const toasts = useUIStore((state) => state.toasts);",
+    "  const dismissToast = useUIStore((state) => state.dismissToast);",
+    "  return (",
+    '    <div aria-live="polite" className="ng-toaster">',
+    "      {toasts.map((toast) => (",
+    '        <p className={"ng-notice ng-notice--" + toast.tone} key={toast.id} role={toast.tone === "alert" ? "alert" : "status"}>',
+    "          <span>{toast.message}</span>",
+    '          <button aria-label="Dismiss notification" onClick={() => dismissToast(toast.id)} type="button">×</button>',
+    "        </p>",
+    "      ))}",
+    "    </div>",
+    "  );",
+    "}",
+  ]);
+}
+
+function contextProvider(): string {
+  return source([
+    '"use client";',
+    "",
+    'import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";',
+    "",
+    "export interface UiToast {",
+    "  id: string;",
+    "  message: string;",
+    '  tone: "status" | "alert";',
+    "}",
+    "",
+    "export interface UiStore {",
+    "  toasts: readonly UiToast[];",
+    "  modal: string | null;",
+    '  notify: (message: string, tone?: UiToast["tone"]) => void;',
+    "  dismissToast: (id: string) => void;",
+    "  openModal: (id: string) => void;",
+    "  closeModal: () => void;",
+    "}",
+    "",
+    "const ClientStateContext = createContext<UiStore | null>(null);",
+    "",
+    "export function ClientStateProvider({ children }: { children: ReactNode }) {",
+    "  const [toasts, setToasts] = useState<UiToast[]>([]);",
+    "  const [modal, setModal] = useState<string | null>(null);",
+    '  const notify = useCallback((message: string, tone: UiToast["tone"] = "status") => {',
+    "    setToasts((current) => [...current, { id: crypto.randomUUID(), message, tone }]);",
+    "  }, []);",
+    "  const dismissToast = useCallback((id: string) => {",
+    "    setToasts((current) => current.filter((toast) => toast.id !== id));",
+    "  }, []);",
+    "  const openModal = useCallback((id: string) => setModal(id), []);",
+    "  const closeModal = useCallback(() => setModal(null), []);",
+    "  const value = useMemo(",
+    "    () => ({ toasts, modal, notify, dismissToast, openModal, closeModal }),",
+    "    [toasts, modal, notify, dismissToast, openModal, closeModal],",
+    "  );",
+    "  return <ClientStateContext.Provider value={value}>{children}</ClientStateContext.Provider>;",
+    "}",
+    "",
+    "export function useUIStore() {",
+    "  const value = useContext(ClientStateContext);",
+    '  if (!value) throw new Error("useUIStore must be used within ClientStateProvider.");',
+    "  return value;",
+    "}",
+  ]);
+}
+
+function contextToaster(): string {
+  return source([
+    '"use client";',
+    "",
+    'import { useUIStore } from "@/stores/client-state-provider";',
+    "",
+    "export function Toaster() {",
+    "  const { toasts, dismissToast } = useUIStore();",
+    "  return (",
+    '    <div aria-live="polite" className="ng-toaster">',
+    "      {toasts.map((toast) => (",
+    '        <p className={"ng-notice ng-notice--" + toast.tone} key={toast.id} role={toast.tone === "alert" ? "alert" : "status"}>',
+    "          <span>{toast.message}</span>",
+    '          <button aria-label="Dismiss notification" onClick={() => dismissToast(toast.id)} type="button">×</button>',
+    "        </p>",
+    "      ))}",
+    "    </div>",
+    "  );",
+    "}",
+  ]);
+}
+
+export const zustandClientStatePlugin: FrontendGeneratorPlugin = {
+  descriptor: {
+    id: "zustand",
+    version: "1.0.0",
+    role: "client-state",
+    provides: ["client-state:zustand"],
+    requires: [
+      {
+        capability: "framework:react",
+        description: "Zustand client state currently generates React hooks.",
+      },
+    ],
+    dependencies: { zustand: "^5.0.8" },
+  },
+  contribute(context) {
+    const root = context.framework.codeRoot;
+    const files = [
+      { path: `${root}/stores/ui-store.ts`, content: zustandUiStore() },
+      { path: `${root}/components/ui/toaster.tsx`, content: zustandToaster() },
+      ...frontendRootShellFiles(context, "client-state"),
+    ];
+    if (context.availableCapabilities.has("authentication:session")) {
+      files.push({ path: `${root}/stores/auth-store.ts`, content: zustandAuthStore() });
+    }
+    return files;
+  },
+};
+
+export const contextClientStatePlugin: FrontendGeneratorPlugin = {
+  descriptor: {
+    id: "context",
+    version: "1.0.0",
+    role: "client-state",
+    provides: ["client-state:context"],
+    requires: [
+      {
+        capability: "framework:react",
+        description: "The React context client-state plugin generates React providers.",
+      },
+    ],
+  },
+  contribute(context) {
+    const root = context.framework.codeRoot;
+    return [
+      { path: `${root}/stores/client-state-provider.tsx`, content: contextProvider() },
+      { path: `${root}/components/ui/toaster.tsx`, content: contextToaster() },
+      ...frontendRootShellFiles(context, "client-state"),
+    ];
+  },
+};

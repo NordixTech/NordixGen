@@ -11,6 +11,7 @@ describe("incompatibility matrix", () => {
       "neon-postgres",
       "cloudflare-native-ci",
       "secured-endpoint-auth",
+      "frontend-auth-ui",
     ]);
     expect(validateCompatibility(NordixConfigSchema.parse(createValidConfig()))).toEqual([]);
   });
@@ -66,6 +67,30 @@ describe("incompatibility matrix", () => {
       ],
     });
     expect(validateCompatibility(config)).toEqual([]);
+  });
+
+  it("requires a connected backend authentication plugin for the frontend auth UI", () => {
+    const validConfig = createValidConfig();
+    const invalid = NordixConfigSchema.parse({
+      ...validConfig,
+      frontends: [{ ...validConfig.frontends[0], authUI: true }],
+      backends: [{ ...validConfig.backends[0], authentication: undefined }],
+    });
+    expect(validateCompatibility(invalid).map(({ code }) => code)).toContain(
+      "INCOMPATIBLE_FRONTEND_AUTH_UI",
+    );
+
+    const connected = NordixConfigSchema.parse({
+      ...validConfig,
+      frontends: [{ ...validConfig.frontends[0], authUI: true }],
+      backends: [
+        {
+          ...validConfig.backends[0],
+          authentication: { plugin: "better-auth" },
+        },
+      ],
+    });
+    expect(validateCompatibility(connected)).toEqual([]);
   });
 
   it("evaluates each secured-endpoint signal independently", () => {
