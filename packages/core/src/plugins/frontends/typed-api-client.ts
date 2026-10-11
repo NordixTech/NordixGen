@@ -29,11 +29,8 @@ function entityType(
   name: string,
   entity: FrontendApiEntity,
   enums: Readonly<Record<string, readonly string[]>>,
-  fields?: readonly string[],
 ): string {
-  const entries = Object.entries(entity.fields).filter(
-    ([field]) => !fields || fields.includes(field),
-  );
+  const entries = Object.entries(entity.fields);
   return `export interface ${name} {\n${entries
     .map(
       ([fieldName, field]) =>

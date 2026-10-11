@@ -1,7 +1,9 @@
 import type { NormalizedEndpointDefinition } from "../configuration/schema.js";
 
 function operationName(endpoint: NormalizedEndpointDefinition): string {
-  const source = endpoint.operationId ?? `${endpoint.method}_${endpoint.path.replace(/[{}]/g, "")}`;
+  const source =
+    endpoint.operationId ??
+    `${endpoint.method.toLowerCase()}_${endpoint.path.replace(/[{}]/g, "")}`;
   const words = source.match(/[A-Za-z0-9]+/g) ?? ["request"];
   const result = words
     .map((word, index) =>
@@ -25,9 +27,9 @@ export function getFrontendOperationNames(
     endpoints.map((endpoint) => {
       const base = operationName(endpoint);
       const candidate =
-        (counts.get(base) ?? 0) > 1
-          ? `${endpoint.backend}${base[0]?.toUpperCase()}${base.slice(1)}`
-          : base;
+        counts.get(base) === 1
+          ? base
+          : `${endpoint.backend}${base[0]?.toUpperCase()}${base.slice(1)}`;
       let name = candidate;
       let suffix = 2;
       while (used.has(name)) name = `${candidate}${suffix++}`;
