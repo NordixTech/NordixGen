@@ -143,7 +143,13 @@
         },
         "styling": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "default": "tailwind"
+        },
+        "ui": {
+          "type": "string",
+          "minLength": 1,
+          "default": "native"
         },
         "stateManagement": {
           "anyOf": [
@@ -237,7 +243,13 @@
           },
           "styling": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "default": "tailwind"
+          },
+          "ui": {
+            "type": "string",
+            "minLength": 1,
+            "default": "native"
           },
           "stateManagement": {
             "anyOf": [

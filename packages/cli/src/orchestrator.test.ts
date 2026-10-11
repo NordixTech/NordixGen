@@ -61,6 +61,8 @@ describe("init command configuration", () => {
     expect(parsed.config.repositories[0]?.initializeGit).toBe(false);
     expect(parsed.config.repositories[0]?.createRemote).toBe(false);
     expect(parsed.config.frontends[0]?.connectsTo).toEqual(["api"]);
+    expect(parsed.config.frontends[0]?.styling).toBe("tailwind");
+    expect(parsed.config.frontends[0]?.ui).toBe("native");
   });
 });
 
@@ -74,7 +76,10 @@ describe("generate command orchestration", () => {
     const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
       calls.push(args);
       const directoryName = args[2];
-      if (directoryName && (args.includes("create-next-app@15.1.7") || args[0] === "create")) {
+      if (
+        directoryName &&
+        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
+      ) {
         const appDirectory = resolve(cwd, basename(directoryName));
         await mkdir(appDirectory, { recursive: true });
         await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
@@ -84,15 +89,27 @@ describe("generate command orchestration", () => {
 
     await runGenerate(configPath, output, runner);
 
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(4);
     expect(calls[0]).toContain("--disable-git");
     expect(calls[0]).toContain("--src-dir");
+    expect(calls[0]).toContain("--tailwind");
+    expect(calls[0]).not.toContain("--skip-install");
     expect(await readFile(join(output, "README.md"), "utf8")).toContain("# ✦ NordixGen");
     expect(await readFile(join(output, "README.md"), "utf8")).toContain("test-project");
     const homepage = await readFile(join(output, "apps", "web", "src", "app", "page.tsx"), "utf8");
-    expect(homepage).toContain("BUILT WITH NORDIXGEN");
-    expect(homepage).toContain("for test-project.");
-    expect(calls[1]).toEqual([
+    expect(homepage).toContain("A thoughtful starting point for test-project.");
+    expect(
+      await readFile(join(output, "apps", "web", "src", "components", "ui", "dialog.tsx"), "utf8"),
+    ).toContain("showModal()");
+    expect(
+      await readFile(join(output, "apps", "web", "src", "app", "globals.css"), "utf8"),
+    ).toContain('@import "tailwindcss";');
+    const webPackage = JSON.parse(
+      await readFile(join(output, "apps", "web", "package.json"), "utf8"),
+    );
+    expect(webPackage.devDependencies.tailwindcss).toBe("^4.0.0");
+    expect(calls[1]).toEqual(["install"]);
+    expect(calls[2]).toEqual([
       "create",
       "hono@0.19.4",
       "api",
@@ -102,7 +119,7 @@ describe("generate command orchestration", () => {
       "pnpm",
       "--install",
     ]);
-    expect(calls[2]).toEqual(["install"]);
+    expect(calls[3]).toEqual(["install"]);
     const apiPackage = JSON.parse(
       await readFile(join(output, "apps", "api", "package.json"), "utf8"),
     );
@@ -122,6 +139,42 @@ describe("generate command orchestration", () => {
     expect(await readFile(join(output, "README.md"), "utf8")).toContain("workspace");
   });
 
+  it("selects plain CSS independently from the Next.js framework plugin", async () => {
+    const root = await makeTempDirectory();
+    const configPath = join(root, "nordix.config.yaml");
+    const output = join(root, "generated");
+    await writeFile(
+      configPath,
+      configuration.replace("    framework: nextjs", "    framework: nextjs\n    styling: css"),
+      "utf8",
+    );
+    const calls: string[][] = [];
+    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
+      calls.push(args);
+      const directoryName = args[2];
+      if (
+        directoryName &&
+        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
+      ) {
+        const appDirectory = resolve(cwd, basename(directoryName));
+        await mkdir(appDirectory, { recursive: true });
+        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
+      }
+      return "";
+    });
+
+    await runGenerate(configPath, output, runner);
+
+    expect(calls[0]).toContain("create-next-app@15.5.26");
+    expect(calls[0]).toContain("--no-tailwind");
+    expect(
+      await readFile(join(output, "apps", "web", "src", "app", "globals.css"), "utf8"),
+    ).not.toContain('@import "tailwindcss"');
+    expect(
+      await readFile(join(output, "apps", "web", "src", "components", "ui", "input.tsx"), "utf8"),
+    ).toContain("aria-invalid={error ? true : undefined}");
+  });
+
   it("generates Drizzle files for a Hono backend configured with a database", async () => {
     const root = await makeTempDirectory();
     const configPath = join(root, "nordix.config.yaml");
@@ -139,7 +192,10 @@ describe("generate command orchestration", () => {
 
     const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
       const directoryName = args[2];
-      if (directoryName && args[0] === "create") {
+      if (
+        directoryName &&
+        (args[0] === "create" || args.some((argument) => argument.startsWith("create-next-app@")))
+      ) {
         const appDirectory = resolve(cwd, basename(directoryName));
         await mkdir(appDirectory, { recursive: true });
         await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
@@ -191,7 +247,10 @@ describe("generate command orchestration", () => {
 
     const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
       const directoryName = args[2];
-      if (directoryName && args[0] === "create") {
+      if (
+        directoryName &&
+        (args[0] === "create" || args.some((argument) => argument.startsWith("create-next-app@")))
+      ) {
         const appDirectory = resolve(cwd, basename(directoryName));
         await mkdir(appDirectory, { recursive: true });
         await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
@@ -262,7 +321,10 @@ describe("generate command orchestration", () => {
 
     const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
       const directoryName = args[2];
-      if (directoryName && (args.includes("create-next-app@15.1.7") || args[0] === "create")) {
+      if (
+        directoryName &&
+        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
+      ) {
         const appDirectory = resolve(cwd, basename(directoryName));
         await mkdir(appDirectory, { recursive: true });
         await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
@@ -308,7 +370,7 @@ describe("generate command orchestration", () => {
     );
 
     await expect(runGenerate(configPath, output, vi.fn())).rejects.toThrow(
-      "supports Next.js and Hono",
+      "Unsupported backend framework",
     );
     await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -364,7 +426,10 @@ describe("generate command orchestration", () => {
         return "https://github.com/NordixTech/workspace.git";
       }
       const directoryName = args[2];
-      if (directoryName && (args.includes("create-next-app@15.1.7") || args[0] === "create")) {
+      if (
+        directoryName &&
+        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
+      ) {
         const appDirectory = resolve(cwd, basename(directoryName));
         await mkdir(appDirectory, { recursive: true });
         await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
@@ -415,7 +480,10 @@ entities:
     await writeFile(configPath, splitConfig, "utf8");
     const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
       const directoryName = args[2];
-      if (directoryName && (args.includes("create-next-app@15.1.7") || args[0] === "create")) {
+      if (
+        directoryName &&
+        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
+      ) {
         const appDirectory = resolve(cwd, basename(directoryName));
         await mkdir(appDirectory, { recursive: true });
         await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
