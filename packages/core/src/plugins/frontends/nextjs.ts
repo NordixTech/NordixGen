@@ -34,6 +34,7 @@ export const nextjsFrontendPlugin: FrontendGeneratorPlugin = {
         importAlias: "@/*",
         styling,
         ui: frontend.ui ?? "native",
+        publicApiBaseUrlExpression: 'process.env.NEXT_PUBLIC_API_BASE_URL ?? ""',
       },
     };
   },

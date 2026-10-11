@@ -562,6 +562,18 @@ frontends:
     path: apps/store-web
 ```
 
+#### Clientes API y estado remoto generados (Phase 5)
+
+Para cada frontend se generan clientes tipados únicamente para los endpoints de los backends declarados en `connectsTo`. El transporte común queda en `src/lib/api/`: `client.ts` centraliza `fetch`, credenciales de sesión, errores RFC 7807 y la URL base; `types.ts` contiene los contratos de entidades, parámetros, cuerpos y respuestas; `endpoints.ts` expone una función por operación.
+
+En Next.js, configura `NEXT_PUBLIC_API_BASE_URL` con una URL absoluta del backend, por ejemplo `https://api.example.com`. En renderizado del lado del servidor, la URL es obligatoria; en el navegador, si se omite, las llamadas usan el mismo origen. Las llamadas incluyen credenciales (`credentials: "include"`) y serializan parámetros de ruta, filtros, paginación y cuerpos desde el contrato normalizado.
+
+`server: tanstack-query` genera hooks de consulta para `GET`, hooks de mutación para los demás métodos y un provider en el layout. Sus claves incluyen entidad, operación e input; las mutaciones invalidan tanto la entidad afectada como las consultas que la incluyen en un join. `optimisticUpdates` habilita actualizaciones optimistas para `PUT`, `PATCH` o `DELETE` cuando el endpoint identifica la entidad mediante un parámetro de ruta `id` (o un único parámetro UUID); en operaciones sin esa identificación se conserva la invalidación normal.
+
+`server: swr` genera hooks SWR y `useSWRMutation`, sin provider adicional. `server: native-fetch` conserva los clientes tipados y no añade hooks ni dependencias de estado remoto; declara `generateHooks: false` al seleccionarlo.
+
+Los cuerpos, filtros y respuestas se tipan desde el mismo YAML y no requieren duplicar interfaces ni escribir llamadas `fetch`. Los tipos previenen incompatibilidades durante la compilación; la validación de runtime del backend sigue siendo la autoridad para los datos recibidos.
+
 ---
 
 ### H. Módulo de Integración con LLM (AI Agentic Tooling)

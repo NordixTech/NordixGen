@@ -1,8 +1,9 @@
-import type { FrontendDefinition } from "../configuration/schema.js";
+import type { FrontendDefinition, NormalizedEndpointDefinition } from "../configuration/schema.js";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
 import { VirtualFileSystem, normalizeVirtualPath } from "../virtual-file-system.js";
 import type { GeneratedFile } from "./contracts.js";
 import type { FrontendFrameworkContext, FrontendGeneratorPlugin } from "./frontend-contracts.js";
+import type { FrontendApiContract } from "./frontend-contracts.js";
 import type { FrontendPluginRegistry } from "./frontend-registry.js";
 
 export type FrontendPluginCompositionResult =
@@ -67,6 +68,11 @@ function selectedPlugins(
     { role: "framework" as const, pluginId: frameworkPluginId(frontend.framework) },
     { role: "styling" as const, pluginId: frontend.styling ?? "tailwind" },
     { role: "ui" as const, pluginId: frontend.ui ?? "native" },
+    ...(frontend.stateManagement &&
+    typeof frontend.stateManagement === "object" &&
+    frontend.stateManagement.generateHooks
+      ? [{ role: "server-state" as const, pluginId: frontend.stateManagement.server }]
+      : []),
   ];
   const diagnostics: ConfigDiagnostic[] = [];
   const plugins: FrontendGeneratorPlugin[] = [];
@@ -118,8 +124,23 @@ export function composeFrontendPlugins(
   projectName: string,
   frontend: FrontendDefinition,
   registry: FrontendPluginRegistry,
+  api: FrontendApiContract = { endpoints: [], entities: {}, enums: {} },
 ): FrontendPluginCompositionResult {
   const { plugins, diagnostics } = selectedPlugins(frontend, registry);
+  if (api.endpoints.length > 0) {
+    const apiPlugin = registry.get("typed-fetch");
+    if (!apiPlugin || apiPlugin.descriptor.role !== "api-client") {
+      diagnostics.push(
+        createDiagnostic(
+          "FRONTEND_API_PLUGIN_NOT_REGISTERED",
+          `frontends.${frontend.name}.connectsTo`,
+          "Register an api-client plugin to generate clients for connected backend endpoints.",
+        ),
+      );
+    } else {
+      plugins.push(apiPlugin);
+    }
+  }
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) return fail(diagnostics);
 
   const frameworkPlugin = plugins.find((plugin) => plugin.descriptor.role === "framework");
@@ -152,6 +173,7 @@ export function composeFrontendPlugins(
   const context = {
     projectName,
     frontend,
+    api,
     framework: Object.freeze({
       ...frameworkContext,
       scaffold: Object.freeze({

@@ -1,0 +1,71 @@
+import type { FieldDefinition, FrontendDefinition, NordixConfig } from "../configuration/schema.js";
+import { normalizePaginationConfig } from "../configuration/validate.js";
+import { buildIntermediateRepresentation } from "../intermediate-representation.js";
+import type { FrontendApiContract } from "./frontend-contracts.js";
+
+/** Builds only the normalized backend contracts visible to one frontend. */
+export function buildFrontendApiContract(
+  config: NordixConfig,
+  frontend: FrontendDefinition,
+): FrontendApiContract {
+  const connectedBackends = new Set(frontend.connectsTo);
+  const normalized = normalizePaginationConfig(config);
+  const representation = buildIntermediateRepresentation(config);
+  const endpoints = normalized.endpoints.filter((endpoint) =>
+    connectedBackends.has(endpoint.backend),
+  );
+  const entityNames = new Set<string>();
+  for (const endpoint of endpoints) {
+    entityNames.add(endpoint.entity);
+    for (const join of endpoint.joins) entityNames.add(join.entity);
+    for (const parameter of [...endpoint.pathParams, ...endpoint.queryParams]) {
+      if (parameter.field) entityNames.add(parameter.field.entity);
+    }
+    if (!endpoint.requestBody) continue;
+    const requestBody = endpoint.requestBody as { useCase?: { entity: string } };
+    if (requestBody.useCase) {
+      entityNames.add(requestBody.useCase.entity);
+      continue;
+    }
+    for (const definition of Object.values(endpoint.requestBody)) {
+      const fieldReference = definition as { field?: { entity: string } };
+      if (fieldReference.field) entityNames.add(fieldReference.field.entity);
+    }
+  }
+
+  return {
+    endpoints,
+    entities: Object.fromEntries(
+      Object.entries(representation.entities)
+        .filter(([name]) => entityNames.has(name))
+        .map(([name, entity]) => {
+          const fields: Record<string, FieldDefinition> = { ...entity.fields };
+          for (const relation of Object.values(entity.relations)) {
+            if (relation.type !== "many-to-one" && relation.type !== "one-to-one") continue;
+            const fieldName = relation.foreignKey ?? `${relation.target.toLowerCase()}_id`;
+            fields[fieldName] ??= {
+              type: "uuid",
+              required: relation.required,
+              unique: relation.type === "one-to-one",
+            };
+          }
+          return [
+            name,
+            {
+              fields,
+              relations: Object.fromEntries(
+                Object.entries(entity.relations).map(([relation, definition]) => [
+                  relation,
+                  {
+                    target: definition.target,
+                    type: definition.type,
+                  },
+                ]),
+              ),
+            },
+          ];
+        }),
+    ),
+    enums: config.enums,
+  };
+}
