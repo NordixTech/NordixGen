@@ -5,8 +5,8 @@ import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { NordixConfigSchema } from "../src/configuration/schema.js";
 import { generateApplicationFiles } from "../src/plugins/architecture/application-files.js";
-import { cleanArchitecturePlugin } from "../src/plugins/architecture/clean.js";
 import { resolveCleanArchitectureLayout } from "../src/plugins/architecture/clean.js";
+import { cleanArchitecturePlugin } from "../src/plugins/architecture/clean.js";
 import { composeBackendPlugins } from "../src/plugins/composer.js";
 import type { DomainModelContext, PluginContributionContext } from "../src/plugins/contracts.js";
 import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
@@ -15,6 +15,13 @@ import { PluginRegistry } from "../src/plugins/registry.js";
 import { createValidConfig } from "./fixtures.js";
 
 function composeFixture(config = createValidConfig()) {
+  const summaryPagination = config.endpoints[0]?.pagination;
+  config.pagination.standard = {
+    ...(typeof summaryPagination === "object" ? summaryPagination : {}),
+    strategy: "offset",
+    defaultPageSize: 20,
+    maxPageSize: 80,
+  };
   config.entities.User.fields.level = { type: "number", format: "integer" };
   config.entities.Order.fields.submittedAt = { type: "date", default: { kind: "now" } };
   const summaryEndpoint = config.endpoints[0];
@@ -157,7 +164,11 @@ describe("Clean Architecture application artifacts", () => {
   });
 
   it("generates joined endpoint DTOs, query ports, validation, and authorization metadata", () => {
-    const result = composeFixture();
+    const config = createValidConfig();
+    const summaryEndpoint = config.endpoints[0];
+    if (!summaryEndpoint) throw new Error("Summary endpoint fixture is missing.");
+    summaryEndpoint.pagination = "standard";
+    const result = composeFixture(config);
     expect(result.success).toBe(true);
     if (!result.success) return;
     const files = result.virtualFileSystem.snapshot();
@@ -204,7 +215,10 @@ describe("Clean Architecture application artifacts", () => {
   });
 
   it("typechecks generated application DTOs and use cases against domain contracts", async () => {
-    const result = composeFixture();
+    const config = createValidConfig();
+    const endpointConfig = config.endpoints[0];
+    if (endpointConfig) endpointConfig.pagination = "standard";
+    const result = composeFixture(config);
     expect(result.success).toBe(true);
     if (!result.success) return;
     const packageRoot = fileURLToPath(new URL("../", import.meta.url));

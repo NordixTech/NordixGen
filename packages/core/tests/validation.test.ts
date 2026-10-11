@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseNordixYaml, validateNordixConfig } from "../src/configuration/validate.js";
+import {
+  parseNordixYaml,
+  resolvePaginationProfileReferences,
+  validateNordixConfig,
+} from "../src/configuration/validate.js";
 import { buildIntermediateRepresentation } from "../src/intermediate-representation.js";
 import { comprehensiveYaml, createValidConfig } from "./fixtures.js";
 
@@ -10,6 +14,100 @@ describe("config validation", () => {
       diagnostics: [],
     });
     expect(parseNordixYaml(comprehensiveYaml).success).toBe(true);
+  });
+
+  it("keeps YAML profile references and exposes resolved pagination options", () => {
+    const config = createValidConfig();
+    const result = validateNordixConfig(config);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const summary = result.normalizedConfig.endpoints.find(
+      (endpoint) => endpoint.operationId === "getOrderSummary",
+    );
+    expect(summary?.pagination).toEqual({
+      strategy: "offset",
+      pageParam: "page",
+      pageSizeParam: "pageSize",
+      defaultPageSize: 20,
+      maxPageSize: 80,
+    });
+    expect(result.config.pagination.standard?.defaultPageSize).toBe(20);
+
+    const unpaginatedConfig = createValidConfig();
+    const unpaginatedEndpoint = unpaginatedConfig.endpoints[0];
+    if (!unpaginatedEndpoint) throw new Error("Endpoint fixture is missing.");
+    unpaginatedEndpoint.pagination = undefined;
+    const unpaginatedResult = validateNordixConfig(unpaginatedConfig);
+    expect(unpaginatedResult.success).toBe(true);
+    if (unpaginatedResult.success)
+      expect(unpaginatedResult.normalizedConfig.endpoints[0]?.pagination).toBeUndefined();
+  });
+
+  it("rejects unknown profiles, invalid profile definitions, parameter collisions, and non-collection methods", () => {
+    const missing = createValidConfig();
+    const missingEndpoint = missing.endpoints[0];
+    if (!missingEndpoint) throw new Error("Endpoint fixture is missing.");
+    missingEndpoint.pagination = "missing";
+    expect(validateNordixConfig(missing).diagnostics.map(({ code }) => code)).toContain(
+      "UNKNOWN_PAGINATION_PROFILE",
+    );
+
+    const invalid = createValidConfig();
+    invalid.pagination.bad = {
+      strategy: "offset",
+      pageParam: "page",
+      pageSizeParam: "page",
+      defaultPageSize: 20,
+      maxPageSize: 10,
+    };
+    const invalidEndpoint = invalid.endpoints[0];
+    if (!invalidEndpoint) throw new Error("Endpoint fixture is missing.");
+    invalidEndpoint.pagination = "bad";
+    invalidEndpoint.method = "GET";
+    invalidEndpoint.path = "/api/orders/{orderId}";
+    expect(validateNordixConfig(invalid).diagnostics.map(({ code }) => code)).toContain(
+      "CONFIG_SCHEMA_INVALID",
+    );
+
+    const pathParameter = createValidConfig();
+    const pathEndpoint = pathParameter.endpoints[0];
+    if (!pathEndpoint) throw new Error("Endpoint fixture is missing.");
+    pathEndpoint.path = "/api/orders/{orderId}";
+    pathEndpoint.pathParams = [{ name: "orderId", type: "uuid" }];
+    expect(validateNordixConfig(pathParameter).diagnostics.map(({ code }) => code)).toContain(
+      "PAGINATION_REQUIRES_GET",
+    );
+
+    const conflict = createValidConfig();
+    const conflictEndpoint = conflict.endpoints[0];
+    if (!conflictEndpoint) throw new Error("Endpoint fixture is missing.");
+    conflictEndpoint.queryParams.push({ name: "page", type: "number" });
+    expect(validateNordixConfig(conflict).diagnostics.map(({ code }) => code)).toContain(
+      "PAGINATION_PARAMETER_CONFLICT",
+    );
+  });
+
+  it("parses named pagination profiles from YAML", () => {
+    const yaml = comprehensiveYaml
+      .replace(
+        "pagination: { strategy: offset, defaultPageSize: 20, maxPageSize: 80 }",
+        "pagination: standard",
+      )
+      .replace(
+        "endpoints:\n",
+        "pagination:\n  standard: { strategy: offset, defaultPageSize: 20, maxPageSize: 80 }\n\nendpoints:\n",
+      );
+    const result = parseNordixYaml(yaml);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.config.pagination.standard?.defaultPageSize).toBe(20);
+  });
+
+  it("leaves an unresolved pagination reference unchanged during normalization", () => {
+    const config = createValidConfig();
+    const endpoint = config.endpoints[0];
+    if (!endpoint) throw new Error("Endpoint fixture is missing.");
+    endpoint.pagination = "missing";
+    expect(resolvePaginationProfileReferences(config).endpoints[0]?.pagination).toBe("missing");
   });
 
   it("parses a representative YAML document and orders its entity dependencies", () => {
@@ -286,7 +384,7 @@ describe("config validation", () => {
     const summary = config.endpoints[0];
     if (!summary) throw new Error("Fixture endpoint is missing.");
     summary.operationId = "readOrders";
-    summary.pagination = { strategy: "offset" };
+    summary.pagination = "standard";
     summary.queryParams = [
       { name: "badType", field: { entity: "Order", field: "status" }, type: "string" },
       { name: "missing", field: { entity: "Order", field: "missing" } },
@@ -327,7 +425,7 @@ describe("config validation", () => {
       permissions: [],
       queryParams: [{ name: "page", type: "number" }],
       pathParams: [],
-      pagination: { strategy: "offset", pageParam: "page" },
+      pagination: "standard",
       requestBody: { useCase: { entity: "User", operation: "update" } },
       joins: [],
     });

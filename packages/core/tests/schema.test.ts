@@ -221,14 +221,27 @@ describe("Nordix configuration schemas", () => {
     expect(
       EndpointSchema.safeParse({
         ...endpoint,
-        pathParams: [{ name: "orderId", type: "uuid" }],
-        pagination: {
-          pageParam: "page",
-          pageSizeParam: "page",
-          defaultPageSize: 20,
-          maxPageSize: 10,
-        },
+        pagination: "standard",
       }).success,
     ).toBe(false);
+    expect(
+      EndpointSchema.safeParse({
+        ...endpoint,
+        path: "/orders",
+        pagination: "standard",
+      }).success,
+    ).toBe(true);
+    expect(
+      EndpointSchema.safeParse({
+        ...endpoint,
+        pagination: { strategy: "offset" },
+      }).success,
+    ).toBe(false);
+    expect(
+      NordixConfigSchema.safeParse({
+        ...createValidConfig(),
+        pagination: { standard: { strategy: "offset", defaultPageSize: 25, maxPageSize: 100 } },
+      }).success,
+    ).toBe(true);
   });
 });

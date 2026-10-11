@@ -102,13 +102,16 @@ export function createValidConfig() {
         queryParams: [
           { name: "status", field: { entity: "Order", field: "status" }, required: false },
         ],
-        pagination: { strategy: "offset", defaultPageSize: 20, maxPageSize: 80 },
+        pagination: "standard",
         joins: [
           { entity: "User", type: "inner", fields: ["id", "email"] },
           { entity: "OrderItem", type: "left", fields: ["quantity"] },
         ],
       },
     ],
+    pagination: {
+      standard: { strategy: "offset", defaultPageSize: 20, maxPageSize: 80 },
+    },
   };
 }
 
