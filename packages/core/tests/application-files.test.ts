@@ -16,7 +16,6 @@ import { createValidConfig } from "./fixtures.js";
 
 function composeFixture(config = createValidConfig()) {
   const summaryPagination = config.endpoints[0]?.pagination;
-  const hasSummaryPagination = summaryPagination !== undefined;
   config.pagination.standard = {
     ...(typeof summaryPagination === "object" ? summaryPagination : {}),
     strategy: "offset",
