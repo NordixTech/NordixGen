@@ -28,15 +28,18 @@ export interface EntityEndpointsGroup {
 export function groupEndpointsByEntity(
   endpoints: readonly NormalizedEndpointDefinition[],
 ): ReadonlyMap<string, EntityEndpointsGroup> {
-  const groups = new Map<string, {
-    entityName: string;
-    listEndpoint?: NormalizedEndpointDefinition;
-    getEndpoint?: NormalizedEndpointDefinition;
-    createEndpoint?: NormalizedEndpointDefinition;
-    updateEndpoint?: NormalizedEndpointDefinition;
-    deleteEndpoint?: NormalizedEndpointDefinition;
-    customEndpoints: NormalizedEndpointDefinition[];
-  }>();
+  const groups = new Map<
+    string,
+    {
+      entityName: string;
+      listEndpoint?: NormalizedEndpointDefinition;
+      getEndpoint?: NormalizedEndpointDefinition;
+      createEndpoint?: NormalizedEndpointDefinition;
+      updateEndpoint?: NormalizedEndpointDefinition;
+      deleteEndpoint?: NormalizedEndpointDefinition;
+      customEndpoints: NormalizedEndpointDefinition[];
+    }
+  >();
 
   for (const endpoint of endpoints) {
     let group = groups.get(endpoint.entity);
@@ -54,7 +57,10 @@ export function groupEndpointsByEntity(
       group.getEndpoint = endpoint;
     } else if (endpoint.method === "POST" && !group.createEndpoint) {
       group.createEndpoint = endpoint;
-    } else if ((endpoint.method === "PATCH" || endpoint.method === "PUT") && !group.updateEndpoint) {
+    } else if (
+      (endpoint.method === "PATCH" || endpoint.method === "PUT") &&
+      !group.updateEndpoint
+    ) {
       group.updateEndpoint = endpoint;
     } else if (endpoint.method === "DELETE" && !group.deleteEndpoint) {
       group.deleteEndpoint = endpoint;
@@ -86,7 +92,9 @@ function fieldInputs(
         : JSON.stringify(field.default ?? "");
       if (field.type === "enum" && field.enumName && enums[field.enumName]) {
         const options = (enums[field.enumName] ?? [])
-          .map((opt) => `            <option value=${JSON.stringify(opt)}>${escapeText(opt)}</option>`)
+          .map(
+            (opt) => `            <option value=${JSON.stringify(opt)}>${escapeText(opt)}</option>`,
+          )
           .join("\n");
         return `          <div className="ng-field">
             <label className="ng-label" htmlFor="${name}">${name}${required ? " *" : ""}</label>
@@ -100,10 +108,10 @@ ${options}
         field.type === "number"
           ? "number"
           : field.type === "date"
-          ? "date"
-          : field.type === "boolean"
-          ? "checkbox"
-          : "text";
+            ? "date"
+            : field.type === "boolean"
+              ? "checkbox"
+              : "text";
 
       if (type === "checkbox") {
         return `          <div className="ng-field" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -197,67 +205,88 @@ function generateFeatureView(
   }
 
   const queryState = [
-    ...(hasPagination ? ['  const [page, setPage] = useState(1);'] : []),
+    ...(hasPagination ? ["  const [page, setPage] = useState(1);"] : []),
     ...(searchParam ? ['  const [searchFilter, setSearchFilter] = useState("");'] : []),
   ].join("\n");
   const queryFields = [
     ...(hasPagination
-      ? [`${JSON.stringify(group.listEndpoint?.pagination?.pageParam ?? "page")}: page`, `${JSON.stringify(group.listEndpoint?.pagination?.pageSizeParam ?? "pageSize")}: ${group.listEndpoint?.pagination?.defaultPageSize ?? 25}`]
+      ? [
+          `${JSON.stringify(group.listEndpoint?.pagination?.pageParam ?? "page")}: page`,
+          `${JSON.stringify(group.listEndpoint?.pagination?.pageSizeParam ?? "pageSize")}: ${group.listEndpoint?.pagination?.defaultPageSize ?? 25}`,
+        ]
       : []),
-    ...(searchParam ? [`${JSON.stringify(searchParam.name)}: searchFilter` ] : []),
+    ...(searchParam ? [`${JSON.stringify(searchParam.name)}: searchFilter`] : []),
   ];
   const queryParam = queryFields.length ? `{ query: { ${queryFields.join(", ")} } }` : "{}";
 
   const hookCalls: string[] = [];
   if (serverState === "tanstack-query") {
     if (listOp) {
-      hookCalls.push(`  const { data, isLoading, error } = use${listOp[0]?.toUpperCase()}${listOp.slice(1)}(${queryParam});`);
+      hookCalls.push(
+        `  const { data, isLoading, error } = use${listOp[0]?.toUpperCase()}${listOp.slice(1)}(${queryParam});`,
+      );
     }
     if (createOp) {
-      hookCalls.push(`  const createMutation = use${createOp[0]?.toUpperCase()}${createOp.slice(1)}();`);
+      hookCalls.push(
+        `  const createMutation = use${createOp[0]?.toUpperCase()}${createOp.slice(1)}();`,
+      );
     }
     if (updateOp) {
-      hookCalls.push(`  const updateMutation = use${updateOp[0]?.toUpperCase()}${updateOp.slice(1)}();`);
+      hookCalls.push(
+        `  const updateMutation = use${updateOp[0]?.toUpperCase()}${updateOp.slice(1)}();`,
+      );
     }
     if (deleteOp) {
-      hookCalls.push(`  const deleteMutation = use${deleteOp[0]?.toUpperCase()}${deleteOp.slice(1)}();`);
+      hookCalls.push(
+        `  const deleteMutation = use${deleteOp[0]?.toUpperCase()}${deleteOp.slice(1)}();`,
+      );
     }
   } else if (serverState === "swr") {
     if (listOp) {
-      hookCalls.push(`  const { data, isLoading, error } = use${listOp[0]?.toUpperCase()}${listOp.slice(1)}(${queryParam});`);
+      hookCalls.push(
+        `  const { data, isLoading, error } = use${listOp[0]?.toUpperCase()}${listOp.slice(1)}(${queryParam});`,
+      );
     }
     if (createOp) {
-      hookCalls.push(`  const createMutation = use${createOp[0]?.toUpperCase()}${createOp.slice(1)}();`);
+      hookCalls.push(
+        `  const createMutation = use${createOp[0]?.toUpperCase()}${createOp.slice(1)}();`,
+      );
     }
     if (updateOp) {
-      hookCalls.push(`  const updateMutation = use${updateOp[0]?.toUpperCase()}${updateOp.slice(1)}();`);
+      hookCalls.push(
+        `  const updateMutation = use${updateOp[0]?.toUpperCase()}${updateOp.slice(1)}();`,
+      );
     }
     if (deleteOp) {
-      hookCalls.push(`  const deleteMutation = use${deleteOp[0]?.toUpperCase()}${deleteOp.slice(1)}();`);
+      hookCalls.push(
+        `  const deleteMutation = use${deleteOp[0]?.toUpperCase()}${deleteOp.slice(1)}();`,
+      );
     }
   } else {
     hookCalls.push(
-      '  const [data, setData] = useState<unknown>(null);',
-      '  const [isLoading, setIsLoading] = useState(false);',
-      '  const [error, setError] = useState<Error | null>(null);',
-      '  const refetch = useCallback(async () => {',
-      '    setIsLoading(true);',
-      '    setError(null);',
-      '    try {',
-      listOp ? `      const res = await ${listOp}(${queryParam});\n      setData(res);` : "      setData([]);",
-      '    } catch (err: unknown) {',
-      '      setError(err instanceof Error ? err : new Error(String(err)));',
-      '    } finally {',
-      '      setIsLoading(false);',
-      '    }',
+      "  const [data, setData] = useState<unknown>(null);",
+      "  const [isLoading, setIsLoading] = useState(false);",
+      "  const [error, setError] = useState<Error | null>(null);",
+      "  const refetch = useCallback(async () => {",
+      "    setIsLoading(true);",
+      "    setError(null);",
+      "    try {",
+      listOp
+        ? `      const res = await ${listOp}(${queryParam});\n      setData(res);`
+        : "      setData([]);",
+      "    } catch (err: unknown) {",
+      "      setError(err instanceof Error ? err : new Error(String(err)));",
+      "    } finally {",
+      "      setIsLoading(false);",
+      "    }",
       `  }, [${[...(hasPagination ? ["page"] : []), ...(searchParam ? ["searchFilter"] : [])].join(", ")}]);`,
-      '  useEffect(() => { void refetch(); }, [refetch]);',
+      "  useEffect(() => { void refetch(); }, [refetch]);",
     );
   }
 
   const itemsAccessor = hasPagination
-    ? '  const items = (data as unknown as { items?: readonly FeatureRow[] } | null)?.items ?? (Array.isArray(data) ? data as unknown as readonly FeatureRow[] : []);'
-    : '  const items = Array.isArray(data) ? data as unknown as readonly FeatureRow[] : (data as unknown as { items?: readonly FeatureRow[] } | null)?.items ?? [];';
+    ? "  const items = (data as unknown as { items?: readonly FeatureRow[] } | null)?.items ?? (Array.isArray(data) ? data as unknown as readonly FeatureRow[] : []);"
+    : "  const items = Array.isArray(data) ? data as unknown as readonly FeatureRow[] : (data as unknown as { items?: readonly FeatureRow[] } | null)?.items ?? [];";
 
   const tableHeaders = fields
     .slice(0, 5)
@@ -266,11 +295,15 @@ function generateFeatureView(
 
   const tableCells = fields
     .slice(0, 5)
-    .map(([name]) => `              <TableCell>{String(row.entity ? row.entity[${JSON.stringify(name)}] ?? "" : row[${JSON.stringify(name)}] ?? "")}</TableCell>`)
+    .map(
+      ([name]) =>
+        `              <TableCell>{String(row.entity ? row.entity[${JSON.stringify(name)}] ?? "" : row[${JSON.stringify(name)}] ?? "")}</TableCell>`,
+    )
     .join("\n");
 
-  const createForm = createOp || updateOp
-    ? `      <Dialog onOpenChange={(open) => { setIsCreateOpen(open); if (!open) setEditingItem(null); }} open={isCreateOpen} title={editingItem ? "Edit ${entityName}" : "Create ${entityName}"}>
+  const createForm =
+    createOp || updateOp
+      ? `      <Dialog onOpenChange={(open) => { setIsCreateOpen(open); if (!open) setEditingItem(null); }} open={isCreateOpen} title={editingItem ? "Edit ${entityName}" : "Create ${entityName}"}>
         <form className="ng-form" onSubmit={handleSave}>
           {mutationError ? <Notice tone="alert">{mutationError}</Notice> : null}
 ${fieldInputs(entityFields, enums, true)}
@@ -280,7 +313,7 @@ ${fieldInputs(entityFields, enums, true)}
           </div>
         </form>
       </Dialog>`
-    : "";
+      : "";
 
   const deleteDialog = deleteOp
     ? `      <Dialog onOpenChange={(open) => !open && setDeletingItem(null)} open={Boolean(deletingItem)} title="Delete ${entityName}">
@@ -308,123 +341,133 @@ ${fieldInputs(entityFields, enums, true)}
   return source([
     ...imports,
     "",
-    'type FeatureRow = { readonly id?: unknown; readonly entity?: Readonly<Record<string, unknown>>; readonly [key: string]: unknown };',
+    "type FeatureRow = { readonly id?: unknown; readonly entity?: Readonly<Record<string, unknown>>; readonly [key: string]: unknown };",
     "",
     `export function ${entityName}FeatureScreen() {`,
     queryState,
-    '  const [isCreateOpen, setIsCreateOpen] = useState(false);',
-    '  const [editingItem, setEditingItem] = useState<FeatureRow | null>(null);',
-    '  const [deletingItem, setDeletingItem] = useState<FeatureRow | null>(null);',
-    '  const [mutationError, setMutationError] = useState<string | null>(null);',
-    '  const [isSubmitting, setIsSubmitting] = useState(false);',
-    hasAuth ? '  const { hasPermission } = useSessionView();' : "",
+    "  const [isCreateOpen, setIsCreateOpen] = useState(false);",
+    "  const [editingItem, setEditingItem] = useState<FeatureRow | null>(null);",
+    "  const [deletingItem, setDeletingItem] = useState<FeatureRow | null>(null);",
+    "  const [mutationError, setMutationError] = useState<string | null>(null);",
+    "  const [isSubmitting, setIsSubmitting] = useState(false);",
+    hasAuth ? "  const { hasPermission } = useSessionView();" : "",
     "",
     ...hookCalls,
     "",
     itemsAccessor,
     "",
-    '  const handleSave = async (e: FormEvent<HTMLFormElement>) => {',
-    '    e.preventDefault();',
-    '    setMutationError(null);',
-    '    setIsSubmitting(true);',
-    '    const form = new FormData(e.currentTarget);',
-    '    const body: Record<string, unknown> = {};',
+    "  const handleSave = async (e: FormEvent<HTMLFormElement>) => {",
+    "    e.preventDefault();",
+    "    setMutationError(null);",
+    "    setIsSubmitting(true);",
+    "    const form = new FormData(e.currentTarget);",
+    "    const body: Record<string, unknown> = {};",
     ...Object.entries(entityFields)
-      .filter(([name]) => !["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"].includes(name))
-      .flatMap(([name, field]) => field.type === "boolean"
-        ? [`    body[${JSON.stringify(name)}] = form.has(${JSON.stringify(name)});`]
-        : field.type === "number"
-        ? [`    const ${name}Value = form.get(${JSON.stringify(name)});`, `    if (${name}Value !== null && ${name}Value !== "") body[${JSON.stringify(name)}] = Number(${name}Value);`]
-        : [`    const ${name}Value = form.get(${JSON.stringify(name)});`, `    if (${name}Value !== null && ${name}Value !== "") body[${JSON.stringify(name)}] = String(${name}Value);`]),
-    '    try {',
-    '      if (editingItem) {',
+      .filter(
+        ([name]) => !["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"].includes(name),
+      )
+      .flatMap(([name, field]) =>
+        field.type === "boolean"
+          ? [`    body[${JSON.stringify(name)}] = form.has(${JSON.stringify(name)});`]
+          : field.type === "number"
+            ? [
+                `    const ${name}Value = form.get(${JSON.stringify(name)});`,
+                `    if (${name}Value !== null && ${name}Value !== "") body[${JSON.stringify(name)}] = Number(${name}Value);`,
+              ]
+            : [
+                `    const ${name}Value = form.get(${JSON.stringify(name)});`,
+                `    if (${name}Value !== null && ${name}Value !== "") body[${JSON.stringify(name)}] = String(${name}Value);`,
+              ],
+      ),
+    "    try {",
+    "      if (editingItem) {",
     updateOp
       ? serverState === "tanstack-query"
         ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.mutateAsync({ path: { ${JSON.stringify(group.updateEndpoint?.pathParams[0]?.name ?? "id")}: id }, body } as unknown as ${updateOp}Input);`
         : serverState === "swr"
-        ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.trigger({ path: { ${JSON.stringify(group.updateEndpoint?.pathParams[0]?.name ?? "id")}: id }, body } as unknown as ${updateOp}Input);`
-        : `        const id = editingItem.id ?? editingItem.entity?.id; await ${updateOp}({ path: { ${JSON.stringify(group.updateEndpoint?.pathParams[0]?.name ?? "id")}: id }, body } as unknown as ${updateOp}Input); await refetch();`
+          ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.trigger({ path: { ${JSON.stringify(group.updateEndpoint?.pathParams[0]?.name ?? "id")}: id }, body } as unknown as ${updateOp}Input);`
+          : `        const id = editingItem.id ?? editingItem.entity?.id; await ${updateOp}({ path: { ${JSON.stringify(group.updateEndpoint?.pathParams[0]?.name ?? "id")}: id }, body } as unknown as ${updateOp}Input); await refetch();`
       : '        throw new Error("This entity has no update endpoint.");',
-    '      } else {',
+    "      } else {",
     createOp
       ? serverState === "tanstack-query"
         ? `        await createMutation.mutateAsync({ body } as unknown as ${createOp}Input);`
         : serverState === "swr"
-        ? `        await createMutation.trigger({ body } as unknown as ${createOp}Input);`
-        : `        await ${createOp}({ body } as unknown as ${createOp}Input); await refetch();`
+          ? `        await createMutation.trigger({ body } as unknown as ${createOp}Input);`
+          : `        await ${createOp}({ body } as unknown as ${createOp}Input); await refetch();`
       : '        throw new Error("This entity has no create endpoint.");',
-    '      }',
-    '      setIsCreateOpen(false);',
-    '      setEditingItem(null);',
-    '    } catch (err: unknown) {',
-    '      setMutationError(err instanceof Error ? err.message : String(err));',
-    '    } finally {',
-    '      setIsSubmitting(false);',
-    '    }',
-    '  };',
+    "      }",
+    "      setIsCreateOpen(false);",
+    "      setEditingItem(null);",
+    "    } catch (err: unknown) {",
+    "      setMutationError(err instanceof Error ? err.message : String(err));",
+    "    } finally {",
+    "      setIsSubmitting(false);",
+    "    }",
+    "  };",
     "",
-    '  const handleDelete = async () => {',
-    '    if (!deletingItem) return;',
-    '    setMutationError(null);',
-    '    setIsSubmitting(true);',
-    '    const id = deletingItem.id ?? deletingItem.entity?.id;',
-    '    try {',
+    "  const handleDelete = async () => {",
+    "    if (!deletingItem) return;",
+    "    setMutationError(null);",
+    "    setIsSubmitting(true);",
+    "    const id = deletingItem.id ?? deletingItem.entity?.id;",
+    "    try {",
     serverState === "tanstack-query" && deleteOp
       ? `      await deleteMutation.mutateAsync({ path: { ${JSON.stringify(group.deleteEndpoint?.pathParams[0]?.name ?? "id")}: id } } as unknown as ${deleteOp}Input);`
       : serverState === "swr" && deleteOp
-      ? `      await deleteMutation.trigger({ path: { ${JSON.stringify(group.deleteEndpoint?.pathParams[0]?.name ?? "id")}: id } } as unknown as ${deleteOp}Input);`
-      : deleteOp
-      ? `      await ${deleteOp}({ path: { ${JSON.stringify(group.deleteEndpoint?.pathParams[0]?.name ?? "id")}: id } } as unknown as ${deleteOp}Input); await refetch();`
-      : '      // No delete endpoint',
-    '      setDeletingItem(null);',
-    '    } catch (err: unknown) {',
-    '      setMutationError(err instanceof Error ? err.message : String(err));',
-    '    } finally {',
-    '      setIsSubmitting(false);',
-    '    }',
-    '  };',
+        ? `      await deleteMutation.trigger({ path: { ${JSON.stringify(group.deleteEndpoint?.pathParams[0]?.name ?? "id")}: id } } as unknown as ${deleteOp}Input);`
+        : deleteOp
+          ? `      await ${deleteOp}({ path: { ${JSON.stringify(group.deleteEndpoint?.pathParams[0]?.name ?? "id")}: id } } as unknown as ${deleteOp}Input); await refetch();`
+          : "      // No delete endpoint",
+    "      setDeletingItem(null);",
+    "    } catch (err: unknown) {",
+    "      setMutationError(err instanceof Error ? err.message : String(err));",
+    "    } finally {",
+    "      setIsSubmitting(false);",
+    "    }",
+    "  };",
     "",
-    '  return (',
+    "  return (",
     '    <div className="ng-feature-screen" style={{ display: "grid", gap: "24px" }}>',
     '      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>',
-    '        <div>',
+    "        <div>",
     `          <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 700 }}>${entityName} Management</h2>`,
     `          <p style={{ margin: "4px 0 0", color: "var(--ng-muted)" }}>Explore, filter and manage ${entityName} records.</p>`,
-    '        </div>',
+    "        </div>",
     createOp
       ? `        ${permissionStart("create")}<Button onClick={() => { setEditingItem(null); setIsCreateOpen(true); }} type="button">+ New ${entityName}</Button>${permissionEnd}`
       : "",
-    '      </div>',
+    "      </div>",
     "",
     '      {error ? <Notice tone="alert">{error.message ?? "Failed to load records"}</Notice> : null}',
     "",
     '      <div className="ng-panel" style={{ padding: "16px" }}>',
-        ...(searchParam
-          ? [
-              '        <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>',
-              '          <Input id="search-filter" label="Filter records" onChange={(e) => setSearchFilter(e.target.value)} placeholder="Type to filter..." value={searchFilter} />',
-              "        </div>",
-            ]
-          : []),
+    ...(searchParam
+      ? [
+          '        <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>',
+          '          <Input id="search-filter" label="Filter records" onChange={(e) => setSearchFilter(e.target.value)} placeholder="Type to filter..." value={searchFilter} />',
+          "        </div>",
+        ]
+      : []),
     "",
-    '        {isLoading ? (',
+    "        {isLoading ? (",
     '          <div style={{ padding: "40px 0", textAlign: "center", color: "var(--ng-muted)" }}>Loading records...</div>',
-    '        ) : items.length === 0 ? (',
+    "        ) : items.length === 0 ? (",
     '          <div style={{ padding: "40px 0", textAlign: "center", color: "var(--ng-muted)" }}>No records found.</div>',
-    '        ) : (',
-    '          <Table>',
-    '            <TableHead>',
-    '              <TableRow>',
+    "        ) : (",
+    "          <Table>",
+    "            <TableHead>",
+    "              <TableRow>",
     tableHeaders,
-    updateOp || deleteOp ? '                <TableHeaderCell>Actions</TableHeaderCell>' : "",
-    '              </TableRow>',
-    '            </TableHead>',
-    '            <TableBody>',
-    '              {items.map((row: FeatureRow, idx: number) => {',
-    '                const rawKey = row.entity?.id ?? row.id;',
+    updateOp || deleteOp ? "                <TableHeaderCell>Actions</TableHeaderCell>" : "",
+    "              </TableRow>",
+    "            </TableHead>",
+    "            <TableBody>",
+    "              {items.map((row: FeatureRow, idx: number) => {",
+    "                const rawKey = row.entity?.id ?? row.id;",
     '                const itemKey = typeof rawKey === "string" || typeof rawKey === "number" ? rawKey : idx;',
-    '                return (',
-    '                  <TableRow key={itemKey}>',
+    "                return (",
+    "                  <TableRow key={itemKey}>",
     tableCells,
     updateOp || deleteOp
       ? `                    <TableCell>
@@ -432,20 +475,20 @@ ${fieldInputs(entityFields, enums, true)}
                       ${deleteOp ? `${permissionStart("delete")}<Button onClick={() => setDeletingItem(row)} type="button" variant="danger">Delete</Button>${permissionEnd}` : ""}
                     </TableCell>`
       : "",
-    '                  </TableRow>',
-    '                );',
-    '              })}',
-    '            </TableBody>',
-    '          </Table>',
-    '        )}',
+    "                  </TableRow>",
+    "                );",
+    "              })}",
+    "            </TableBody>",
+    "          </Table>",
+    "        )}",
     paginationControls,
-    '      </div>',
+    "      </div>",
     "",
     createForm,
     deleteDialog,
-    '    </div>',
-    '  );',
-    '}',
+    "    </div>",
+    "  );",
+    "}",
   ]);
 }
 
@@ -492,12 +535,12 @@ export function generateFeatureScreenFiles(
         `export const metadata = { title: "${entityName} Records | NordixGen" };`,
         "",
         `export default function ${entityName}Page() {`,
-        '  return (',
+        "  return (",
         '    <main className="ng-shell" style={{ padding: "40px 5vw" }}>',
         `      <${entityName}FeatureScreen />`,
-        '    </main>',
-        '  );',
-        '}',
+        "    </main>",
+        "  );",
+        "}",
       ]),
     });
   }
