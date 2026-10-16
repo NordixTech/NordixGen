@@ -79,7 +79,6 @@ function slugify(name: string): string {
 function fieldInputs(
   fields: Readonly<Record<string, FieldDefinition>>,
   enums: Readonly<Record<string, readonly string[]>>,
-  editing = false,
 ): string {
   const generatedFields = new Set(["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"]);
   const entries = Object.entries(fields).filter(([name]) => !generatedFields.has(name));
@@ -87,11 +86,9 @@ function fieldInputs(
   return entries
     .map(([name, field]) => {
       const required = field.required && field.default === undefined;
-      const defaultValue = editing
-        ? `{String(editingItem?.entity?.[${JSON.stringify(name)}] ?? editingItem?.[${JSON.stringify(name)}] ?? "")}`
-        : JSON.stringify(field.default ?? "");
+      const defaultValue = `{String(editingItem?.entity?.[${JSON.stringify(name)}] ?? editingItem?.[${JSON.stringify(name)}] ?? "")}`;
       if (field.type === "enum" && field.enumName && enums[field.enumName]) {
-        const options = (enums[field.enumName] ?? [])
+        const options = enums[field.enumName]
           .map(
             (opt) => `            <option value=${JSON.stringify(opt)}>${escapeText(opt)}</option>`,
           )
@@ -145,6 +142,8 @@ function generateFeatureView(
   const createOp = group.createEndpoint ? operationNames.get(group.createEndpoint) : undefined;
   const updateOp = group.updateEndpoint ? operationNames.get(group.updateEndpoint) : undefined;
   const deleteOp = group.deleteEndpoint ? operationNames.get(group.deleteEndpoint) : undefined;
+  const updatePathParam = group.updateEndpoint?.pathParams[0]?.name ?? "id";
+  const deletePathParam = group.deleteEndpoint?.pathParams[0]?.name ?? "id";
   const entityFields = entity?.fields ?? {};
   const permissionStart = (action: string) =>
     hasAuth ? `{hasPermission("${entityName.toLowerCase()}:${action}") && (` : "";
@@ -306,7 +305,7 @@ function generateFeatureView(
       ? `      <Dialog onOpenChange={(open) => { setIsCreateOpen(open); if (!open) setEditingItem(null); }} open={isCreateOpen} title={editingItem ? "Edit ${entityName}" : "Create ${entityName}"}>
         <form className="ng-form" onSubmit={handleSave}>
           {mutationError ? <Notice tone="alert">{mutationError}</Notice> : null}
-${fieldInputs(entityFields, enums, true)}
+${fieldInputs(entityFields, enums)}
           <div className="ng-actions" style={{ justifyContent: "flex-end" }}>
             <Button onClick={() => { setIsCreateOpen(false); setEditingItem(null); }} type="button" variant="secondary">Cancel</Button>
             <Button disabled={isSubmitting} type="submit">{isSubmitting ? "Saving..." : editingItem ? "Save changes" : "Create"}</Button>
@@ -383,10 +382,10 @@ ${fieldInputs(entityFields, enums, true)}
     "      if (editingItem) {",
     updateOp
       ? serverState === "tanstack-query"
-        ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.mutateAsync({ path: { ${JSON.stringify(group.updateEndpoint?.pathParams[0]?.name ?? "id")}: id }, body } as unknown as ${updateOp}Input);`
+        ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.mutateAsync({ path: { ${JSON.stringify(updatePathParam)}: id }, body } as unknown as ${updateOp}Input);`
         : serverState === "swr"
-          ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.trigger({ path: { ${JSON.stringify(group.updateEndpoint?.pathParams[0]?.name ?? "id")}: id }, body } as unknown as ${updateOp}Input);`
-          : `        const id = editingItem.id ?? editingItem.entity?.id; await ${updateOp}({ path: { ${JSON.stringify(group.updateEndpoint?.pathParams[0]?.name ?? "id")}: id }, body } as unknown as ${updateOp}Input); await refetch();`
+          ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.trigger({ path: { ${JSON.stringify(updatePathParam)}: id }, body } as unknown as ${updateOp}Input);`
+          : `        const id = editingItem.id ?? editingItem.entity?.id; await ${updateOp}({ path: { ${JSON.stringify(updatePathParam)}: id }, body } as unknown as ${updateOp}Input); await refetch();`
       : '        throw new Error("This entity has no update endpoint.");',
     "      } else {",
     createOp
@@ -413,11 +412,11 @@ ${fieldInputs(entityFields, enums, true)}
     "    const id = deletingItem.id ?? deletingItem.entity?.id;",
     "    try {",
     serverState === "tanstack-query" && deleteOp
-      ? `      await deleteMutation.mutateAsync({ path: { ${JSON.stringify(group.deleteEndpoint?.pathParams[0]?.name ?? "id")}: id } } as unknown as ${deleteOp}Input);`
+      ? `      await deleteMutation.mutateAsync({ path: { ${JSON.stringify(deletePathParam)}: id } } as unknown as ${deleteOp}Input);`
       : serverState === "swr" && deleteOp
-        ? `      await deleteMutation.trigger({ path: { ${JSON.stringify(group.deleteEndpoint?.pathParams[0]?.name ?? "id")}: id } } as unknown as ${deleteOp}Input);`
+        ? `      await deleteMutation.trigger({ path: { ${JSON.stringify(deletePathParam)}: id } } as unknown as ${deleteOp}Input);`
         : deleteOp
-          ? `      await ${deleteOp}({ path: { ${JSON.stringify(group.deleteEndpoint?.pathParams[0]?.name ?? "id")}: id } } as unknown as ${deleteOp}Input); await refetch();`
+          ? `      await ${deleteOp}({ path: { ${JSON.stringify(deletePathParam)}: id } } as unknown as ${deleteOp}Input); await refetch();`
           : "      // No delete endpoint",
     "      setDeletingItem(null);",
     "    } catch (err: unknown) {",
