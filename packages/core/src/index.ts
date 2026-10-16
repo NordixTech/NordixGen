@@ -37,6 +37,7 @@ export * from "./plugins/authorization/rbac-pbac.js";
 export * from "./plugins/frameworks/hono.js";
 export * from "./plugins/frameworks/hono-files.js";
 export * from "./plugins/frontends/better-auth-client.js";
+export * from "./plugins/frontends/feature-screens.js";
 export * from "./plugins/frontends/client-state.js";
 export * from "./plugins/frontends/native-ui.js";
 export * from "./plugins/frontends/nextjs.js";

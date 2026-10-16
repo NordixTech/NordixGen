@@ -27,7 +27,7 @@ A partir de un archivo declarativo `nordix.config.yaml`, NordixGen construye:
 
 ## Scaffolding oficial de frameworks
 
-NordixGen parte de las herramientas oficiales de cada framework para crear la estructura inicial, en vez de mantener copias propias que envejecen. `generate` coordina `create-next-app` para Next.js y el template oficial `cloudflare-workers` de `create-hono` para Hono, les pasa opciones no interactivas y seguras, y después ensambla los repositorios definidos en el YAML. NordixGen personaliza el README generado y la portada del frontend con su identidad de producto; las entidades, endpoints y lógica de negocio se incorporarán en las fases de generación posteriores.
+NordixGen uses each framework's official tooling to create its initial structure instead of maintaining templates that age over time. `generate` coordinates `create-next-app` for Next.js and the official `cloudflare-workers` template from `create-hono` for Hono, passes safe non-interactive options, and assembles the repositories declared in YAML. NordixGen brands each generated README and frontend homepage, then generates backend entities and endpoints, typed frontend API clients, state hooks, and entity management screens from the same configuration.
 
 ## Backend Generation
 
@@ -103,7 +103,7 @@ nordixgen generate -f nordix.config.yaml -o ./mi-nuevo-proyecto
 
 ---
 
-> `generate` prepara scaffolds upstream y compone el backend declarado en YAML con plugins de arquitectura, framework, ORM, autenticación y autorización. La generación del frontend permanece planificada para fases posteriores. La creación remota está disponible para GitHub y requiere GitHub CLI autenticado (`gh auth login`). Después de crear un remoto con Git inicializado, NordixGen verifica su URL y ejecuta `git push --dry-run` antes del primer push real.
+> `generate` prepares upstream scaffolds and composes the backends declared in YAML with architecture, framework, ORM, authentication, and authorization plugins. For connected frontends it generates typed API clients, server-state hooks, and per-entity management screens with paginated lists, search, create, update, and delete actions when matching endpoints are declared. Remote repository creation is available for GitHub and requires an authenticated GitHub CLI (`gh auth login`). After creating a remote for an initialized Git repository, NordixGen verifies its URL and runs `git push --dry-run` before the first real push.
 
 ## 🌿 Flujo de Trabajo Git y Publicación de Paquetes
 

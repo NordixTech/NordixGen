@@ -10,6 +10,7 @@ export const FRONTEND_PLUGIN_ROLES = [
   "server-state",
   "client-state",
   "authentication",
+  "feature-screens",
 ] as const;
 
 export type FrontendPluginRole = (typeof FRONTEND_PLUGIN_ROLES)[number];

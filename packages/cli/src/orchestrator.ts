@@ -15,6 +15,7 @@ import {
   composeFrontendPlugins,
   contextClientStatePlugin,
   drizzleOrmPlugin,
+  featureScreensFrontendPlugin,
   honoFrameworkPlugin,
   nativeReactUiPlugin,
   nextjsFrontendPlugin,
@@ -454,6 +455,7 @@ export async function runGenerate(
   frontendPluginRegistry.register(tailwindStylingPlugin);
   frontendPluginRegistry.register(plainCssStylingPlugin);
   frontendPluginRegistry.register(nativeReactUiPlugin);
+  frontendPluginRegistry.register(featureScreensFrontendPlugin);
   frontendPluginRegistry.register(typedFetchApiPlugin);
   frontendPluginRegistry.register(tanstackQueryServerStatePlugin);
   frontendPluginRegistry.register(swrServerStatePlugin);
