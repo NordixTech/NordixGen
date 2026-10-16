@@ -75,6 +75,7 @@ export function buildFrontendApiContract(
             name,
             {
               fields,
+              softDelete: entity.softDelete,
               relations: Object.fromEntries(
                 Object.entries(entity.relations).map(([relation, definition]) => [
                   relation,

@@ -25,6 +25,91 @@ export interface EntityEndpointsGroup {
   readonly customEndpoints: readonly NormalizedEndpointDefinition[];
 }
 
+function endpointBodyFields(
+  endpoint: NormalizedEndpointDefinition | undefined,
+  entities: Readonly<Record<string, FrontendApiEntity>>,
+): Readonly<Record<string, FieldDefinition>> {
+  if (!endpoint?.requestBody) return {};
+  const useCase = (
+    endpoint.requestBody as { useCase?: { entity: string; operation: "create" | "update" } }
+  ).useCase;
+  if (useCase) {
+    return Object.fromEntries(
+      Object.entries(entities[useCase.entity]?.fields ?? {})
+        .filter(
+          ([name]) => !["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"].includes(name),
+        )
+        .map(([name, field]) => [
+          name,
+          {
+            ...field,
+            required:
+              useCase.operation === "create" && field.required && field.default === undefined,
+          },
+        ]),
+    );
+  }
+  return Object.fromEntries(
+    Object.entries(endpoint.requestBody).flatMap(([name, definition]) => {
+      const descriptor = definition as {
+        field?: { entity: string; field: string };
+        required?: boolean;
+      };
+      const field = descriptor.field
+        ? entities[descriptor.field.entity]?.fields[descriptor.field.field]
+        : (definition as FieldDefinition);
+      if (!field)
+        return [
+          [name, { type: "json", required: descriptor.required ?? false } as FieldDefinition],
+        ];
+      return [[name, { ...field, required: descriptor.required ?? field.required }]];
+    }),
+  );
+}
+
+function zodField(
+  field: FieldDefinition,
+  enums: Readonly<Record<string, readonly string[]>>,
+): string {
+  const required = field.required && field.default === undefined;
+  let schema: string;
+  switch (field.type) {
+    case "number":
+      schema = `z.preprocess((value) => value === "" || Number.isNaN(value) ? undefined : value, z.number()${required ? "" : ".optional()"})`;
+      break;
+    case "boolean":
+      schema = "z.boolean()";
+      break;
+    case "enum": {
+      const values = enums[field.enumName ?? ""] ?? [];
+      schema = values.length
+        ? `z.enum([${values.map((value) => JSON.stringify(value)).join(", ")}])`
+        : "z.string()";
+      break;
+    }
+    case "json":
+      schema = required ? "z.unknown()" : "z.unknown().optional()";
+      break;
+    default:
+      schema = `z.string()${required ? '.min(1, "Required")' : ".optional()"}`;
+  }
+  if (field.default !== undefined) schema += `.default(${JSON.stringify(field.default)})`;
+  return schema;
+}
+
+function bodySchemaSource(
+  endpoint: NormalizedEndpointDefinition | undefined,
+  fallbackFields: Readonly<Record<string, FieldDefinition>>,
+  entities: Readonly<Record<string, FrontendApiEntity>>,
+  enums: Readonly<Record<string, readonly string[]>>,
+): string {
+  const fields = endpoint ? endpointBodyFields(endpoint, entities) : fallbackFields;
+  const entries = Object.entries(fields).map(
+    ([name, field]) => `  ${JSON.stringify(name)}: ${zodField(field, enums)},`,
+  );
+  return `z.object({\n${entries.join("\n")}\n})`;
+}
+
 export function groupEndpointsByEntity(
   endpoints: readonly NormalizedEndpointDefinition[],
 ): ReadonlyMap<string, EntityEndpointsGroup> {
@@ -95,7 +180,7 @@ function fieldInputs(
           .join("\n");
         return `          <div className="ng-field">
             <label className="ng-label" htmlFor="${name}">${name}${required ? " *" : ""}</label>
-            <select className="ng-input" id="${name}" name="${name}" defaultValue=${defaultValue}${required ? " required" : ""}>
+            <select className="ng-input" id="${name}" defaultValue=${defaultValue}{...featureForm.register(${JSON.stringify(name)})}>
               <option value="" disabled>Select ${escapeText(name)}...</option>
 ${options}
             </select>
@@ -112,7 +197,7 @@ ${options}
 
       if (type === "checkbox") {
         return `          <div className="ng-field" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <input className="ng-checkbox" id="${name}" name="${name}" type="checkbox" defaultChecked={Boolean(editingItem?.entity?.[${JSON.stringify(name)}] ?? editingItem?.[${JSON.stringify(name)}])} />
+            <input className="ng-checkbox" id="${name}" type="checkbox" {...featureForm.register(${JSON.stringify(name)})} />
             <label className="ng-label" htmlFor="${name}" style={{ margin: 0 }}>${name}</label>
           </div>`;
       }
@@ -120,10 +205,10 @@ ${options}
       return `          <Input
             id="${name}"
             label="${name}${required ? " *" : ""}"
-            name="${name}"
             type="${type}"
             defaultValue=${defaultValue}
-            ${required ? "required" : ""}
+            {...featureForm.register(${JSON.stringify(name)}${field.type === "number" ? ", { valueAsNumber: true }" : ""})}
+            error={featureForm.formState.errors[${JSON.stringify(name)}]?.message as string | undefined}
           />`;
     })
     .join("\n");
@@ -132,6 +217,7 @@ ${options}
 function generateFeatureView(
   group: EntityEndpointsGroup,
   entity: FrontendApiEntity | undefined,
+  entities: Readonly<Record<string, FrontendApiEntity>>,
   enums: Readonly<Record<string, readonly string[]>>,
   operationNames: ReadonlyMap<NormalizedEndpointDefinition, string>,
   serverState: "tanstack-query" | "swr" | "native-fetch",
@@ -139,15 +225,40 @@ function generateFeatureView(
 ): string {
   const entityName = group.entityName;
   const listOp = group.listEndpoint ? operationNames.get(group.listEndpoint) : undefined;
-  const createOp = group.createEndpoint ? operationNames.get(group.createEndpoint) : undefined;
-  const updateOp = group.updateEndpoint ? operationNames.get(group.updateEndpoint) : undefined;
+  const createOp = group.createEndpoint?.requestBody
+    ? operationNames.get(group.createEndpoint)
+    : undefined;
+  const updateOp = group.updateEndpoint?.requestBody
+    ? operationNames.get(group.updateEndpoint)
+    : undefined;
   const deleteOp = group.deleteEndpoint ? operationNames.get(group.deleteEndpoint) : undefined;
   const updatePathParam = group.updateEndpoint?.pathParams[0]?.name ?? "id";
   const deletePathParam = group.deleteEndpoint?.pathParams[0]?.name ?? "id";
   const entityFields = entity?.fields ?? {};
-  const permissionStart = (action: string) =>
-    hasAuth ? `{hasPermission("${entityName.toLowerCase()}:${action}") && (` : "";
-  const permissionEnd = hasAuth ? ")}" : "";
+  const deleteMessage =
+    entity?.softDelete === "boolean"
+      ? "This record will be marked inactive and hidden from active lists."
+      : entity?.softDelete === "timestamp"
+        ? "This record will be archived using the backend soft-delete policy."
+        : "This action permanently removes this record.";
+  const bodyFields = {
+    ...endpointBodyFields(createOp ? group.createEndpoint : undefined, entities),
+    ...endpointBodyFields(updateOp ? group.updateEndpoint : undefined, entities),
+  };
+  const formFields = Object.keys(bodyFields).length ? bodyFields : entityFields;
+  const permissionStart = (endpoint: NormalizedEndpointDefinition | undefined) => {
+    if (!hasAuth || !endpoint || (!endpoint.roles.length && !endpoint.permissions.length))
+      return "";
+    const roleCheck = endpoint.roles.length
+      ? `(${JSON.stringify(endpoint.roles)} as readonly string[]).some((role) => hasRole(role))`
+      : "true";
+    const permissionCheck = endpoint.permissions.length
+      ? `(${JSON.stringify(endpoint.permissions)} as readonly string[]).every((permission) => hasPermission(permission))`
+      : "true";
+    return `{${roleCheck} && ${permissionCheck} && (`;
+  };
+  const permissionEnd = (endpoint: NormalizedEndpointDefinition | undefined) =>
+    permissionStart(endpoint) ? ")}" : "";
   const filterParams = group.listEndpoint?.queryParams ?? [];
   const searchParam = filterParams.find((parameter) => parameter.name === "search");
   const hasPagination = Boolean(group.listEndpoint?.pagination);
@@ -156,7 +267,10 @@ function generateFeatureView(
 
   const imports: string[] = ['"use client";', ""];
   imports.push(
-    'import { useState, type FormEvent } from "react";',
+    'import { useState } from "react";',
+    'import { useForm } from "react-hook-form";',
+    'import { zodResolver } from "@hookform/resolvers/zod";',
+    'import { z } from "zod";',
     'import { Button } from "@/components/ui/button";',
     'import { Dialog } from "@/components/ui/dialog";',
     'import { Input } from "@/components/ui/input";',
@@ -303,11 +417,11 @@ function generateFeatureView(
   const createForm =
     createOp || updateOp
       ? `      <Dialog onOpenChange={(open) => { setIsCreateOpen(open); if (!open) setEditingItem(null); }} open={isCreateOpen} title={editingItem ? "Edit ${entityName}" : "Create ${entityName}"}>
-        <form className="ng-form" onSubmit={handleSave}>
+        <form className="ng-form" onSubmit={featureForm.handleSubmit(handleSave)}>
           {mutationError ? <Notice tone="alert">{mutationError}</Notice> : null}
-${fieldInputs(entityFields, enums)}
+${fieldInputs(formFields, enums)}
           <div className="ng-actions" style={{ justifyContent: "flex-end" }}>
-            <Button onClick={() => { setIsCreateOpen(false); setEditingItem(null); }} type="button" variant="secondary">Cancel</Button>
+            <Button onClick={() => { setIsCreateOpen(false); setEditingItem(null); featureForm.reset({}); }} type="button" variant="secondary">Cancel</Button>
             <Button disabled={isSubmitting} type="submit">{isSubmitting ? "Saving..." : editingItem ? "Save changes" : "Create"}</Button>
           </div>
         </form>
@@ -317,7 +431,7 @@ ${fieldInputs(entityFields, enums)}
   const deleteDialog = deleteOp
     ? `      <Dialog onOpenChange={(open) => !open && setDeletingItem(null)} open={Boolean(deletingItem)} title="Delete ${entityName}">
         <div>
-          <p>Are you sure you want to delete this record? This action cannot be undone.</p>
+          <p>Are you sure you want to delete this record? ${deleteMessage}</p>
           {mutationError ? <Notice tone="alert">{mutationError}</Notice> : null}
           <div className="ng-actions" style={{ justifyContent: "flex-end", marginTop: "24px" }}>
             <Button onClick={() => setDeletingItem(null)} type="button" variant="secondary">Cancel</Button>
@@ -343,41 +457,24 @@ ${fieldInputs(entityFields, enums)}
     "type FeatureRow = { readonly id?: unknown; readonly entity?: Readonly<Record<string, unknown>>; readonly [key: string]: unknown };",
     "",
     `export function ${entityName}FeatureScreen() {`,
+    `  const createSchema = ${bodySchemaSource(createOp ? group.createEndpoint : undefined, formFields, entities, enums)};`,
+    `  const updateSchema = ${bodySchemaSource(updateOp ? group.updateEndpoint : undefined, formFields, entities, enums)};`,
     queryState,
     "  const [isCreateOpen, setIsCreateOpen] = useState(false);",
     "  const [editingItem, setEditingItem] = useState<FeatureRow | null>(null);",
     "  const [deletingItem, setDeletingItem] = useState<FeatureRow | null>(null);",
     "  const [mutationError, setMutationError] = useState<string | null>(null);",
     "  const [isSubmitting, setIsSubmitting] = useState(false);",
-    hasAuth ? "  const { hasPermission } = useSessionView();" : "",
+    "  const featureForm = useForm<Record<string, unknown>>({ resolver: zodResolver(editingItem ? updateSchema : createSchema) as never });",
+    hasAuth ? "  const { hasPermission, hasRole } = useSessionView();" : "",
     "",
     ...hookCalls,
     "",
     itemsAccessor,
     "",
-    "  const handleSave = async (e: FormEvent<HTMLFormElement>) => {",
-    "    e.preventDefault();",
+    "  const handleSave = async (body: Record<string, unknown>) => {",
     "    setMutationError(null);",
     "    setIsSubmitting(true);",
-    "    const form = new FormData(e.currentTarget);",
-    "    const body: Record<string, unknown> = {};",
-    ...Object.entries(entityFields)
-      .filter(
-        ([name]) => !["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"].includes(name),
-      )
-      .flatMap(([name, field]) =>
-        field.type === "boolean"
-          ? [`    body[${JSON.stringify(name)}] = form.has(${JSON.stringify(name)});`]
-          : field.type === "number"
-            ? [
-                `    const ${name}Value = form.get(${JSON.stringify(name)});`,
-                `    if (${name}Value !== null && ${name}Value !== "") body[${JSON.stringify(name)}] = Number(${name}Value);`,
-              ]
-            : [
-                `    const ${name}Value = form.get(${JSON.stringify(name)});`,
-                `    if (${name}Value !== null && ${name}Value !== "") body[${JSON.stringify(name)}] = String(${name}Value);`,
-              ],
-      ),
     "    try {",
     "      if (editingItem) {",
     updateOp
@@ -398,6 +495,7 @@ ${fieldInputs(entityFields, enums)}
     "      }",
     "      setIsCreateOpen(false);",
     "      setEditingItem(null);",
+    "      featureForm.reset({});",
     "    } catch (err: unknown) {",
     "      setMutationError(err instanceof Error ? err.message : String(err));",
     "    } finally {",
@@ -434,7 +532,7 @@ ${fieldInputs(entityFields, enums)}
     `          <p style={{ margin: "4px 0 0", color: "var(--ng-muted)" }}>Explore, filter and manage ${entityName} records.</p>`,
     "        </div>",
     createOp
-      ? `        ${permissionStart("create")}<Button onClick={() => { setEditingItem(null); setIsCreateOpen(true); }} type="button">+ New ${entityName}</Button>${permissionEnd}`
+      ? `        ${permissionStart(group.createEndpoint)}<Button onClick={() => { setEditingItem(null); featureForm.reset({}); setIsCreateOpen(true); }} type="button">+ New ${entityName}</Button>${permissionEnd(group.createEndpoint)}`
       : "",
     "      </div>",
     "",
@@ -470,8 +568,8 @@ ${fieldInputs(entityFields, enums)}
     tableCells,
     updateOp || deleteOp
       ? `                    <TableCell>
-                      ${updateOp ? `${permissionStart("update")}<Button onClick={() => { setEditingItem(row); setMutationError(null); setIsCreateOpen(true); }} type="button" variant="secondary">Edit</Button>${permissionEnd}` : ""}
-                      ${deleteOp ? `${permissionStart("delete")}<Button onClick={() => setDeletingItem(row)} type="button" variant="danger">Delete</Button>${permissionEnd}` : ""}
+                      ${updateOp ? `${permissionStart(group.updateEndpoint)}<Button onClick={() => { featureForm.reset((row.entity ?? row) as Record<string, unknown>); setEditingItem(row); setMutationError(null); setIsCreateOpen(true); }} type="button" variant="secondary">Edit</Button>${permissionEnd(group.updateEndpoint)}` : ""}
+                      ${deleteOp ? `${permissionStart(group.deleteEndpoint)}<Button onClick={() => setDeletingItem(row)} type="button" variant="danger">Delete</Button>${permissionEnd(group.deleteEndpoint)}` : ""}
                     </TableCell>`
       : "",
     "                  </TableRow>",
@@ -515,6 +613,7 @@ export function generateFeatureScreenFiles(
     const screenContent = generateFeatureView(
       group,
       entity,
+      context.api.entities,
       context.api.enums,
       operationNames,
       serverState,
@@ -557,6 +656,11 @@ export const featureScreensFrontendPlugin: FrontendGeneratorPlugin = {
       { capability: "api:typed-fetch-client" },
       { capability: "ui:accessible-primitives" },
     ],
+    dependencies: {
+      "@hookform/resolvers": "^5.2.2",
+      "react-hook-form": "^7.62.0",
+      zod: "^3.24.2",
+    },
   },
   contribute: generateFeatureScreenFiles,
 };

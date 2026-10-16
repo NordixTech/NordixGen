@@ -138,6 +138,7 @@ describe("frontend plugin contracts", () => {
       entities: {
         Order: {
           backend: "api",
+          softDelete: "timestamp",
           fields: { status: { type: "string" } },
           relations: {
             user: { type: "many-to-one", target: "User", foreignKey: "userId" },
@@ -189,6 +190,7 @@ describe("frontend plugin contracts", () => {
     ]);
     expect(contract.entities).not.toHaveProperty("AuditLog");
     expect(contract.entities.Order?.fields).toHaveProperty("userId");
+    expect(contract.entities.Order?.softDelete).toBe("timestamp");
     expect(contract.entities).toHaveProperty("User");
     expect(contract.authentication).toMatchObject({
       plugin: "better-auth",
@@ -380,6 +382,63 @@ describe("frontend plugin contracts", () => {
     expect(types).toContain("export interface getOrderInput");
     expect(types).toContain('"User": Pick<UserResponse, "name"> | null;');
     expect(types).toContain("readonly items:");
+    const explorer = result.virtualFileSystem.readFile(
+      "apps/store-web/src/components/api/api-explorer.tsx",
+    );
+    expect(explorer).toContain('"getOrder"');
+    expect(explorer).toContain('"PATCH"');
+    expect(explorer).toContain("pathParams");
+    expect(explorer).toContain("bodyExample");
+    expect(explorer).toContain("Required permissions");
+    expect(explorer).toContain("credentials");
+    expect(explorer).toContain('"enumValues": [');
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/app/api-explorer/page.tsx"),
+    ).toContain("ApiExplorer");
+    expect(result.virtualFileSystem.readFile("apps/store-web/src/app/page.tsx")).toContain(
+      'href="/api-explorer"',
+    );
+
+    const apiFramework = nextjsFrontendPlugin.createFrameworkContext?.(frontend());
+    if (!apiFramework) throw new Error("Next.js API fixture is unavailable.");
+    const bodyExamples = typedFetchApiPlugin.contribute({
+      projectName: "Commerce",
+      frontend: frontend(),
+      framework: apiFramework,
+      availableCapabilities: new Set<string>(),
+      api: {
+        endpoints: [
+          {
+            ...orderEndpoint,
+            requestBody: { useCase: { entity: "Order", operation: "create" } },
+          },
+        ],
+        entities: {
+          Order: {
+            fields: {
+              count: { type: "number" as const, required: true },
+              active: { type: "boolean" as const, required: true },
+              details: { type: "json" as const, required: true },
+              status: { type: "enum" as const, enumName: "Status", required: true },
+              missingStatus: { type: "enum" as const, enumName: "Missing", required: false },
+              unspecifiedStatus: { type: "enum" as const, required: false } as never,
+              title: { type: "string" as const, required: false, default: "Draft" },
+            },
+            relations: {},
+          },
+        },
+        enums: { Status: ["pending"] },
+      },
+    } as never);
+    const bodyExplorer = bodyExamples.find(({ path }) =>
+      path.endsWith("api-explorer.tsx"),
+    )?.content;
+    expect(bodyExplorer).toContain('"count": 0');
+    expect(bodyExplorer).toContain('"active": false');
+    expect(bodyExplorer).toContain('"details": {}');
+    expect(bodyExplorer).toContain('"status": "pending"');
+    expect(bodyExplorer).toContain('"missingStatus": ""');
+    expect(bodyExplorer).toContain('"title": "Draft"');
   });
 
   it("covers optional API parameter types, projections, and empty generated bodies", () => {
@@ -1224,6 +1283,9 @@ describe("frontend plugin contracts", () => {
         operationId: "createOrder",
         pathParams: [],
         queryParams: [],
+        roles: ["admin"],
+        permissions: ["orders:create"],
+        requestBody: { useCase: { entity: "Order", operation: "create" as const } },
       },
       {
         ...getOrder,
@@ -1232,7 +1294,13 @@ describe("frontend plugin contracts", () => {
         path: "/orders/{orderId}",
         queryParams: [],
       },
-      { ...getOrder, method: "PUT" as const, operationId: "replaceOrder" },
+      {
+        ...getOrder,
+        method: "PUT" as const,
+        operationId: "replaceOrder",
+        requestBody: { useCase: { entity: "Order", operation: "update" as const } },
+        permissions: ["orders:update"],
+      },
       {
         ...listOrders,
         entity: "Invoice",
@@ -1241,6 +1309,37 @@ describe("frontend plugin contracts", () => {
         path: "/invoices",
         pathParams: [],
         queryParams: [],
+        roles: ["billing"],
+        requestBody: {
+          title: { type: "string" as const, required: true },
+          status: {
+            field: { entity: "Order", field: "status" },
+            required: false,
+          },
+          unknown: {
+            field: { entity: "Missing", field: "unknown" },
+          },
+          optionalStatus: { field: { entity: "Order", field: "status" } },
+          unknownEnum: { type: "enum" as const, enumName: "MissingEnum", required: true },
+          unspecifiedEnum: { type: "enum" as const, required: false } as never,
+        },
+      },
+      {
+        ...listOrders,
+        entity: "MissingRecord",
+        method: "POST" as const,
+        operationId: "createMissingRecord",
+        path: "/missing-records",
+        pathParams: [],
+        queryParams: [],
+        requestBody: { useCase: { entity: "AbsentEntity", operation: "create" as const } },
+      },
+      {
+        ...getOrder,
+        entity: "Invoice",
+        method: "DELETE" as const,
+        operationId: "deleteInvoice",
+        path: "/invoices/{id}",
       },
     ];
     const grouped = groupEndpointsByEntity(endpoints);
@@ -1268,6 +1367,7 @@ describe("frontend plugin contracts", () => {
         entities: {
           ...apiContract.entities,
           Order: {
+            softDelete: "boolean" as const,
             fields: {
               id: { type: "uuid" as const, required: true },
               createdAt: { type: "date" as const, required: true },
@@ -1275,6 +1375,14 @@ describe("frontend plugin contracts", () => {
               amount: { type: "number" as const, required: true },
               paid: { type: "boolean" as const, required: false },
               placedAt: { type: "date" as const, required: false },
+              metadata: { type: "json" as const, required: false },
+              requiredJson: { type: "json" as const, required: true },
+              label: { type: "string" as const, required: false, default: "Draft" },
+              optionalStatus: {
+                type: "enum" as const,
+                enumName: "OrderStatus",
+                required: false,
+              },
               note: { type: "string" as const, required: true },
             },
             relations: {},
@@ -1283,13 +1391,41 @@ describe("frontend plugin contracts", () => {
       },
     } as const;
     const files = generateFeatureScreenFiles(context);
-    expect(files).toHaveLength(6);
+    expect(files).toHaveLength(8);
     const screen = files[0]?.content ?? "";
     expect(screen).toContain("useListOrders");
-    expect(screen).toContain('hasPermission("order:create")');
+    expect(screen).toContain('"orders:create"');
+    expect(screen).toContain('"admin"');
+    expect(screen).toContain("hasRole(role)");
+    expect(screen).toContain("hasPermission(permission)");
     expect(screen).toContain('<option value="pending">pending</option>');
-    expect(screen).toContain("Number(amountValue)");
-    expect(screen).toContain('form.has("paid")');
+    expect(screen).toContain("zodResolver");
+    expect(screen).toContain('featureForm.register("amount", { valueAsNumber: true })');
+    expect(screen).toContain('featureForm.register("paid")');
+    expect(screen).toContain("featureForm.handleSubmit(handleSave)");
+    expect(screen).toContain('"amount": z.preprocess');
+    expect(screen).toContain('"note": z.string().min(1, "Required")');
+    expect(screen).toContain('"metadata": z.unknown().optional()');
+    expect(screen).toContain("marked inactive and hidden from active lists");
+    expect(screen).toContain('"label": z.string().optional().default("Draft")');
+    const invoiceScreen =
+      files.find(({ path }) => path.endsWith("invoice-screen.tsx"))?.content ?? "";
+    expect(invoiceScreen).toContain('"title": z.string().min(1, "Required")');
+    expect(invoiceScreen).toContain('"unknown": z.unknown()');
+    const timestampDeleteScreen = generateFeatureScreenFiles({
+      ...context,
+      api: {
+        ...context.api,
+        entities: {
+          ...context.api.entities,
+          Order: { ...context.api.entities.Order, softDelete: "timestamp" },
+        },
+      },
+    });
+    expect(timestampDeleteScreen[0]?.content).toContain(
+      "archived using the backend soft-delete policy",
+    );
+    expect(invoiceScreen).toContain("permanently removes this record");
     expect(screen).toContain("Page {page}");
     expect(files[1]?.content).toContain("Order Records | NordixGen");
     expect(

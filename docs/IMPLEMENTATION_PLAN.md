@@ -164,27 +164,30 @@ The parent issue is [#5: Phase 4: Plugin Hono + Drizzle ORM (Golden Path Backend
 ### 🎨 Fase 5: Plugin Next.js 15 & Dual-State Management (Golden Path Frontend)
 **Objetivo:** Generar interfaces reactivas con App Router, Tailwind CSS v4, Feature-Driven Architecture y el modelo de Estado Dual.
 
-- [ ] **5.1 Configuración Base del Frontend:**
+- [x] **5.1 Configuración Base del Frontend:**
   - Tailwind CSS v4 con variables CSS y tema personalizable (`@theme`).
   - Componentes de UI atómicos accesibles (Botones, Inputs, Modales, Tablas, Badges, Toasts).
-- [ ] **5.2 SDK Cliente API Tipado End-to-End (`@/services/<entity>.service.ts`):**
-  - Wrapper tipado sobre Fetch nativo con interceptor para RFC 7807.
-  - Métodos CRUD y endpoints complejos vinculados a cada backend en `connectsTo`.
-- [ ] **5.3 Capa de Servidor React Query (`@/hooks/queries/`):**
-  - Hooks reactivos de consulta (`use<Entity>Query`) con caching inteligente.
-  - Mutaciones (`useCreate<Entity>Mutation`) con invalidación automática de consultas de lista.
+- [x] **5.2 SDK Cliente API Tipado End-to-End (`@/lib/api/`):**
+  - Wrapper tipado sobre Fetch nativo con errores RFC 7807.
+  - Funciones para cada método y endpoint declarado en los backends de `connectsTo`.
+- [x] **5.3 Capa de Servidor React Query (`@/lib/api/hooks.ts`):**
+  - Hooks reactivos de consulta con caching e invalidación automática.
+  - Mutaciones con invalidación automática de las consultas afectadas.
   - Soporte de Mutaciones Optimistas configurables.
   - Los esquemas/consultas disponibles en cada frontend se derivan de las entidades de sus backends conectados; server-state mantiene cache e invalidación para evitar refetches repetidos.
-- [ ] **5.4 Capa de Cliente Zustand (`@/stores/`):**
-  - `authStore`: Almacenamiento seguro de tokens, sesión activa y verificación de permisos.
+- [x] **5.4 Capa de Cliente Zustand (`@/stores/`):**
+  - `authStore`: Vista de sesión y verificación de permisos; credenciales en cookies HttpOnly.
   - `uiStore`: Toasts, alertas y estado de interfaz.
-- [ ] **5.5 Vistas Completas Feature-Driven por Entidad:**
+- [x] **5.5 Vistas Feature-Driven por Entidad:**
   - Lista paginada con filtros y búsqueda.
-  - Formularios de creación y edición con validación React Hook Form + Zod.
-  - Modales de confirmación de eliminación (Soft Delete / Hard Delete).
+  - Formularios derivados de los bodies de endpoint con React Hook Form + Zod.
+  - API Explorer para inspeccionar y ejecutar cada endpoint declarado, incluidos parámetros, body y requisitos de autorización.
+  - [ ] Reflejar en los diálogos si el endpoint realiza soft delete o hard delete.
 
 *Criterio de Aceptación / Hito Verificable:*
-- El frontend generado compila con `pnpm build`, se comunica con el backend Hono, y gestiona el estado sin errores de hidratación ni re-renders innecesarios.
+- [x] Los dos frontends de `examples/phase-5-frontend` typecheck y compilan en producción; la generación incluye `/api-explorer`.
+- [ ] La aceptación E2E conecta la aplicación generada al backend Hono y cubre success, empty, validación, error de API y loading.
+- La muestra usa `auth: none` y sus controladores generados no reciben repositorios de ejecución; compilarla no demuestra aún integración funcional con backend ni autenticación.
 
 ---
 

@@ -53,6 +53,7 @@ export interface FrontendPluginContributionContext {
 export interface FrontendApiEntity {
   readonly fields: Readonly<Record<string, FieldDefinition>>;
   readonly relations: Readonly<Record<string, { readonly target: string; readonly type: string }>>;
+  readonly softDelete?: false | "boolean" | "timestamp";
 }
 
 export interface FrontendAuthenticationContract {

@@ -15,6 +15,8 @@ function pageSource(context: FrontendPluginContributionContext): string {
   const title = JSON.stringify(`${context.projectName} | NordixGen`);
   const projectName = escapeText(context.projectName);
   const frontendName = escapeText(context.frontend.name);
+  const apiExplorerLink = context.api.endpoints.length > 0;
+  const signInLink = context.frontend.authUI && Boolean(context.api.authentication);
   return source([
     'import { Badge } from "@/components/ui/badge";',
     'import { Button } from "@/components/ui/button";',
@@ -40,8 +42,12 @@ function pageSource(context: FrontendPluginContributionContext): string {
     `          <h1 id="welcome-title">A thoughtful starting point for ${projectName}.</h1>`,
     '          <p className="ng-lede">Your application shell is ready. Add the workflows your users need while keeping framework, styling, and data integrations replaceable.</p>',
     '          <div className="ng-actions">',
-    '            <Button type="button">Explore your workspace</Button>',
-    '            <a className="ng-text-link" href="#workspace">View project details</a>',
+    ...(apiExplorerLink
+      ? ['            <a className="ng-text-link" href="/api-explorer">Open API Explorer</a>']
+      : ['            <Button type="button">Explore your workspace</Button>']),
+    ...(signInLink
+      ? ['            <a className="ng-text-link" href="/sign-in">Sign in</a>']
+      : ['            <a className="ng-text-link" href="#workspace">View project details</a>']),
     "          </div>",
     "        </div>",
     '        <aside aria-label="Generated project details" className="ng-panel" id="workspace">',
