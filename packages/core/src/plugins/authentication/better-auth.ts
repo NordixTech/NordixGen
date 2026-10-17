@@ -215,7 +215,7 @@ function authRuntimeContent(
     `    user: { additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } } },`,
     "    emailAndPassword: {",
     "      enabled: true,",
-    "      minPasswordLength: 15,",
+    "      minPasswordLength: 4,",
     `      requireEmailVerification: ${features.includes("email-verification")},`,
     ...(features.includes("password-recovery")
       ? [

@@ -811,6 +811,15 @@ describe("frontend plugin contracts", () => {
     expect(
       result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
     ).toContain("authClient.signUp.email");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
+    ).toContain("minLength={4}");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
+    ).toContain("Could not reach the authentication server.");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-in-form.tsx"),
+    ).toContain("Could not reach the authentication server.");
     const authClient = result.virtualFileSystem.readFile("apps/store-web/src/lib/auth/client.ts");
     expect(authClient).toContain("usernameClient()");
     expect(authClient).toContain("twoFactorClient()");
