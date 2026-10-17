@@ -173,6 +173,9 @@ describe("Drizzle ORM plugin", () => {
     expect(files["apps/api-core/src/infrastructure/adapters/drizzle-database.ts"]).toContain(
       "createDrizzleDatabase",
     );
+    expect(files["apps/api-core/src/infrastructure/adapters/drizzle-database.ts"]).toContain(
+      'neonConfig.fetchEndpoint = "http://127.0.0.1:4444/sql";',
+    );
   });
 
   it("resolves generated schema paths from the selected architecture layout", () => {
@@ -388,7 +391,7 @@ describe("Drizzle ORM plugin", () => {
     );
     expect(
       files["apps/api-core/src/infrastructure/adapters/create-route-dependencies.ts"],
-    ).toContain("new CreateOrderWithDateUseCase(createOrderWithDateQueryAdapter, clock)");
+    ).toContain("new CreateOrderWithDateEndpointUseCase(createOrderWithDateQueryAdapter, clock)");
   });
 
   it("covers custom unpaginated query adapter and diverse field types", () => {
@@ -444,6 +447,111 @@ describe("Drizzle ORM plugin", () => {
     expect(detailsAdapter).toContain(
       "class DrizzleGetOrderDetailsQueryAdapter implements GetOrderDetailsQueryPort",
     );
+  });
+
+  it("wires custom CRUD endpoint adapters without joins", () => {
+    const config = createValidConfig();
+    config.endpoints = [
+      {
+        backend: "core-api",
+        path: "/api/orders",
+        method: "GET",
+        operationId: "listOrdersPublicly",
+        entity: "Order",
+        authRequired: false,
+        roles: [],
+        permissions: [],
+        queryParams: [],
+        pathParams: [],
+        pagination: "standard",
+      },
+      {
+        backend: "core-api",
+        path: "/api/orders",
+        method: "POST",
+        operationId: "createOrderEndpoint",
+        entity: "Order",
+        authRequired: true,
+        roles: ["admin"],
+        permissions: ["orders:create"],
+        queryParams: [],
+        pathParams: [],
+        requestBody: { useCase: { entity: "Order", operation: "create" } },
+      },
+      {
+        backend: "core-api",
+        path: "/api/orders/{orderId}",
+        method: "PATCH",
+        operationId: "updateOrderEndpoint",
+        entity: "Order",
+        authRequired: true,
+        roles: ["admin"],
+        permissions: ["orders:update"],
+        queryParams: [],
+        pathParams: [{ name: "orderId", field: { entity: "Order", field: "id" } }],
+        requestBody: { useCase: { entity: "Order", operation: "update" } },
+      },
+      {
+        backend: "core-api",
+        path: "/api/orders/{orderId}",
+        method: "DELETE",
+        operationId: "deleteOrderEndpoint",
+        entity: "Order",
+        authRequired: true,
+        roles: ["admin"],
+        permissions: ["orders:delete"],
+        queryParams: [],
+        pathParams: [{ name: "orderId", field: { entity: "Order", field: "id" } }],
+      },
+    ];
+
+    const result = composeBackendPlugins(
+      NordixConfigSchema.parse(config),
+      "core-api",
+      createRegistry(),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const files = result.virtualFileSystem.snapshot();
+    const dependencies =
+      files["apps/api-core/src/infrastructure/adapters/create-route-dependencies.ts"];
+    expect(dependencies).toContain('"listOrdersPublicly": listOrdersPubliclyEndpoint');
+    expect(dependencies).toContain('"createOrderEndpoint": createOrderEndpointEndpoint');
+    expect(dependencies).toContain('"updateOrderEndpoint": updateOrderEndpointEndpoint');
+    expect(dependencies).toContain('"deleteOrderEndpoint": deleteOrderEndpointEndpoint');
+    expect(
+      files[
+        "apps/api-core/src/infrastructure/adapters/ListOrdersPublicly.drizzle.query.adapter.ts"
+      ],
+    ).toContain("offset: pagination.offset");
+    expect(
+      files[
+        "apps/api-core/src/infrastructure/adapters/ListOrdersPublicly.drizzle.query.adapter.ts"
+      ],
+    ).toContain(
+      'case "contains": conditions.push(ilike(column, `%${String(filter.value)}%`)); break;',
+    );
+    expect(
+      files[
+        "apps/api-core/src/infrastructure/adapters/CreateOrderEndpoint.drizzle.query.adapter.ts"
+      ],
+    ).toContain("this.db.insert(schema.OrderTable)");
+    expect(
+      files[
+        "apps/api-core/src/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
+      ],
+    ).toContain("this.db.update(schema.OrderTable)");
+    expect(
+      files[
+        "apps/api-core/src/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
+      ],
+    ).toContain('input.request.path["orderId"]');
+    expect(
+      files[
+        "apps/api-core/src/infrastructure/adapters/DeleteOrderEndpoint.drizzle.query.adapter.ts"
+      ],
+    ).toContain("this.db.delete(schema.OrderTable)");
   });
 
   it("handles entities without soft delete and timestamp soft delete query adapters", () => {
