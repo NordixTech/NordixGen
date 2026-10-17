@@ -178,16 +178,17 @@ The parent issue is [#5: Phase 4: Plugin Hono + Drizzle ORM (Golden Path Backend
 - [x] **5.4 Capa de Cliente Zustand (`@/stores/`):**
   - `authStore`: Vista de sesión y verificación de permisos; credenciales en cookies HttpOnly.
   - `uiStore`: Toasts, alertas y estado de interfaz.
+  - La UI de autenticación ofrece registro, inicio/cierre de sesión y muestra el rol de la sesión.
 - [x] **5.5 Vistas Feature-Driven por Entidad:**
   - Lista paginada con filtros y búsqueda.
   - Formularios derivados de los bodies de endpoint con React Hook Form + Zod.
   - API Explorer para inspeccionar y ejecutar cada endpoint declarado, incluidos parámetros, body y requisitos de autorización.
-  - [ ] Reflejar en los diálogos si el endpoint realiza soft delete o hard delete.
+  - [x] Reflejar en los diálogos si el endpoint realiza soft delete o hard delete.
 
 *Criterio de Aceptación / Hito Verificable:*
-- [x] Los dos frontends de `examples/phase-5-frontend` typecheck y compilan en producción; la generación incluye `/api-explorer`.
+- [x] Los dos frontends de `examples/phase-5-frontend` typecheck y compilan en producción; la generación incluye `/api-explorer`, `/sign-in` y `/sign-up`.
 - [ ] La aceptación E2E conecta la aplicación generada al backend Hono y cubre success, empty, validación, error de API y loading.
-- La muestra usa `auth: none` y sus controladores generados no reciben repositorios de ejecución; compilarla no demuestra aún integración funcional con backend ni autenticación.
+- La muestra declara Better Auth y RBAC/PBAC: la lista es pública, el detalle requiere sesión de lectura, `editor` puede crear/editar y `admin` puede borrar. La aceptación HTTP real de sesiones/roles sigue pendiente de ejecutar contra PostgreSQL local.
 
 ---
 

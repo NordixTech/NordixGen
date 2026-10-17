@@ -798,7 +798,19 @@ describe("frontend plugin contracts", () => {
     });
     const generated = result.virtualFileSystem.listFiles();
     expect(generated).toContain("apps/store-web/src/app/sign-in/page.tsx");
+    expect(generated).toContain("apps/store-web/src/app/sign-up/page.tsx");
+    expect(generated).toContain("apps/store-web/src/components/auth/auth-controls.tsx");
+    expect(generated).toContain("apps/store-web/src/components/auth/sign-up-form.tsx");
     expect(generated).toContain("apps/store-web/src/components/auth/session-view-sync.tsx");
+    expect(result.virtualFileSystem.readFile("apps/store-web/src/app/page.tsx")).toContain(
+      "<AuthControls />",
+    );
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/auth-controls.tsx"),
+    ).toContain("<SignOutButton />");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
+    ).toContain("authClient.signUp.email");
     const authClient = result.virtualFileSystem.readFile("apps/store-web/src/lib/auth/client.ts");
     expect(authClient).toContain("usernameClient()");
     expect(authClient).toContain("twoFactorClient()");

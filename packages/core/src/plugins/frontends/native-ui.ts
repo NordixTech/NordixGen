@@ -20,6 +20,7 @@ function pageSource(context: FrontendPluginContributionContext): string {
   return source([
     'import { Badge } from "@/components/ui/badge";',
     'import { Button } from "@/components/ui/button";',
+    ...(signInLink ? ['import { AuthControls } from "@/components/auth/auth-controls";'] : []),
     "",
     "export const metadata = {",
     `  title: ${title},`,
@@ -46,7 +47,7 @@ function pageSource(context: FrontendPluginContributionContext): string {
       ? ['            <a className="ng-text-link" href="/api-explorer">Open API Explorer</a>']
       : ['            <Button type="button">Explore your workspace</Button>']),
     ...(signInLink
-      ? ['            <a className="ng-text-link" href="/sign-in">Sign in</a>']
+      ? ["            <AuthControls />"]
       : ['            <a className="ng-text-link" href="#workspace">View project details</a>']),
     "          </div>",
     "        </div>",

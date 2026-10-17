@@ -167,6 +167,27 @@ function signOutButtonContent(): string {
   ]);
 }
 
+function authControlsContent(): string {
+  return source([
+    '"use client";',
+    "",
+    'import { useSessionView } from "@/lib/auth/use-session-view";',
+    'import { SignOutButton } from "@/components/auth/sign-out-button";',
+    "",
+    "export function AuthControls() {",
+    "  const { user, isPending } = useSessionView();",
+    '  if (isPending) return <span role="status">Checking session…</span>;',
+    '  if (!user) return <a className="ng-text-link" href="/sign-in">Sign in</a>;',
+    "  return (",
+    '    <div className="ng-actions" aria-label="Account session">',
+    '      <span>{user.name ?? user.email} · {user.role ?? "no role"}</span>',
+    "      <SignOutButton />",
+    "    </div>",
+    "  );",
+    "}",
+  ]);
+}
+
 function signInFormContent(config: FrontendAuthenticationContract): string {
   const username = config.methods.includes("username-password");
   const providers = config.identityProviders;
@@ -223,6 +244,7 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
         ]),
     '      <Input autoComplete="current-password" id="password" label="Password" name="password" required type="password" />',
     '      <Button disabled={pending} type="submit">Sign in</Button>',
+    '      <p className="ng-panel-note">New here? <a className="ng-text-link" href="/sign-up">Create an account</a></p>',
     ...providers.flatMap((provider) => [
       "      <Button",
       "        disabled={pending}",
@@ -236,6 +258,49 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
       `        Continue with ${provider}`,
       "      </Button>",
     ]),
+    "    </form>",
+    "  );",
+    "}",
+  ]);
+}
+
+function signUpFormContent(): string {
+  return source([
+    '"use client";',
+    "",
+    'import { useState, type FormEvent } from "react";',
+    'import { useRouter } from "next/navigation";',
+    'import { Button } from "@/components/ui/button";',
+    'import { Input } from "@/components/ui/input";',
+    'import { Notice } from "@/components/ui/notice";',
+    'import { authClient } from "@/lib/auth/client";',
+    "",
+    "export function SignUpForm() {",
+    "  const router = useRouter();",
+    "  const [error, setError] = useState<string>();",
+    "  const [pending, setPending] = useState(false);",
+    "  async function submit(event: FormEvent<HTMLFormElement>) {",
+    "    event.preventDefault();",
+    "    const form = new FormData(event.currentTarget);",
+    "    setPending(true);",
+    "    setError(undefined);",
+    '    const result = await authClient.signUp.email({ name: String(form.get("name") ?? ""), email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") });',
+    "    setPending(false);",
+    "    if (result.error) {",
+    '      setError(result.error.message ?? "Sign-up failed.");',
+    "      return;",
+    "    }",
+    '    router.replace("/");',
+    "    router.refresh();",
+    "  }",
+    "  return (",
+    '    <form className="ng-panel" onSubmit={submit}>',
+    '      {error ? <Notice tone="alert">{error}</Notice> : null}',
+    '      <Input autoComplete="name" id="name" label="Name" name="name" required />',
+    '      <Input autoComplete="email" id="email" label="Email" name="email" required type="email" />',
+    '      <Input autoComplete="new-password" id="password" label="Password (at least 15 characters)" name="password" minLength={15} required type="password" />',
+    '      <Button disabled={pending} type="submit">Create account</Button>',
+    '      <p className="ng-panel-note">Already registered? <a className="ng-text-link" href="/sign-in">Sign in</a></p>',
     "    </form>",
     "  );",
     "}",
@@ -265,6 +330,29 @@ function signInPageContent(): string {
   ]);
 }
 
+function signUpPageContent(): string {
+  return source([
+    'import { SignUpForm } from "@/components/auth/sign-up-form";',
+    "",
+    'export const metadata = { title: "Create account" };',
+    "",
+    "export default function SignUpPage() {",
+    "  return (",
+    '    <main className="ng-shell">',
+    '      <section className="ng-hero">',
+    "        <div>",
+    '          <p className="ng-eyebrow">New account</p>',
+    "          <h1>Create your account</h1>",
+    '          <p className="ng-lede">Your account receives the backend’s default role. Roles cannot be selected during sign-up.</p>',
+    "        </div>",
+    "        <SignUpForm />",
+    "      </section>",
+    "    </main>",
+    "  );",
+    "}",
+  ]);
+}
+
 function authReadme(config: FrontendAuthenticationContract): string {
   return source([
     "# Frontend authentication",
@@ -272,6 +360,7 @@ function authReadme(config: FrontendAuthenticationContract): string {
     `This frontend uses the ${config.plugin} session from backend \`${config.backend}\`.`,
     "",
     "- Sign-in, sign-out, and session refresh call the backend authentication HTTP API.",
+    "- New accounts receive the backend's default role; role assignment is server-controlled.",
     "- The browser stores the session in HttpOnly cookies. Do not copy tokens into Zustand, React state, or localStorage.",
     "- Add this frontend origin to the backend `AUTH_TRUSTED_ORIGINS` list so credentialed requests and CSRF origin checks succeed.",
     "- Set `NEXT_PUBLIC_API_BASE_URL` to the absolute backend URL.",
@@ -316,8 +405,11 @@ export const betterAuthFrontendPlugin: FrontendGeneratorPlugin = {
     }
     if (context.frontend.authUI) {
       files.push(
+        { path: `${root}/components/auth/auth-controls.tsx`, content: authControlsContent() },
         { path: `${root}/components/auth/sign-in-form.tsx`, content: signInFormContent(config) },
+        { path: `${root}/components/auth/sign-up-form.tsx`, content: signUpFormContent() },
         { path: `${root}/app/sign-in/page.tsx`, content: signInPageContent() },
+        { path: `${root}/app/sign-up/page.tsx`, content: signUpPageContent() },
       );
     }
     return files;
