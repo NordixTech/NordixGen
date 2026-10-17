@@ -165,6 +165,19 @@ export function composeFrontendPlugins(
     } else {
       plugins.push(apiPlugin);
     }
+
+    const screensPlugin = registry.get("feature-screens");
+    if (screensPlugin && screensPlugin.descriptor.role !== "feature-screens") {
+      diagnostics.push(
+        createDiagnostic(
+          "FRONTEND_FEATURE_SCREENS_PLUGIN_ROLE_MISMATCH",
+          `frontends.${frontend.name}.connectsTo`,
+          `Frontend plugin ${screensPlugin.descriptor.id} does not provide the feature-screens role.`,
+        ),
+      );
+    } else if (screensPlugin) {
+      plugins.push(screensPlugin);
+    }
   }
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) return fail(diagnostics);
 

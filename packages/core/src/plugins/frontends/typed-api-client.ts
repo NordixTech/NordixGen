@@ -161,6 +161,66 @@ function bodyType(
     : `export type ${name}Body = Record<string, never>;`;
 }
 
+function exampleFieldValue(
+  field: FieldDefinition,
+  enums: Readonly<Record<string, readonly string[]>>,
+): unknown {
+  if (field.default !== undefined) return field.default;
+  switch (field.type) {
+    case "number":
+      return 0;
+    case "boolean":
+      return false;
+    case "enum":
+      return enums[field.enumName ?? ""]?.[0] ?? "";
+    case "json":
+      return {};
+    default:
+      return "";
+  }
+}
+
+function bodyExample(
+  endpoint: NormalizedEndpointDefinition,
+  entities: Readonly<Record<string, FrontendApiEntity>>,
+  enums: Readonly<Record<string, readonly string[]>>,
+): Record<string, unknown> {
+  if (!endpoint.requestBody) return {};
+  const useCase = (endpoint.requestBody as { useCase?: { entity: string } }).useCase;
+  if (useCase) {
+    const generatedFields = new Set(["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"]);
+    return Object.fromEntries(
+      Object.entries(entities[useCase.entity]?.fields ?? {})
+        .filter(([name]) => !generatedFields.has(name))
+        .map(([name, field]) => [name, exampleFieldValue(field, enums)]),
+    );
+  }
+  return Object.fromEntries(
+    Object.entries(endpoint.requestBody).map(([name, definition]) => {
+      const ref = (definition as { field?: { entity: string; field: string } }).field;
+      const field = ref ? entities[ref.entity]?.fields[ref.field] : (definition as FieldDefinition);
+      return [name, field ? exampleFieldValue(field, enums) : ""];
+    }),
+  );
+}
+
+function explorerParameter(
+  parameter: NormalizedEndpointDefinition["queryParams"][number],
+  entities: Readonly<Record<string, FrontendApiEntity>>,
+  enums: Readonly<Record<string, readonly string[]>>,
+) {
+  const referencedField = parameter.field
+    ? entities[parameter.field.entity]?.fields[parameter.field.field]
+    : undefined;
+  const enumName =
+    parameter.enumName ?? (referencedField?.type === "enum" ? referencedField.enumName : undefined);
+  return {
+    ...parameter,
+    type: parameter.type ?? referencedField?.type,
+    ...(enumName ? { enumName, enumValues: enums[enumName] ?? [] } : {}),
+  };
+}
+
 export const typedFetchApiPlugin: FrontendGeneratorPlugin = {
   descriptor: {
     id: "typed-fetch",
@@ -201,6 +261,29 @@ export const typedFetchApiPlugin: FrontendGeneratorPlugin = {
         endpoint.requestBody !== undefined;
       return `export async function ${name}(input: ${name}Input${inputRequired ? "" : " = {}"}): Promise<${name}Response> {\n  const path = \`${path}\`;\n  if (typeof window === "undefined" && !API_BASE_URL) throw new Error("Configure the public API base URL for server-side requests.");\n  const url = new URL(path, API_BASE_URL || window.location.origin);\n${search}\n  return request<${name}Response>(url, { method: ${JSON.stringify(endpoint.method)}, ${body} });\n}`;
     });
+    const explorerMetadata = endpoints.map((endpoint) => ({
+      name: names.get(endpoint),
+      method: endpoint.method,
+      path: endpoint.path,
+      summary: endpoint.summary ?? endpoint.operationId,
+      entity: endpoint.entity,
+      authRequired: endpoint.authRequired,
+      roles: endpoint.roles,
+      permissions: endpoint.permissions,
+      pathParams: endpoint.pathParams.map((parameter) =>
+        explorerParameter(parameter, api.entities, api.enums),
+      ),
+      queryParams: endpoint.queryParams.map((parameter) =>
+        explorerParameter(parameter, api.entities, api.enums),
+      ),
+      requestBody: endpoint.requestBody ?? null,
+      bodyExample: bodyExample(endpoint, api.entities, api.enums),
+      pagination: endpoint.pagination ?? null,
+    }));
+    const explorerDispatch = endpoints.map((endpoint) => {
+      const name = names.get(endpoint) as string;
+      return `  ${JSON.stringify(name)}: (input: unknown) => ${name}(input as ${name}Input),`;
+    });
     const files = [
       {
         path: `${framework.codeRoot}/lib/api/types.ts`,
@@ -218,6 +301,22 @@ export const typedFetchApiPlugin: FrontendGeneratorPlugin = {
         path: `${framework.codeRoot}/lib/api/index.ts`,
         content: `export * from "./client";\nexport * from "./endpoints";\nexport type * from "./types";\n`,
       },
+      ...(endpoints.length > 0
+        ? [
+            {
+              path: `${framework.codeRoot}/components/api/api-explorer.tsx`,
+              content: `"use client";\n\nimport { useMemo, useState } from "react";\nimport { ApiError } from "@/lib/api/client";\nimport * as apiEndpoints from "@/lib/api/endpoints";\nimport type * as apiTypes from "@/lib/api/types";\nimport { Button } from "@/components/ui/button";\nimport { Notice } from "@/components/ui/notice";\n\ntype EndpointInfo = { readonly name: string; readonly method: string; readonly path: string; readonly summary: string; readonly entity: string; readonly authRequired: boolean; readonly roles: readonly string[]; readonly permissions: readonly string[]; readonly pathParams: readonly { readonly name: string; readonly type?: string; readonly required?: boolean; readonly enumName?: string; readonly enumValues?: readonly string[]; readonly field?: unknown }[]; readonly queryParams: readonly { readonly name: string; readonly type?: string; readonly required?: boolean; readonly enumName?: string; readonly enumValues?: readonly string[]; readonly operator?: string; readonly field?: unknown }[]; readonly requestBody: unknown; readonly bodyExample: Record<string, unknown>; readonly pagination: unknown };\nconst endpoints: readonly EndpointInfo[] = ${JSON.stringify(explorerMetadata, null, 2)};\nconst invoke: Record<string, (input: unknown) => Promise<unknown>> = {\n${explorerDispatch.map((entry) => entry.replace(/: \(input: unknown\) => (\w+)\(input as (\w+)Input\),/, ": (input: unknown) => apiEndpoints.$1(input as apiTypes.$2Input),")).join("\n")}\n};\nfunction exampleInput(endpoint: EndpointInfo): string {\n  const path = Object.fromEntries(endpoint.pathParams.map((item) => [item.name, item.type === "number" ? 1 : item.enumValues?.[0] ?? (item.type === "uuid" ? "00000000-0000-4000-8000-000000000000" : "")]));\n  const query = Object.fromEntries(endpoint.queryParams.map((item) => [item.name, item.type === "number" ? 1 : item.type === "boolean" ? false : item.enumValues?.[0] ?? ""]));\n  return JSON.stringify({ ...(endpoint.pathParams.length ? { path } : {}), ...(endpoint.queryParams.length || endpoint.pagination ? { query } : {}), ...(endpoint.requestBody ? { body: endpoint.bodyExample } : {}) }, null, 2);\n}\nexport function ApiExplorer() {\n  const [selected, setSelected] = useState<string>(endpoints[0]?.name ?? "");\n  const [input, setInput] = useState(() => endpoints[0] ? exampleInput(endpoints[0]) : "{}");\n  const [result, setResult] = useState<unknown>();\n  const [error, setError] = useState<string>();\n  const [pending, setPending] = useState(false);\n  const [parseError, setParseError] = useState<string>();\n  const active = useMemo(() => endpoints.find((endpoint) => endpoint.name === selected), [selected]);\n  async function run() {\n    if (!active) return;\n    setPending(true); setError(undefined); setParseError(undefined); setResult(undefined);\n    try {\n      const parsed: unknown = JSON.parse(input);\n      setResult(await invoke[active.name](parsed));\n    } catch (cause) {\n      if (cause instanceof SyntaxError) setParseError(cause.message);\n      else if (cause instanceof ApiError) setError(JSON.stringify({ status: cause.status, ...cause.problem }, null, 2));\n      else setError(cause instanceof Error ? cause.message : String(cause));\n    } finally { setPending(false); }\n  }\n  return <main className="ng-shell" style={{ padding: "32px 5vw" }}>\n    <section className="ng-panel" style={{ maxWidth: 1100, margin: "0 auto" }}>\n      <p className="ng-eyebrow">Connected backend contract</p><h1>API Explorer</h1>\n      <p className="ng-panel-note">Inspect and call every endpoint declared for this frontend. Requests use the generated typed client and include browser credentials. Backend authorization remains authoritative.</p>\n      <label className="ng-field"><span className="ng-label">Operation</span><select className="ng-input" value={selected} onChange={(event) => { const next = endpoints.find((item) => item.name === event.target.value); setSelected(event.target.value); if (next) setInput(exampleInput(next)); setResult(undefined); setError(undefined); }} aria-label="Select API operation">{endpoints.map((endpoint) => <option key={endpoint.name} value={endpoint.name}>{endpoint.method} {endpoint.path} — {endpoint.summary}</option>)}</select></label>\n      {active ? <div style={{ display: "grid", gap: 16, marginTop: 20 }}>\n        <div><strong>{active.entity}</strong><p>{active.summary}</p><p><code>{active.method} {active.path}</code></p>\n          {active.authRequired ? <p><strong>Authentication:</strong> required</p> : <p><strong>Authentication:</strong> no explicit requirement declared</p>}\n          {active.roles.length ? <p><strong>Allowed roles:</strong> {active.roles.join(", ")}</p> : null}\n          {active.permissions.length ? <p><strong>Required permissions:</strong> {active.permissions.join(", ")}</p> : null}\n          {active.pathParams.length ? <p><strong>Path parameters:</strong> {active.pathParams.map((item) => item.name + (item.required ? " (required)" : "")).join(", ")}</p> : null}\n          {active.queryParams.length ? <p><strong>Query parameters:</strong> {active.queryParams.map((item) => item.name + (item.required ? " (required)" : "") + (item.enumName ? " [enum: " + item.enumName + ": " + (item.enumValues ?? []).join(", ") + "]" : "")).join(", ")}</p> : null}\n          {active.requestBody ? <p><strong>Request body contract:</strong> <code>{JSON.stringify(active.requestBody)}</code></p> : null}\n          {active.pagination ? <p><strong>Pagination:</strong> <code>{JSON.stringify(active.pagination)}</code></p> : null}\n        </div>\n        <label className="ng-field"><span className="ng-label">Request input (JSON)</span><textarea className="ng-input" rows={14} spellCheck={false} value={input} onChange={(event) => setInput(event.target.value)} aria-describedby="api-input-help" /></label>\n        <small id="api-input-help">Use path, query, and body keys shown in the endpoint contract. Enums and field constraints are included above.</small>\n        {parseError ? <Notice tone="alert">Invalid JSON: {parseError}</Notice> : null}{error ? <pre role="alert" className="ng-notice ng-notice--alert" style={{ whiteSpace: "pre-wrap" }}>{error}</pre> : null}\n        <div><Button disabled={pending} onClick={() => void run()}>{pending ? "Sending…" : "Send request"}</Button></div>\n        {result !== undefined ? <section aria-live="polite"><h2>Response</h2><pre className="ng-panel" style={{ overflow: "auto", whiteSpace: "pre-wrap" }}>{JSON.stringify(result, null, 2)}</pre></section> : null}\n      </div> : <Notice>No connected endpoints are declared.</Notice>}\n    </section></main>;\n}\n`,
+            },
+          ]
+        : []),
+      ...(endpoints.length > 0
+        ? [
+            {
+              path: `${framework.codeRoot}/app/api-explorer/page.tsx`,
+              content: `import { ApiExplorer } from "@/components/api/api-explorer";\n\nexport const metadata = { title: "API Explorer" };\nexport default function ApiExplorerPage() { return <ApiExplorer />; }\n`,
+            },
+          ]
+        : []),
     ];
     return files;
   },

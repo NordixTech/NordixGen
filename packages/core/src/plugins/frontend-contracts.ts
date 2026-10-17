@@ -10,6 +10,7 @@ export const FRONTEND_PLUGIN_ROLES = [
   "server-state",
   "client-state",
   "authentication",
+  "feature-screens",
 ] as const;
 
 export type FrontendPluginRole = (typeof FRONTEND_PLUGIN_ROLES)[number];
@@ -52,6 +53,7 @@ export interface FrontendPluginContributionContext {
 export interface FrontendApiEntity {
   readonly fields: Readonly<Record<string, FieldDefinition>>;
   readonly relations: Readonly<Record<string, { readonly target: string; readonly type: string }>>;
+  readonly softDelete?: false | "boolean" | "timestamp";
 }
 
 export interface FrontendAuthenticationContract {

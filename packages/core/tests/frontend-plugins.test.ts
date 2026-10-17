@@ -8,6 +8,7 @@ import {
   buildFrontendApiContract,
   composeFrontendPlugins,
   contextClientStatePlugin,
+  featureScreensFrontendPlugin,
   nativeReactUiPlugin,
   nextjsFrontendPlugin,
   plainCssStylingPlugin,
@@ -19,6 +20,10 @@ import {
   zustandClientStatePlugin,
 } from "../src/index.js";
 import { getFrontendOperationNames } from "../src/plugins/frontend-operation-names.js";
+import {
+  generateFeatureScreenFiles,
+  groupEndpointsByEntity,
+} from "../src/plugins/frontends/feature-screens.js";
 import { frontendRootShellOwnerRole } from "../src/plugins/frontends/root-shell.js";
 
 const frontend = (options: Record<string, unknown> = {}) =>
@@ -133,6 +138,7 @@ describe("frontend plugin contracts", () => {
       entities: {
         Order: {
           backend: "api",
+          softDelete: "timestamp",
           fields: { status: { type: "string" } },
           relations: {
             user: { type: "many-to-one", target: "User", foreignKey: "userId" },
@@ -184,6 +190,7 @@ describe("frontend plugin contracts", () => {
     ]);
     expect(contract.entities).not.toHaveProperty("AuditLog");
     expect(contract.entities.Order?.fields).toHaveProperty("userId");
+    expect(contract.entities.Order?.softDelete).toBe("timestamp");
     expect(contract.entities).toHaveProperty("User");
     expect(contract.authentication).toMatchObject({
       plugin: "better-auth",
@@ -375,6 +382,63 @@ describe("frontend plugin contracts", () => {
     expect(types).toContain("export interface getOrderInput");
     expect(types).toContain('"User": Pick<UserResponse, "name"> | null;');
     expect(types).toContain("readonly items:");
+    const explorer = result.virtualFileSystem.readFile(
+      "apps/store-web/src/components/api/api-explorer.tsx",
+    );
+    expect(explorer).toContain('"getOrder"');
+    expect(explorer).toContain('"PATCH"');
+    expect(explorer).toContain("pathParams");
+    expect(explorer).toContain("bodyExample");
+    expect(explorer).toContain("Required permissions");
+    expect(explorer).toContain("credentials");
+    expect(explorer).toContain('"enumValues": [');
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/app/api-explorer/page.tsx"),
+    ).toContain("ApiExplorer");
+    expect(result.virtualFileSystem.readFile("apps/store-web/src/app/page.tsx")).toContain(
+      'href="/api-explorer"',
+    );
+
+    const apiFramework = nextjsFrontendPlugin.createFrameworkContext?.(frontend());
+    if (!apiFramework) throw new Error("Next.js API fixture is unavailable.");
+    const bodyExamples = typedFetchApiPlugin.contribute({
+      projectName: "Commerce",
+      frontend: frontend(),
+      framework: apiFramework,
+      availableCapabilities: new Set<string>(),
+      api: {
+        endpoints: [
+          {
+            ...orderEndpoint,
+            requestBody: { useCase: { entity: "Order", operation: "create" } },
+          },
+        ],
+        entities: {
+          Order: {
+            fields: {
+              count: { type: "number" as const, required: true },
+              active: { type: "boolean" as const, required: true },
+              details: { type: "json" as const, required: true },
+              status: { type: "enum" as const, enumName: "Status", required: true },
+              missingStatus: { type: "enum" as const, enumName: "Missing", required: false },
+              unspecifiedStatus: { type: "enum" as const, required: false } as never,
+              title: { type: "string" as const, required: false, default: "Draft" },
+            },
+            relations: {},
+          },
+        },
+        enums: { Status: ["pending"] },
+      },
+    } as never);
+    const bodyExplorer = bodyExamples.find(({ path }) =>
+      path.endsWith("api-explorer.tsx"),
+    )?.content;
+    expect(bodyExplorer).toContain('"count": 0');
+    expect(bodyExplorer).toContain('"active": false');
+    expect(bodyExplorer).toContain('"details": {}');
+    expect(bodyExplorer).toContain('"status": "pending"');
+    expect(bodyExplorer).toContain('"missingStatus": ""');
+    expect(bodyExplorer).toContain('"title": "Draft"');
   });
 
   it("covers optional API parameter types, projections, and empty generated bodies", () => {
@@ -734,7 +798,37 @@ describe("frontend plugin contracts", () => {
     });
     const generated = result.virtualFileSystem.listFiles();
     expect(generated).toContain("apps/store-web/src/app/sign-in/page.tsx");
+    expect(generated).toContain("apps/store-web/src/app/sign-up/page.tsx");
+    expect(generated).toContain("apps/store-web/src/components/auth/auth-controls.tsx");
+    expect(generated).toContain("apps/store-web/src/components/auth/sign-up-form.tsx");
     expect(generated).toContain("apps/store-web/src/components/auth/session-view-sync.tsx");
+    expect(result.virtualFileSystem.readFile("apps/store-web/src/app/page.tsx")).not.toContain(
+      "<AuthControls />",
+    );
+    const layout = result.virtualFileSystem.readFile("apps/store-web/src/app/layout.tsx");
+    expect(layout).toContain('import { AuthControls } from "@/components/auth/auth-controls";');
+    expect(layout).toContain('<div className="ng-session-indicator"><AuthControls /></div>');
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/auth-controls.tsx"),
+    ).toContain("<SignOutButton />");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
+    ).toContain("authClient.signUp.email");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
+    ).toContain("await authClient.getSession();");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
+    ).toContain("minLength={4}");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
+    ).toContain("Could not reach the authentication server.");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-in-form.tsx"),
+    ).toContain("Could not reach the authentication server.");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-in-form.tsx"),
+    ).toContain("await authClient.getSession();");
     const authClient = result.virtualFileSystem.readFile("apps/store-web/src/lib/auth/client.ts");
     expect(authClient).toContain("usernameClient()");
     expect(authClient).toContain("twoFactorClient()");
@@ -1188,5 +1282,361 @@ describe("frontend plugin contracts", () => {
     expect(unknownError.success).toBe(false);
     if (!unknownError.success)
       expect(unknownError.diagnostics[0]?.message).toBe("Frontend framework context is invalid.");
+  });
+
+  it("covers feature-screen generation, CRUD branches, and composer registration", () => {
+    const [getOrder, listOrders, updateUser] = apiContract.endpoints;
+    if (!getOrder || !listOrders || !updateUser) throw new Error("Incomplete API fixtures.");
+    const framework = nextjsFrontendPlugin.createFrameworkContext?.(frontend());
+    if (!framework) throw new Error("Next.js framework fixture is unavailable.");
+    const endpoints = [
+      ...apiContract.endpoints.map((endpoint) =>
+        endpoint === listOrders
+          ? {
+              ...endpoint,
+              pagination: { strategy: "offset" as const },
+              queryParams: [...endpoint.queryParams, { name: "search", required: false }],
+            }
+          : endpoint,
+      ),
+      {
+        ...listOrders,
+        method: "GET" as const,
+        operationId: "searchOrders",
+        pagination: undefined,
+        queryParams: [{ name: "search", required: false }],
+      },
+      {
+        ...listOrders,
+        method: "POST" as const,
+        path: "/orders",
+        operationId: "createOrder",
+        pathParams: [],
+        queryParams: [],
+        roles: ["admin"],
+        permissions: ["orders:create"],
+        requestBody: { useCase: { entity: "Order", operation: "create" as const } },
+      },
+      {
+        ...getOrder,
+        method: "DELETE" as const,
+        operationId: "deleteOrder",
+        path: "/orders/{orderId}",
+        queryParams: [],
+      },
+      {
+        ...getOrder,
+        method: "PUT" as const,
+        operationId: "replaceOrder",
+        requestBody: { useCase: { entity: "Order", operation: "update" as const } },
+        permissions: ["orders:update"],
+      },
+      {
+        ...listOrders,
+        entity: "Invoice",
+        method: "POST" as const,
+        operationId: "createInvoice",
+        path: "/invoices",
+        pathParams: [],
+        queryParams: [],
+        roles: ["billing"],
+        requestBody: {
+          title: { type: "string" as const, required: true },
+          status: {
+            field: { entity: "Order", field: "status" },
+            required: false,
+          },
+          unknown: {
+            field: { entity: "Missing", field: "unknown" },
+          },
+          optionalStatus: { field: { entity: "Order", field: "status" } },
+          unknownEnum: { type: "enum" as const, enumName: "MissingEnum", required: true },
+          unspecifiedEnum: { type: "enum" as const, required: false } as never,
+        },
+      },
+      {
+        ...listOrders,
+        entity: "MissingRecord",
+        method: "POST" as const,
+        operationId: "createMissingRecord",
+        path: "/missing-records",
+        pathParams: [],
+        queryParams: [],
+        requestBody: { useCase: { entity: "AbsentEntity", operation: "create" as const } },
+      },
+      {
+        ...getOrder,
+        entity: "Invoice",
+        method: "DELETE" as const,
+        operationId: "deleteInvoice",
+        path: "/invoices/{id}",
+      },
+    ];
+    const grouped = groupEndpointsByEntity(endpoints);
+    expect(groupEndpointsByEntity([])).toEqual(new Map());
+    expect(grouped.get("Order")?.customEndpoints).toHaveLength(1);
+
+    const context = {
+      projectName: "Shop",
+      frontend: frontend({ stateManagement: { server: "tanstack-query", generateHooks: true } }),
+      framework,
+      availableCapabilities: new Set<string>(),
+      api: {
+        ...apiContract,
+        endpoints,
+        authentication: {
+          plugin: "better-auth",
+          backend: "api",
+          methods: ["email"],
+          identityProviders: [],
+          features: [],
+          roles: ["admin"],
+          defaultRole: "admin",
+          rolePermissions: {},
+        },
+        entities: {
+          ...apiContract.entities,
+          Order: {
+            softDelete: "boolean" as const,
+            fields: {
+              id: { type: "uuid" as const, required: true },
+              createdAt: { type: "date" as const, required: true },
+              status: { type: "enum" as const, enumName: "OrderStatus", required: true },
+              amount: { type: "number" as const, required: true },
+              paid: { type: "boolean" as const, required: false },
+              placedAt: { type: "date" as const, required: false },
+              metadata: { type: "json" as const, required: false },
+              requiredJson: { type: "json" as const, required: true },
+              label: { type: "string" as const, required: false, default: "Draft" },
+              optionalStatus: {
+                type: "enum" as const,
+                enumName: "OrderStatus",
+                required: false,
+              },
+              note: { type: "string" as const, required: true },
+            },
+            relations: {},
+          },
+        },
+      },
+    } as const;
+    const files = generateFeatureScreenFiles(context);
+    expect(files).toHaveLength(8);
+    const screen = files[0]?.content ?? "";
+    expect(screen).toContain("useListOrders");
+    expect(screen).toContain('"orders:create"');
+    expect(screen).toContain('"admin"');
+    expect(screen).toContain("hasRole(role)");
+    expect(screen).toContain("hasPermission(permission)");
+    expect(screen).toContain('<option value="pending">pending</option>');
+    expect(screen).toContain("zodResolver");
+    expect(screen).toContain('featureForm.register("amount", { valueAsNumber: true })');
+    expect(screen).toContain('featureForm.register("paid")');
+    expect(screen).toContain("featureForm.handleSubmit(handleSave)");
+    expect(screen).toContain('"amount": z.preprocess');
+    expect(screen).toContain('"note": z.string().min(1, "Required")');
+    expect(screen).toContain('"metadata": z.unknown().optional()');
+    expect(screen).toContain("marked inactive and hidden from active lists");
+    expect(screen).toContain('"label": z.string().optional().default("Draft")');
+    const invoiceScreen =
+      files.find(({ path }) => path.endsWith("invoice-screen.tsx"))?.content ?? "";
+    expect(invoiceScreen).toContain('"title": z.string().min(1, "Required")');
+    expect(invoiceScreen).toContain('"unknown": z.unknown()');
+    const timestampDeleteScreen = generateFeatureScreenFiles({
+      ...context,
+      api: {
+        ...context.api,
+        entities: {
+          ...context.api.entities,
+          Order: { ...context.api.entities.Order, softDelete: "timestamp" },
+        },
+      },
+    });
+    expect(timestampDeleteScreen[0]?.content).toContain(
+      "archived using the backend soft-delete policy",
+    );
+    expect(invoiceScreen).toContain("permanently removes this record");
+    expect(screen).toContain("Page {page}");
+    expect(files[1]?.content).toContain("Order Records | NordixGen");
+    expect(
+      generateFeatureScreenFiles({ ...context, api: { ...context.api, endpoints: [] } }),
+    ).toEqual([]);
+
+    const swrFiles = generateFeatureScreenFiles({
+      ...context,
+      frontend: frontend({ stateManagement: { server: "swr", generateHooks: true } }),
+    });
+    expect(swrFiles[0]?.content).toContain("createMutation.trigger");
+    const nativeFiles = generateFeatureScreenFiles({
+      ...context,
+      frontend: frontend({ stateManagement: { server: "native-fetch", generateHooks: false } }),
+    });
+    expect(nativeFiles[0]?.content).toContain("useCallback");
+    expect(nativeFiles[0]?.content).toContain("await refetch()");
+    expect(nativeFiles[0]?.content).toContain('import { useCallback, useEffect } from "react";');
+    expect(nativeFiles[0]?.content).toContain('"page": page');
+
+    const withoutAuth = generateFeatureScreenFiles({
+      ...context,
+      api: { ...context.api, authentication: undefined },
+    });
+    expect(withoutAuth[0]?.content).not.toContain("useSessionView");
+
+    const optionalAndEscapedFields = generateFeatureScreenFiles({
+      ...context,
+      api: {
+        ...context.api,
+        entities: {
+          ...context.api.entities,
+          Order: {
+            fields: {
+              id: { type: "uuid" as const, required: true },
+              createdAt: { type: "date" as const, required: true },
+              updatedAt: { type: "date" as const, required: true },
+              isDeleted: { type: "boolean" as const, required: true },
+              deletedAt: { type: "date" as const, required: false },
+              status: {
+                type: "enum" as const,
+                enumName: "OrderStatus",
+                required: false,
+              },
+              label: { type: "string" as const, required: false, default: "<hello & goodbye>" },
+            },
+            relations: {},
+          },
+        },
+      },
+    });
+    expect(optionalAndEscapedFields[0]?.content).toContain("label");
+    expect(optionalAndEscapedFields[0]?.content).not.toContain('name="createdAt"');
+
+    const plainStylingFrontend = frontend({ styling: "css" });
+    const plainStylingFramework =
+      nextjsFrontendPlugin.createFrameworkContext?.(plainStylingFrontend);
+    if (!plainStylingFramework) throw new Error("Plain CSS framework fixture is unavailable.");
+    const plainStylingFiles = generateFeatureScreenFiles({
+      ...context,
+      frontend: plainStylingFrontend,
+      framework: plainStylingFramework,
+      api: { ...context.api, endpoints: [listOrders], entities: {} },
+    });
+    expect(plainStylingFiles[0]?.content).toContain("FeatureScreen");
+
+    const noCrud = generateFeatureScreenFiles({
+      ...context,
+      api: {
+        ...context.api,
+        endpoints: [getOrder],
+        entities: {},
+      },
+    });
+    expect(noCrud[0]?.content).not.toContain("<Dialog");
+    expect(noCrud[0]?.content).not.toContain("<TableCell>Actions</TableCell>");
+
+    const noOperations = generateFeatureScreenFiles({
+      ...context,
+      api: {
+        ...context.api,
+        endpoints: [
+          {
+            ...listOrders,
+            method: "POST" as const,
+            entity: "EmptyRecord",
+            operationId: "createEmptyRecord",
+          },
+        ],
+        entities: {},
+      },
+    });
+    expect(noOperations[0]?.content).toContain("No delete endpoint");
+    expect(noOperations[0]?.content).toContain("This entity has no update endpoint");
+
+    const inferredPathParameters = generateFeatureScreenFiles({
+      ...context,
+      frontend: frontend({ stateManagement: { server: "native-fetch", generateHooks: false } }),
+      api: {
+        ...context.api,
+        endpoints: [
+          {
+            ...listOrders,
+            method: "POST" as const,
+            entity: "EditableRecord",
+            operationId: "createEditableRecord",
+          },
+          {
+            ...listOrders,
+            method: "PATCH" as const,
+            entity: "EditableRecord",
+            operationId: "updateEditableRecord",
+            path: "/editable-record",
+            pathParams: [],
+          },
+          {
+            ...listOrders,
+            method: "DELETE" as const,
+            entity: "EditableRecord",
+            operationId: "deleteEditableRecord",
+            path: "/editable-record",
+            pathParams: [],
+          },
+        ],
+        entities: {},
+      },
+    });
+    expect(inferredPathParameters[0]?.content).toContain('path: { "id": id }');
+
+    const deleteOnly = generateFeatureScreenFiles({
+      ...context,
+      api: {
+        ...context.api,
+        endpoints: [
+          {
+            ...listOrders,
+            method: "DELETE" as const,
+            entity: "RemovableRecord",
+            operationId: "deleteRemovableRecord",
+            pathParams: [],
+          },
+        ],
+        entities: {},
+      },
+    });
+    expect(deleteOnly[0]?.content).toContain("Delete RemovableRecord");
+
+    const wrongScreensPlugin: FrontendGeneratorPlugin = {
+      ...featureScreensFrontendPlugin,
+      descriptor: { ...featureScreensFrontendPlugin.descriptor, role: "ui" },
+    };
+    const wrongScreens = composeFrontendPlugins(
+      "Shop",
+      frontend(),
+      registryWith(
+        nextjsFrontendPlugin,
+        tailwindStylingPlugin,
+        nativeReactUiPlugin,
+        typedFetchApiPlugin,
+        wrongScreensPlugin,
+      ),
+      { endpoints, entities: apiContract.entities, enums: apiContract.enums },
+    );
+    expect(wrongScreens.success).toBe(false);
+    if (!wrongScreens.success)
+      expect(wrongScreens.diagnostics.map(({ code }) => code)).toContain(
+        "FRONTEND_FEATURE_SCREENS_PLUGIN_ROLE_MISMATCH",
+      );
+
+    const composition = composeFrontendPlugins(
+      "Shop",
+      frontend(),
+      registryWith(
+        nextjsFrontendPlugin,
+        tailwindStylingPlugin,
+        nativeReactUiPlugin,
+        typedFetchApiPlugin,
+        featureScreensFrontendPlugin,
+      ),
+      { endpoints, entities: apiContract.entities, enums: apiContract.enums },
+    );
+    expect(composition.success).toBe(true);
   });
 });

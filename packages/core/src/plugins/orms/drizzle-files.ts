@@ -292,7 +292,7 @@ export function generateDrizzleAdapterFiles(
       "export function createDrizzleDatabase(connectionString: string) {",
       "  const hostname = new URL(connectionString).hostname;",
       '  if (hostname.endsWith(".localtest.me")) {',
-      "    neonConfig.fetchEndpoint = `http://${hostname}:4444/sql`;",
+      '    neonConfig.fetchEndpoint = "http://127.0.0.1:4444/sql";',
       "    neonConfig.poolQueryViaFetch = true;",
       "  }",
       "  const client = neon(connectionString);",
@@ -462,7 +462,8 @@ export function generateDrizzleAdapterFiles(
 
   // Generate query port adapters for custom endpoints with joins
   for (const endpoint of model.endpoints) {
-    if (!endpoint.joins || endpoint.joins.length === 0) continue;
+    const mainEntity = model.entities[endpoint.entity];
+    if (!mainEntity) continue;
     const operationName = endpointTypeName(endpoint);
     const adapterPath = posix.join(adapterDirectory, `${operationName}.drizzle.query.adapter.ts`);
     const portPath = posix.join(outboundPortDirectory, `${operationName}.query.port.ts`);
@@ -479,18 +480,18 @@ export function generateDrizzleAdapterFiles(
       `${operationName}.use-case.ts`,
     );
     const adapterClass = `Drizzle${operationName}QueryAdapter`;
-    const endpointUseCase = `${operationName}UseCase`;
+    const endpointUseCase = `${operationName}EndpointUseCase`;
     const adapterVariable = `${lowerFirst(operationName)}QueryAdapter`;
     dependencyImports.push(
       `import { ${adapterClass} } from "./${operationName}.drizzle.query.adapter.js";`,
     );
     dependencyImports.push(
-      `import { ${endpointUseCase} } from "${importPath(dependencyFactoryPath, useCasePath)}";`,
+      `import { ${operationName}UseCase as ${endpointUseCase} } from "${importPath(dependencyFactoryPath, useCasePath)}";`,
     );
     dependencyLines.push(`  const ${adapterVariable} = new ${adapterClass}(db);`);
     const endpointDynamicDefaults =
       endpoint.requestBody !== undefined &&
-      Object.values(model.entities[endpoint.entity]?.fields ?? {}).some(
+      Object.values(mainEntity.fields).some(
         (field) => field.type === "date" && hasNowDefault(field),
       );
     const endpointUseCaseArgs = `${adapterVariable}${endpointDynamicDefaults ? ", clock" : ""}`;
@@ -498,8 +499,6 @@ export function generateDrizzleAdapterFiles(
       `  const ${lowerFirst(operationName)}UseCase = new ${endpointUseCase}(${endpointUseCaseArgs});`,
     );
 
-    const mainEntity = model.entities[endpoint.entity];
-    if (!mainEntity) continue;
     const decimalFields = (entityName: string) =>
       Object.entries(model.entities[entityName]?.fields ?? {})
         .filter(
@@ -528,7 +527,19 @@ export function generateDrizzleAdapterFiles(
     const filterBranches = [
       `      if (filter.entity === ${JSON.stringify(endpoint.entity)}) {`,
       `        const table = schema.${endpoint.entity}Table as any;`,
-      "        if (table[filter.field]) conditions.push(eq(table[filter.field], filter.value));",
+      "        const column = table[filter.field];",
+      "        if (column) {",
+      "          switch (filter.operator) {",
+      '            case "ne": conditions.push(ne(column, filter.value)); break;',
+      '            case "in": conditions.push(inArray(column, filter.value as any[])); break;',
+      '            case "gt": conditions.push(gt(column, filter.value)); break;',
+      '            case "gte": conditions.push(gte(column, filter.value)); break;',
+      '            case "lt": conditions.push(lt(column, filter.value)); break;',
+      '            case "lte": conditions.push(lte(column, filter.value)); break;',
+      '            case "contains": conditions.push(ilike(column, `%${String(filter.value)}%`)); break;',
+      "            default: conditions.push(eq(column, filter.value));",
+      "          }",
+      "        }",
       "      }",
     ];
     for (const join of endpoint.joins) {
@@ -588,8 +599,94 @@ export function generateDrizzleAdapterFiles(
         ? ` { ...row, ${mainDecimalFields.map((field) => `${field}: Number(row.${field})`).join(", ")} }`
         : "row";
 
+    const pathConditionLines = (endpoint.pathParams ?? []).flatMap((parameter) => {
+      const field = parameter.field;
+      if (!field || field.entity !== endpoint.entity) return [];
+      return [
+        `    if (input.request.path[${JSON.stringify(parameter.name)}] !== undefined) {`,
+        `      conditions.push(eq(schema.${endpoint.entity}Table.${field.field}, input.request.path[${JSON.stringify(parameter.name)}]));`,
+        "    }",
+      ];
+    });
+    const requestBodyUseCase =
+      endpoint.requestBody && "useCase" in endpoint.requestBody
+        ? endpoint.requestBody.useCase
+        : undefined;
+    const mutation =
+      requestBodyUseCase &&
+      "operation" in requestBodyUseCase &&
+      (requestBodyUseCase.operation === "create" || requestBodyUseCase.operation === "update")
+        ? requestBodyUseCase.operation
+        : endpoint.method === "DELETE"
+          ? "delete"
+          : undefined;
+    const executeQuery =
+      mutation === "create"
+        ? [
+            `    const rows = await this.db.insert(schema.${endpoint.entity}Table).values(input.request.body as any).returning();`,
+            "    return rows.map((row: any) => ({",
+            `      entity: ${mainEntityResult},`,
+            "      joins: {},",
+            "    })) as Response;",
+          ]
+        : mutation === "update"
+          ? [
+              '    if (conditions.length === 0) throw new Error("Update endpoint requires a path or filter condition.");',
+              `    const rows = await this.db.update(schema.${endpoint.entity}Table).set(input.request.body as any).where(and(...conditions)).returning();`,
+              "    return rows.map((row: any) => ({",
+              `      entity: ${mainEntityResult},`,
+              "      joins: {},",
+              "    })) as Response;",
+            ]
+          : mutation === "delete"
+            ? [
+                '    if (conditions.length === 0) throw new Error("Delete endpoint requires a path or filter condition.");',
+                `    const rows = await this.db.delete(schema.${endpoint.entity}Table).where(and(...conditions)).returning();`,
+                "    return rows.map((row: any) => ({",
+                `      entity: ${mainEntityResult},`,
+                "      joins: {},",
+                "    })) as Response;",
+              ]
+            : endpoint.pagination
+              ? [
+                  "    const pagination = input.pagination;",
+                  `    const itemsRaw = await (this.db.query as any).${endpoint.entity}Table.findMany({`,
+                  "      where: conditions.length > 0 ? and(...conditions) : undefined,",
+                  "      offset: pagination.offset,",
+                  "      limit: pagination.limit,",
+                  "      with: {",
+                  ...joinsQueryConfig,
+                  "      },",
+                  "    });",
+                  `    const countResult = await this.db.select({ count: sql\`count(*)\` }).from(schema.${endpoint.entity}Table).where(conditions.length > 0 ? and(...conditions) : undefined);`,
+                  "    const total = Number(countResult[0]?.count ?? 0);",
+                  "    const items = itemsRaw.map((row: any) => ({",
+                  `      entity: ${mainEntityResult},`,
+                  "      joins: {",
+                  ...joinResultMappings,
+                  "      },",
+                  "    }));",
+                  "    const page = Math.floor(pagination.offset / pagination.limit) + 1;",
+                  "    const pageSize = pagination.limit;",
+                  "    return { items, total, page, pageSize } as Response;",
+                ]
+              : [
+                  `    const itemsRaw = await (this.db.query as any).${endpoint.entity}Table.findMany({`,
+                  "      where: conditions.length > 0 ? and(...conditions) : undefined,",
+                  "      with: {",
+                  ...joinsQueryConfig,
+                  "      },",
+                  "    });",
+                  "    return itemsRaw.map((row: any) => ({",
+                  `      entity: ${mainEntityResult},`,
+                  "      joins: {",
+                  ...joinResultMappings,
+                  "      },",
+                  "    })) as Response;",
+                ];
+
     const adapterContent = [
-      'import { and, eq, inArray, isNull, sql } from "drizzle-orm";',
+      'import { and, eq, gt, gte, ilike, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";',
       `import type { ${operationName}QueryPort } from "${importPath(adapterPath, portPath)}";`,
       `import type { QueryExecution, Response } from "${importPath(adapterPath, dtoPath)}";`,
       `import type { DrizzleDatabase } from "${importPath(adapterPath, dbClientPath)}";`,
@@ -604,44 +701,9 @@ export function generateDrizzleAdapterFiles(
       "    for (const filter of input.filters) {",
       ...filterBranches,
       "    }",
+      ...pathConditionLines,
       "",
-      ...(endpoint.pagination
-        ? [
-            "    const pagination = input.pagination;",
-            `    const itemsRaw = await (this.db.query as any).${endpoint.entity}Table.findMany({`,
-            "      where: conditions.length > 0 ? and(...conditions) : undefined,",
-            "      offset: pagination.offset,",
-            "      limit: pagination.limit,",
-            "      with: {",
-            ...joinsQueryConfig,
-            "      },",
-            "    });",
-            `    const countResult = await this.db.select({ count: sql\`count(*)\` }).from(schema.${endpoint.entity}Table).where(conditions.length > 0 ? and(...conditions) : undefined);`,
-            "    const total = Number(countResult[0]?.count ?? 0);",
-            "    const items = itemsRaw.map((row: any) => ({",
-            `      entity: ${mainEntityResult},`,
-            "      joins: {",
-            ...joinResultMappings,
-            "      },",
-            "    }));",
-            "    const page = Math.floor(pagination.offset / pagination.limit) + 1;",
-            "    const pageSize = pagination.limit;",
-            "    return { items, total, page, pageSize } as Response;",
-          ]
-        : [
-            `    const itemsRaw = await (this.db.query as any).${endpoint.entity}Table.findMany({`,
-            "      where: conditions.length > 0 ? and(...conditions) : undefined,",
-            "      with: {",
-            ...joinsQueryConfig,
-            "      },",
-            "    });",
-            "    return itemsRaw.map((row: any) => ({",
-            `      entity: ${mainEntityResult},`,
-            "      joins: {",
-            ...joinResultMappings,
-            "      },",
-            "    })) as Response;",
-          ]),
+      ...executeQuery,
       "  }",
       "}",
       "",
@@ -659,7 +721,7 @@ export function generateDrizzleAdapterFiles(
   dependencyLines.push("    },");
   dependencyLines.push("    endpoints: {");
   for (const endpoint of model.endpoints) {
-    if (!endpoint.joins || endpoint.joins.length === 0) continue;
+    if (!model.entities[endpoint.entity]) continue;
     dependencyLines.push(
       `      ${JSON.stringify(lowerFirst(endpointTypeName(endpoint)))}: ${lowerFirst(endpointTypeName(endpoint))}Endpoint,`,
     );
