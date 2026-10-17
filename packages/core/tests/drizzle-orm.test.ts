@@ -480,7 +480,7 @@ describe("Drizzle ORM plugin", () => {
       },
       {
         backend: "core-api",
-        path: "/api/orders/{orderId}",
+        path: "/api/orders/{orderId}/customers/{customerId}",
         method: "PATCH",
         operationId: "updateOrderEndpoint",
         entity: "Order",
@@ -488,7 +488,10 @@ describe("Drizzle ORM plugin", () => {
         roles: ["admin"],
         permissions: ["orders:update"],
         queryParams: [],
-        pathParams: [{ name: "orderId", field: { entity: "Order", field: "id" } }],
+        pathParams: [
+          { name: "orderId", field: { entity: "Order", field: "id" } },
+          { name: "customerId", field: { entity: "User", field: "id" } },
+        ],
         requestBody: { useCase: { entity: "Order", operation: "update" } },
       },
       {
@@ -547,6 +550,11 @@ describe("Drizzle ORM plugin", () => {
         "apps/api-core/src/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
       ],
     ).toContain('input.request.path["orderId"]');
+    expect(
+      files[
+        "apps/api-core/src/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
+      ],
+    ).not.toContain('input.request.path["customerId"]');
     expect(
       files[
         "apps/api-core/src/infrastructure/adapters/DeleteOrderEndpoint.drizzle.query.adapter.ts"

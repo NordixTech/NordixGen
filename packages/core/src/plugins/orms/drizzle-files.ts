@@ -491,7 +491,7 @@ export function generateDrizzleAdapterFiles(
     dependencyLines.push(`  const ${adapterVariable} = new ${adapterClass}(db);`);
     const endpointDynamicDefaults =
       endpoint.requestBody !== undefined &&
-      Object.values(model.entities[endpoint.entity]?.fields ?? {}).some(
+      Object.values(mainEntity.fields).some(
         (field) => field.type === "date" && hasNowDefault(field),
       );
     const endpointUseCaseArgs = `${adapterVariable}${endpointDynamicDefaults ? ", clock" : ""}`;
