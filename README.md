@@ -1,148 +1,66 @@
-# NordixGen 🚀
+# NordixGen
 
-> **Motor declarativo y determinista para la generación de proyectos full-stack empresariales.**  
-> Diseña tu arquitectura, entidades, endpoints, autenticación y despliegue en un único archivo YAML. Genera código limpio, tipado y listo para producción sin alucinaciones de IA.
+NordixGen is an internal Nordix tool for generating the starting point of client projects from a declarative YAML configuration. It targets one stack that Nordix knows and maintains. Public availability does not make it a general-purpose framework or third-party plugin platform.
 
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen.svg)](https://nodejs.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Cloudflare Ready](https://img.shields.io/badge/Deploy-Cloudflare%20Edge-orange.svg)](https://cloudflare.com/)
+The generator currently has a legacy plugin-based implementation. Milestone [v1.1.0](https://github.com/NordixTech/NordixGen/milestone/2) is dedicated to simplifying that implementation and establishing the fixed-stack modular-monolith design. The new YAML and module architecture described below are refactor targets; the current release does not accept or generate them yet.
 
----
+## Product direction
 
-## ⚡ ¿Qué es NordixGen?
+The fixed stack is TypeScript, Next.js App Router, Tailwind CSS, Hono, Drizzle ORM, PostgreSQL on Neon, Better Auth, TanStack Query, and Zustand. These are product decisions, not technology choices a project selects in YAML.
 
-**NordixGen** es un CLI y plataforma modular distribuida en `npm` (`@nordixgen/cli`, `@nordixgen/core`) orientada a eliminar el trabajo repetitivo de configuración y boilerplate al iniciar proyectos de software de gran escala.
+Each generated backend is intended to be a modular monolith. Business modules share one process and runtime. Each module will select one internally supported architecture: Clean, Hexagonal, or Onion. A backend may mix these families. Modules will communicate through explicit typed application contracts and direct in-process calls, with ownership and dependency rules defined by the new YAML/model.
 
-A partir de un archivo declarativo `nordix.config.yaml`, NordixGen construye:
-- **Clean Architecture** estricta en el Backend (Dominio, Casos de Uso, Puertos y Adaptadores).
-- **Feature-Driven Architecture** en el Frontend (Next.js 15 App Router, Tailwind CSS v4).
-- **Manejo de Estado Dual de Alto Rendimiento:** **TanStack Query v5** para caché remota y sincronización automática del servidor + **Zustand v5** para estado atómico de UI.
-- **SDKs y Hooks Tipados End-to-End** generados automáticamente para cada entidad y endpoint.
-- **Modelos y Esquemas ORM** con Drizzle ORM sobre PostgreSQL (Neon).
-- **Authentication and Authorization:** Better Auth is the first implemented authentication plugin in the Hono Golden Path, composed with framework, architecture, and persistence plugins; application roles and permissions (RBAC/PBAC) are enforced separately by the backend.
-- **CI/CD Nativo en el Edge con Cloudflare** (Workers Builds & Pages Git Integration) + Infraestructura como Código (Terraform/OpenTofu).
-- **Entorno Local con Docker Compose:** PostgreSQL, Mailpit, MinIO y Redis en un solo comando.
+**Current support differs from that target:** current generated backend output uses Clean Architecture. The current schema also accepts `modular`, but there is no registered generator for it. Hexagonal, Onion, per-module architecture selection, and typed module contracts are not implemented yet. See [RF-03](https://github.com/NordixTech/NordixGen/issues/64) for the YAML/module design and [RF-02](https://github.com/NordixTech/NordixGen/issues/63) for the explicit business-route change.
 
----
+## What the current generator does
 
-## Scaffolding oficial de frameworks
+The repository contains two workspace packages: `@nordixgen/core` for YAML parsing, schema and semantic validation, the normalized project model, and generated-file composition; and `@nordixgen/cli` for `init`, `validate`, and `generate` commands. Generation currently creates Next.js and Hono project scaffolds and adds configured entities, endpoints, persistence, authentication, frontend API clients, hooks, and screens.
 
-NordixGen uses each framework's official tooling to create its initial structure instead of maintaining templates that age over time. `generate` coordinates `create-next-app` for Next.js and the official `cloudflare-workers` template from `create-hono` for Hono, passes safe non-interactive options, and assembles the repositories declared in YAML. NordixGen brands each generated README and frontend homepage, then generates backend entities and endpoints, typed frontend API clients, state hooks, and entity management screens from the same configuration.
+Supported project configuration includes repositories and paths, frontend-to-backend connections, named database resources, entities and their fields/relations, endpoints, pagination, and project-specific authentication and role/permission settings. A backend currently references one database resource. The target schema may simplify technology selectors while retaining these project-level choices.
 
-## Backend Generation
+`authUI: true` generates sign-in/sign-up UI and account controls. It does not require a login to view frontend pages or add a server-side page access gate. Better Auth handles identity and sessions; generated backend routes enforce configured roles and permissions. The existing authorization is a static role-to-permission check, not a general policy engine. Frontend permission-based visibility is only a UI aid; the backend remains responsible for authorization.
 
-NordixGen composes **specialized plugins** instead of maintaining one monolithic generator for every technology combination. The core validates the configuration and coordinates generation; each plugin has a clear responsibility:
+The current generator also creates entity-based CRUD routes in addition to routes declared under `endpoints`. RF-02 changes the target behavior so only explicitly declared business endpoints are generated. Health and Better Auth handlers remain platform routes.
 
-- **Architecture** decides which layers and paths contain entities, use cases, ports, adapters, and controllers. Clean and Hexagonal are separate strategies.
-- **Framework** translates project specifications into framework conventions and language, such as Hono/TypeScript or .NET/C#. It also provides the code root, import conventions, and, where applicable, namespace rules.
-- **ORM** generates concrete persistence code, such as Drizzle or Entity Framework, and declares the languages, databases, and runtimes it supports.
-- **Database** identifies the storage engine and provider, such as PostgreSQL on Neon. Each backend selects its ORM and references the database it uses.
+## Run the CLI
 
-The framework provides project context, including its pinned upstream scaffold command, source root, runtime, entry points, and import conventions. The architecture strategy resolves where each file role belongs in that context; the framework and ORM plugins generate code at those resolved paths. Before writing files, NordixGen verifies that every plugin exists and that their capabilities are compatible. An unsupported combination, such as Hono with Entity Framework, produces a clear diagnostic instead of an incomplete project.
-
-The first implemented combination is Hono + Clean + Drizzle + PostgreSQL/Neon, with Better Auth as the first authentication plugin. The generator architecture allows additional strategies, frameworks, ORMs, and authentication plugins without duplicating a generator for every combination. See [Phase 4](docs/IMPLEMENTATION_PLAN.md#phase-4-composable-backend-generation-golden-path) and the [detailed specification](docs/SPECIFICATION.md#modular-backend-generation-contract).
-
-Authentication follows the same composable model. **Better Auth is the implemented authentication plugin in the Hono Golden Path**: it integrates a maintained authentication library into a backend, while the framework plugin supplies HTTP/runtime integration, the architecture plugin supplies file locations, and the ORM/database plugins supply persistence capabilities. This plugin is generated into the backend by default; it is not a separate deployed authentication service. External identity providers such as Google or GitHub are optional Better Auth integrations and require provider configuration and secrets outside the YAML. Application authorization (RBAC/PBAC) remains a separate server-enforced concern. See the [authentication requirements](docs/SPECIFICATION.md#c-authentication-and-authorization).
-
-```yaml
-databases:
-  commerce-db:
-    engine: postgres
-    provider: neon
-
-backends:
-  - name: core-api
-    framework: hono
-    architecture: clean
-    persistence:
-      database: commerce-db
-      orm: drizzle
-```
-
-## 🏆 El Golden Path Oficial
-
-NordixGen está diseñado de forma modular para que la comunidad pueda extenderlo a cualquier framework (.NET, NestJS, Django, Angular, etc.). Sin embargo, la **Ruta Dorada Oficial** de máxima eficiencia y coste cero o ultrabajo es:
-
-| Capa | Tecnología Oficial | Justificación Técnica |
-| :--- | :--- | :--- |
-| **Frontend** | Next.js 15 (App Router) + Tailwind CSS v4 | Máximo rendimiento web, React Server Components, estilos ultra-ligeros con `@theme`. |
-| **Frontend State** | TanStack Query v5 + Zustand v5 | Sincronización remota sin re-renders manuales + UI atómica sin boilerplate. |
-| **Backend** | Hono (TypeScript) + Clean Architecture | Edge-native, 0 ms cold-starts en Cloudflare Workers, separación estricta de capas. |
-| **Base de Datos** | PostgreSQL en Neon (Serverless) | Escalado automático a cero, branch de bases de datos por cada Pull Request. |
-| **ORM** | Drizzle ORM | Bundle ultra-ligero (<30 KB), TypeScript nativo, queries relacionales ultrarrápidas. |
-| **Aceleración DB**| Cloudflare Hyperdrive | Pooling y caché distribuida de consultas PostgreSQL en más de 300 ciudades. |
-| **CI/CD** | Cloudflare Native Builds | Sin runners externos ni secretos en GitHub; builds en el Edge y Preview URLs automáticas. |
-| **IaC** | Terraform / OpenTofu | Aprovisionamiento cloud completo (R2, Hyperdrive, Pages, Workers, DNS) con un solo comando. |
-| **Desarrollo Local**| Docker Compose | Postgres 16, Mailpit (visualizador de emails), MinIO (compatible S3/R2) y Redis. |
-
----
-
-## 📦 Modelo de Distribución y Uso
-
-### 1. Ejecución Instantánea sin Instalación (Recomendado)
 ```bash
-# Inicializar un archivo de configuración interactivo
 npx nordixgen init
-
-# Validar tu archivo YAML
 npx nordixgen validate -f nordix.config.yaml
-
-# Generar scaffolds base Next.js/Hono en el destino
-npx nordixgen generate -f nordix.config.yaml -o ./mi-nuevo-proyecto
-
-# Luego, instala las dependencias del workspace generado
-cd ./mi-nuevo-proyecto
-pnpm install
+npx nordixgen generate -f nordix.config.yaml -o ./my-client-project
 ```
 
-### 2. Instalación Global
+The CLI can initialize/publish repositories through GitHub CLI when configured. Generation uses upstream scaffolding tools for Next.js and Hono; this is project scaffolding, not deployment provisioning.
+
+The current YAML is documented in the [specification](docs/SPECIFICATION.md). Do not use the illustrative v2 module YAML in the RF-03 design issue as input to the current generator.
+
+## Development requirements
+
+- Node.js `>=24`
+- pnpm `>=10`
+
 ```bash
-npm install -g nordixgen
-nordixgen generate -f nordix.config.yaml -o ./mi-nuevo-proyecto
+pnpm install --frozen-lockfile
+pnpm test
+pnpm build
 ```
 
----
+## Refactor status and future work
 
-> `generate` prepares upstream scaffolds and composes the backends declared in YAML with architecture, framework, ORM, authentication, and authorization plugins. For connected frontends it generates typed API clients, server-state hooks, and per-entity management screens with paginated lists, search, create, update, and delete actions when matching endpoints are declared. Remote repository creation is available for GitHub and requires an authenticated GitHub CLI (`gh auth login`). After creating a remote for an initialized Git repository, NordixGen verifies its URL and runs `git push --dry-run` before the first real push.
+The v1.1.0 milestone covers the fixed-stack refactor, including the module/YAML design and explicit endpoint exposure. Deployment configuration, cloud provisioning, generated client-project CI/CD, IaC, Docker environment generation, and LLM tooling are not currently implemented and are outside this milestone; they are future product decisions.
 
-## 🌿 Flujo de Trabajo Git y Publicación de Paquetes
+- [v1.1.0 refactor milestone](https://github.com/NordixTech/NordixGen/milestone/2)
+- [RF-01: Align project documentation with the fixed-stack direction](https://github.com/NordixTech/NordixGen/issues/65)
+- [RF-02: Generate business routes only from declared endpoints](https://github.com/NordixTech/NordixGen/issues/63)
+- [RF-03: Design YAML v2 for a modular monolith with per-module architectures](https://github.com/NordixTech/NordixGen/issues/64)
+- [Detailed requirements and implementation status](docs/SPECIFICATION.md)
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
+- [Workspace packages](packages/README.md)
 
-NordixGen implementa un modelo de desarrollo profesional y publicación continua:
+## Language standard
 
-- **`main` (Distribución & Producción):** Cada commit o Pull Request fusionado en `main` activa de inmediato el workflow de CI/CD que compila, ejecuta pruebas y publica automáticamente `@nordixgen/cli` y `@nordixgen/core` al registro de `npm` con **npm Provenance (OIDC)** y el tag `@latest`.
-- **`develop` (Integración):** Rama activa donde convergen todas las características probadas antes de hacer un release.
-- **`feature/*`:** Ramas de trabajo aisladas para cada mejora o componente.
+Source code, CLI output, identifiers, comments, commits, pull requests, issues, and maintained project documentation are written in English. Conversations may use Spanish.
 
----
+## License
 
-## 🛠️ Requisitos de Desarrollo
-
-- **Node.js:** Versión `>= 24.0.0` (Active LTS).
-- **Gestor de versiones recomendado:** [`fnm` (Fast Node Manager)](https://github.com/Schniz/fnm):
-  ```bash
-  fnm install 24
-  fnm default 24
-  fnm use 24
-  ```
-- **Gestor de paquetes:** `pnpm >= 10.0.0`.
-
----
-
-## 📚 Documentación Técnica
-
-- 📖 [Especificación Integral de Requisitos y Capacidades](docs/SPECIFICATION.md)
-- 🗺️ [Plan de Implementación y Fases de Desarrollo](docs/IMPLEMENTATION_PLAN.md)
-- 📦 [Arquitectura del Monorepo de Paquetes](packages/README.md)
-
----
-
-## Project Language and Code Standards
-
-- Source code, CLI output, identifiers, comments, commits, pull requests, issues, and all new or updated project documentation must be written in **English**.
-- Conversations and collaboration may be in Spanish. Existing Spanish documentation will be translated incrementally during Phase 8; any documentation changed before then must still be written in English.
-
----
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia [MIT](LICENSE).
+NordixGen is licensed under the [MIT License](LICENSE).
