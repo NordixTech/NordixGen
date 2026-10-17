@@ -16,11 +16,9 @@ function pageSource(context: FrontendPluginContributionContext): string {
   const projectName = escapeText(context.projectName);
   const frontendName = escapeText(context.frontend.name);
   const apiExplorerLink = context.api.endpoints.length > 0;
-  const signInLink = context.frontend.authUI && Boolean(context.api.authentication);
   return source([
     'import { Badge } from "@/components/ui/badge";',
     'import { Button } from "@/components/ui/button";',
-    ...(signInLink ? ['import { AuthControls } from "@/components/auth/auth-controls";'] : []),
     "",
     "export const metadata = {",
     `  title: ${title},`,
@@ -46,9 +44,7 @@ function pageSource(context: FrontendPluginContributionContext): string {
     ...(apiExplorerLink
       ? ['            <a className="ng-text-link" href="/api-explorer">Open API Explorer</a>']
       : ['            <Button type="button">Explore your workspace</Button>']),
-    ...(signInLink
-      ? ["            <AuthControls />"]
-      : ['            <a className="ng-text-link" href="#workspace">View project details</a>']),
+    '            <a className="ng-text-link" href="#workspace">View project details</a>',
     "          </div>",
     "        </div>",
     '        <aside aria-label="Generated project details" className="ng-panel" id="workspace">',
@@ -260,6 +256,11 @@ const uiStyles = [
   ".ng-lede { max-width: 590px; margin: 24px 0 0; color: var(--ng-muted); font-size: 18px; line-height: 1.75; }",
   ".ng-actions { flex-wrap: wrap; gap: 20px; margin-top: 34px; }",
   ".ng-text-link { color: var(--ng-primary); font-size: 14px; font-weight: 650; }",
+  ".ng-session-indicator { position: fixed; z-index: 50; top: 20px; right: max(5vw, calc((100vw - 1200px) / 2)); }",
+  ".ng-account-state { display: inline-flex; min-height: 42px; align-items: center; gap: 9px; padding: 6px 12px; border: 1px solid var(--ng-border); border-radius: 999px; background: var(--ng-surface); box-shadow: 0 8px 24px rgba(16,24,40,.08); color: var(--ng-foreground); font-size: 13px; font-weight: 600; }",
+  ".ng-account-icon { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: #eef2f6; color: #475467; font-size: 16px; }",
+  ".ng-account-icon--signed-in { background: #dcfae6; color: #067647; }",
+  ".ng-account-state .ng-button { min-height: 30px; padding: 0 10px; font-size: 12px; }",
   ".ng-panel { padding: 30px; border: 1px solid rgba(255,255,255,.8); border-radius: var(--ng-radius); background: rgba(255,255,255,.82); box-shadow: 0 24px 80px rgba(16,24,40,.09); backdrop-filter: blur(20px); }",
   ".ng-panel-heading { justify-content: space-between; padding-bottom: 24px; border-bottom: 1px solid var(--ng-border); }",
   ".ng-panel-heading .ng-eyebrow { margin-bottom: 8px; }",

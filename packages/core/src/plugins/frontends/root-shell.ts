@@ -29,6 +29,7 @@ export function frontendRootShellFiles(
   const contextState = capabilities.has("client-state:context");
   const zustand = capabilities.has("client-state:zustand");
   const sessionSync = capabilities.has("authentication:session") && zustand;
+  const authIndicator = context.frontend.authUI && capabilities.has("authentication:session");
   const toaster = contextState || zustand;
   const imports = [
     '"use client";',
@@ -75,11 +76,16 @@ export function frontendRootShellFiles(
         'import type { ReactNode } from "react";',
         'import "./globals.css";',
         'import { Providers } from "./providers";',
+        ...(authIndicator
+          ? ['import { AuthControls } from "@/components/auth/auth-controls";']
+          : []),
         "",
         `export const metadata: Metadata = { title: ${JSON.stringify(context.projectName)}, description: "Generated with NordixGen" };`,
         "",
         "export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {",
-        '  return <html lang="en"><body><Providers>{children}</Providers></body></html>;',
+        authIndicator
+          ? '  return <html lang="en"><body><Providers><div className="ng-session-indicator"><AuthControls /></div>{children}</Providers></body></html>;'
+          : '  return <html lang="en"><body><Providers>{children}</Providers></body></html>;',
         "}",
       ]),
     },
