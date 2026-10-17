@@ -802,15 +802,21 @@ describe("frontend plugin contracts", () => {
     expect(generated).toContain("apps/store-web/src/components/auth/auth-controls.tsx");
     expect(generated).toContain("apps/store-web/src/components/auth/sign-up-form.tsx");
     expect(generated).toContain("apps/store-web/src/components/auth/session-view-sync.tsx");
-    expect(result.virtualFileSystem.readFile("apps/store-web/src/app/page.tsx")).toContain(
+    expect(result.virtualFileSystem.readFile("apps/store-web/src/app/page.tsx")).not.toContain(
       "<AuthControls />",
     );
+    const layout = result.virtualFileSystem.readFile("apps/store-web/src/app/layout.tsx");
+    expect(layout).toContain('import { AuthControls } from "@/components/auth/auth-controls";');
+    expect(layout).toContain('<div className="ng-session-indicator"><AuthControls /></div>');
     expect(
       result.virtualFileSystem.readFile("apps/store-web/src/components/auth/auth-controls.tsx"),
     ).toContain("<SignOutButton />");
     expect(
       result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
     ).toContain("authClient.signUp.email");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
+    ).toContain("await authClient.getSession();");
     expect(
       result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-up-form.tsx"),
     ).toContain("minLength={4}");
@@ -820,6 +826,9 @@ describe("frontend plugin contracts", () => {
     expect(
       result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-in-form.tsx"),
     ).toContain("Could not reach the authentication server.");
+    expect(
+      result.virtualFileSystem.readFile("apps/store-web/src/components/auth/sign-in-form.tsx"),
+    ).toContain("await authClient.getSession();");
     const authClient = result.virtualFileSystem.readFile("apps/store-web/src/lib/auth/client.ts");
     expect(authClient).toContain("usernameClient()");
     expect(authClient).toContain("twoFactorClient()");

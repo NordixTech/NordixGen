@@ -613,7 +613,13 @@ export function generateDrizzleAdapterFiles(
         ? endpoint.requestBody.useCase
         : undefined;
     const mutation =
-      requestBodyUseCase?.operation ?? (endpoint.method === "DELETE" ? "delete" : undefined);
+      requestBodyUseCase &&
+      "operation" in requestBodyUseCase &&
+      (requestBodyUseCase.operation === "create" || requestBodyUseCase.operation === "update")
+        ? requestBodyUseCase.operation
+        : endpoint.method === "DELETE"
+          ? "delete"
+          : undefined;
     const executeQuery =
       mutation === "create"
         ? [
