@@ -1,17 +1,8 @@
 # @nordixgen/core
 
-`@nordixgen/core` contains the current configuration and file-generation primitives used by the NordixGen CLI:
+The NordixGen core parses and validates `nordix.config.yaml`, resolves the configuration into a deterministic intermediate representation, and provides an in-memory virtual file system.
 
-- YAML parsing and diagnostics.
-- Zod structural validation and semantic project validation.
-- Normalization of entities, endpoints, relations, pagination, and backend/frontend connections.
-- Generator composition and an in-memory virtual file system with safe paths and collision checks.
-
-The current project schema and implementation are still the legacy pre-refactor design. The backend currently selects architecture at backend level, and only the Clean generator is registered. The schema also accepts `modular`, but there is no registered generator for it. Hexagonal and Onion output, per-business-module architecture, explicit intermodule contracts, and the new YAML are target work tracked in [RF-03](https://github.com/NordixTech/NordixGen/issues/64); they are not supported inputs or outputs yet.
-
-The generic registries, capability negotiation, and framework/architecture/ORM plugin contracts visible in this package describe how the current implementation is assembled. They are internal legacy implementation details scheduled for simplification under the [v1.1.0 refactor](https://github.com/NordixTech/NordixGen/milestone/2), not a stable public API for third-party generator plugins.
-
-## Try the package
+## Try the example
 
 From the repository root:
 
@@ -22,9 +13,11 @@ pnpm --filter @nordixgen/core build
 pnpm generate:schema
 ```
 
-The generated `nordix.schema.json` is derived from the current Zod schema for editor completion. It reflects the current schema, not the planned YAML v2 module design.
+Provide your project configuration as a YAML file (for example, `nordix.config.yaml`). The schema generator writes [`nordix.schema.json`](../../nordix.schema.json) for YAML editor autocomplete.
 
-## Core APIs
+Database resources are named under `databases`; each backend can optionally select a resource and ORM under `persistence`. The former root-level `database` property is no longer supported, and the intermediate representation uses format version 3 for this shape change. ORM identifiers are checked against registered, compatible plugins during composition. Keep credentials and connection strings in environment configuration, never in YAML.
+
+## Use the core APIs
 
 ```ts
 import { readFile } from "node:fs/promises";
@@ -46,20 +39,60 @@ if (!result.success) {
   console.log(representation.entityOrder);
 
   const output = new VirtualFileSystem();
-  output.writeFile(
-    "nordix.intermediate-representation.json",
-    `${JSON.stringify(representation, null, 2)}\n`,
-  );
+  output.writeFile("nordix.intermediate-representation.json", `${JSON.stringify(representation, null, 2)}\n`);
   await output.emit("./generated");
 }
 ```
 
-`parseNordixYaml` reports YAML syntax, schema, and semantic diagnostics. The intermediate representation currently adds generated entity fields, sorts declarations, resolves relations and pagination, and scopes input to backend/frontend consumers. `VirtualFileSystem` stores generated files in memory and emits safe relative paths.
+`parseNordixYaml` returns structured diagnostics for YAML syntax, schema, semantic, and compatibility errors. `buildIntermediateRepresentation` sorts entities by their foreign-key dependencies, reports cycles, injects generated IDs and audit fields, and normalizes object ordering. The virtual file system writes files only when their contents change.
 
-Use the CLI's `validate` and `generate` commands for normal project workflows. The lower-level composition APIs and plugin contracts are subject to change as the refactor removes generic technology selection.
+Use `composeBackendPlugins(config, backendName, registry)` to resolve the framework, architecture, and optional ORM declared by a backend. It checks that each selected plugin is registered and that its declared capability requirements match the configured database engine and provider before any plugin contributes files. ORM plugins receive a typed persistence context with the named database, architecture-resolved infrastructure and adapter paths, and the environment variable name used for credentials.
 
-## Current generation stack
+The Hono framework plugin describes the pinned official `create-hono` Cloudflare Workers scaffold and runtime conventions. It consumes the selected architecture layout to generate the Worker entry point, route registration, and a health controller with imports derived from the final paths. Hono HTTP code stays in this framework plugin; architecture plugins only define semantic locations and dependency direction.
 
-Current generated projects use Next.js and Tailwind on the frontend and Hono, Drizzle, and PostgreSQL/Neon on the backend. Better Auth supplies identity and session handling. TanStack Query handles remote data and Zustand handles shared frontend UI state. The configured upstream scaffold currently uses the Hono Cloudflare Workers template; that does not mean NordixGen generates deployment configuration, provisions cloud resources, or deploys a client project.
+## Backend generator plugins
 
-`authUI` generates authentication screens and account controls, but does not protect frontend pages. Backend endpoints enforce server-side authentication and configured static roles/permissions. The current renderer also emits entity-derived CRUD routes; [RF-02](https://github.com/NordixTech/NordixGen/issues/63) defines their removal so declared endpoints become the only business HTTP route source.
+The core exposes contracts for architecture, framework, ORM, and authentication plugins, along with first-party Hono, Clean Architecture, and Drizzle integrations. Each integration implements the same public plugin contract and can be replaced by another registered implementation. A plugin declares a stable identifier/version, role, provided capabilities, and required capabilities. The compatibility resolver checks the complete selection before calling any plugin.
+
+Framework plugins resolve a `FrameworkContext` containing application/code roots, language, runtime, module system, entry points, and conventions. Architecture plugins receive that context and return an `ArchitectureLayout` with semantic file-role directories and dependency rules. Every plugin then contributes a list of relative POSIX file paths and contents. The composer normalizes paths, rejects collisions and unsafe paths, and returns a `VirtualFileSystem` only when the whole composition succeeds.
+
+```ts
+import {
+  cleanArchitecturePlugin,
+  composePlugins,
+  drizzleOrmPlugin,
+  formatDiagnostic,
+  honoFrameworkPlugin,
+  PluginRegistry,
+} from "@nordixgen/core";
+
+const registry = new PluginRegistry();
+registry.register(honoFrameworkPlugin);
+registry.register(cleanArchitecturePlugin);
+registry.register(drizzleOrmPlugin);
+
+const result = composePlugins({
+  registry,
+  selections: [
+    { pluginId: "hono", configuration: { applicationRoot: "apps/api" } },
+    { pluginId: "clean" },
+    { pluginId: "drizzle" },
+  ],
+  persistence: {
+    database: { name: "commerce-db", engine: "postgres", provider: "neon" },
+    connectionStringEnvironmentVariable: "DATABASE_URL",
+  },
+});
+
+if (!result.success) {
+  for (const diagnostic of result.diagnostics) console.error(formatDiagnostic(diagnostic));
+} else {
+  await result.virtualFileSystem.emit("./generated");
+}
+```
+
+Each backend composition requires one framework and one architecture plugin. Other roles are selected only when needed. Capability identifiers are declared by plugins (for example, `runtime:cloudflare-workers` or `orm:drizzle`); incompatible or missing required capabilities produce diagnostics before contribution begins. Every contributing plugin receives the set of capabilities available in that composition. Optional capability requirements produce warnings and let the plugin choose a fallback based on that set.
+
+The Drizzle integration currently supports TypeScript on Cloudflare Workers with PostgreSQL hosted by Neon through the Neon HTTP driver. It generates a Drizzle Kit configuration whose schema path is resolved from the selected architecture's infrastructure directory. `DATABASE_URL` is read from the environment; credentials are never embedded in generated YAML or source files. Schema and repository generation are handled by later Phase 4 issues.
+
+`cleanArchitecturePlugin` is a framework-independent strategy exported by the core. It resolves semantic directories and dependency directions from the selected framework's code root. New architecture strategies can implement the same plugin contract and be registered alongside it; core does not need to change.

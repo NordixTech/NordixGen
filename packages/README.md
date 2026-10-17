@@ -1,8 +1,18 @@
-# Workspace packages
+# Packages Directory
 
-The pnpm workspace currently contains two packages:
+Este directorio alberga los paquetes que componen la plataforma NordixGen bajo un monorepo administrado por `pnpm`:
 
-- [`@nordixgen/core`](core/README.md): YAML parsing, structural and semantic validation, project normalization, generator composition, and virtual file output. Its generic plugin/composition contracts are part of the legacy implementation being simplified in the v1.1.0 refactor; they are not a supported third-party extension API.
-- [`@nordixgen/cli`](cli): command-line entry point and project-generation orchestration (`init`, `validate`, and `generate`).
+- **`packages/core`**: Motor principal de NordixGen.
+  - Esquemas de validación Zod (`nordix.config.yaml`).
+  - Generador de la representación intermedia y el grafo de dependencias.
+  - Sistema de archivos virtual determinista y ordenamiento topológico.
+  - Matriz de validación e incompatibilidades.
 
-NordixGen targets a fixed stack for Nordix client projects. The intended backend is a modular monolith with architecture chosen per business module. See the [product requirements](../docs/SPECIFICATION.md) and the [v1.1.0 refactor milestone](https://github.com/NordixTech/NordixGen/milestone/2).
+- **`packages/cli`**: Interfaz de línea de comandos ejecutable mediante `npx nordixgen`.
+  - Prompts interactivos y formato de terminal (`@clack/prompts`, `commander`).
+  - Orquestador de plantillas upstream (`create-next-app`, Cloudflare templates).
+  - Comandos: `init`, `generate`, `validate`.
+
+- **`packages/plugin-hono`**: Generador oficial para backend Hono (Clean Architecture en Cloudflare Workers).
+
+- **`packages/plugin-nextjs`**: Generador oficial para frontend Next.js 15 (Tailwind v4, Feature-Driven, TanStack Query + Zustand).

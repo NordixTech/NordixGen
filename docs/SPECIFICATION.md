@@ -1,97 +1,130 @@
-# NordixGen: Product specification and implementation status
+# NordixGen product requirements and capabilities
 
-This document describes NordixGen as it exists today and the approved product direction for the v1.1.0 refactor. It separates current implementation, refactor target, and future work so readers do not mistake plans for shipped generator behavior.
+## 1. Purpose
 
-## 1. Product purpose and boundary
+NordixGen is an internal Nordix tool for generating the starting point of client projects from a declarative YAML configuration. It automates repetitive setup and creates a consistent, maintainable application structure using the technology stack Nordix has chosen to support.
 
-NordixGen is an internal Nordix tool for generating a maintainable starting point for new client projects from YAML. It is built around one fixed stack Nordix understands and maintains; it is not a general-purpose framework adapter or a public third-party plugin platform. Public availability does not change that product boundary.
+The generated application uses TypeScript, Next.js App Router, Tailwind CSS, Hono, Drizzle ORM, PostgreSQL hosted by Neon, Better Auth, TanStack Query, and Zustand. These are fixed product choices. Project authors configure their application and business model rather than choose among unrelated frameworks, ORMs, database providers, authentication libraries, styling systems, or state libraries.
 
-The fixed stack is TypeScript, Next.js App Router, Tailwind CSS, Hono, Drizzle ORM, PostgreSQL on Neon, Better Auth, TanStack Query, and Zustand. Project YAML should express the project being generated (its repositories, paths, connected applications, named databases, business modules, entities, endpoints, pagination, and relevant auth/authorization settings), not choose among unrelated stacks or state libraries.
+NordixGen is a generator, not a runtime dependency of the generated application. Generated code belongs to the client project and can be extended as ordinary application code.
 
-Each backend is intended to be a modular monolith: business modules share a process and runtime. Every business module selects one internal architecture family: Clean, Hexagonal, or Onion. Families may coexist within one backend. The application contract between modules is explicit, typed, and called directly in-process. A module imports only declared public application operations from another module; it must not reach into its repository, database tables, HTTP controllers, or private implementation. This is a target contract, not a description of today's generated layout.
+## 2. Generated system shape
 
-## 2. Current implementation and refactor target
+A project may contain one or more frontend and backend applications, placed in configured repositories and paths. Frontends declare which backends they consume. A backend is a modular monolith: its business modules execute in one process and share the backend's runtime and platform services.
 
-The repository currently contains `@nordixgen/core` and `@nordixgen/cli`. The core parses YAML with the `yaml` library, validates the result with Zod and semantic validators, normalizes entities/endpoints into an intermediate representation, and composes generated files. The CLI offers `init`, `validate`, and `generate` and orchestrates upstream scaffolds and output.
+Each business module selects one of three internal architecture families: Clean, Hexagonal, or Onion. Different modules in the same backend may use different families. The selected family defines dependency direction and the organization of the module's domain, application operations, and adapters. It does not change the public contract another module uses to call that module.
 
-Current generator internals use plugin contracts, registries, compatibility/capability checks, and separate frontend/backend composition paths. Those are implementation mechanisms in the current code, not a supported extension promise. v1.1.0 removes this unnecessary generality in favor of direct, typed functions for the fixed stack.
+Modules communicate through explicit, typed application contracts and direct in-process calls. A module publishes only declared application operations. A consuming module names the public operations it imports. Contracts use application-level input/output types and errors; they do not expose Hono request objects, Drizzle tables, repositories, or private domain types. The backend composition root wires module implementations together. Internal communication is not an HTTP call to the same backend and does not imply a generic event bus or distributed transaction system.
 
-The current backend schema selects architecture at backend level. The CLI registers a Clean architecture implementation. The schema accepts `modular`, but no generator is registered for it. Hexagonal, Onion, business-module ownership, module imports/exports, and a new per-module YAML design are not implemented. The current Clean output has global layer directories and does not enforce module boundaries. The existing YAML remains the only accepted input until the schema and generator changes land.
+## 3. Project configuration requirements
 
-The backend scaffold currently uses Hono's upstream Cloudflare Workers template. That scaffold choice does not mean NordixGen generates client deployment configuration, provisions Cloudflare resources, or deploys applications.
+The YAML configuration describes project structure and business requirements. It should support:
 
-### Current capability summary
+- A project name and relevant project metadata.
+- Repository definitions and application paths, including colocated and separately located applications where supported.
+- Frontend applications and the backend applications each frontend connects to.
+- One or more named PostgreSQL database resources hosted by Neon. A backend selects its persistence resource; each backend has one database connection scope in the initial design.
+- Backend modular monoliths and their business modules, with an architecture family selected for each module.
+- Explicit ownership of each entity and application operation by a backend/module.
+- Public application operations exported by a module and the imports required by another module.
+- Entity fields, identifiers, defaults, enums, relationships, timestamps, soft-delete configuration, and supported constraints.
+- Explicit HTTP endpoint operations with method, path, operation identifier, path/query parameters, request body, response shape, pagination, and access requirements.
+- Better Auth configuration needed by a project, such as supported credential or provider settings and authentication features.
+- Roles and permission grants needed by application endpoints.
 
-| Area | Current state |
-| --- | --- |
-| YAML parse/schema/semantic validation and generated editor schema | Implemented for current YAML |
-| Next.js frontend and Hono backend scaffolding | Implemented |
-| Clean backend layer generation, entities and declared endpoints | Implemented |
-| Entity-derived automatic CRUD controllers/routes | Also currently generated; RF-02 removes these from the target output |
-| Drizzle persistence with PostgreSQL/Neon | Implemented; each backend references one named database resource |
-| Multiple named database resources in a project | Supported; multiple simultaneous connections inside one backend are not supported |
-| Better Auth sessions, auth forms, route auth and static role/permission checks | Implemented with limits described below |
-| Frontend clients, server-state hooks and entity screens | Implemented from connected backend contracts |
-| GitHub remote repository creation/push | Available through configured `gh` CLI |
-| Per-business-module Clean/Hexagonal/Onion and typed intermodule calls | v1.1.0 target, not implemented |
-| Client deployment, cloud provisioning, generated CI/CD, IaC, Docker environment, LLM tooling | Future work; not implemented and outside v1.1.0 |
+Fixed implementation technologies are implicit and are not selectors in project YAML. In particular, frontend framework and styling, backend HTTP framework, ORM, database engine/provider, authentication implementation, and frontend state libraries are not interchangeable configuration choices. Architecture is the bounded exception: each business module selects Clean, Hexagonal, or Onion from the internally supported set.
 
-## 3. Configuration concepts
+The YAML schema must reject unknown values and invalid references with actionable diagnostics. A generated editor schema should be derived from the same canonical configuration definitions so editor assistance agrees with CLI validation.
 
-Current YAML supports repositories and repository paths, frontend/backend declarations and connections, named database resources, entities, fields and relations, endpoint declarations and request/response details, pagination, and authentication/authorization settings. Multiple databases can be declared and selected by backends. The current backend persistence shape references one database resource per backend.
+## 4. Parsing, validation, and generation requirements
 
-The refactor simplifies fixed technologies out of project configuration. Frontend framework and styling, backend framework, ORM, database engine/provider, auth implementation, and state library are not intended to be user-selectable. Architecture remains configurable only within the finite internal set, and it is selected per business module, not per backend. Exact YAML v2 syntax and semantic rules are owned by [RF-03](https://github.com/NordixTech/NordixGen/issues/64); draft snippets elsewhere are illustrations and are not accepted by the current CLI.
+NordixGen parses YAML and reports syntax errors, including duplicate mapping keys. Structural validation checks types, required fields, allowed values, defaults, identifier formats, and unknown keys. Semantic validation checks relationships between declarations, including repository and path references, database references, frontend/backend connections, entity ownership, field and relation references, endpoint ownership, pagination profiles, and access-policy references.
 
-Entities define business data. Endpoints define business operations exposed over HTTP, including method/path, inputs, pagination, authentication and permissions as supported by the schema. The target rule in [RF-02](https://github.com/NordixTech/NordixGen/issues/63) is that an entity alone creates no business route: only explicitly declared endpoints do. Health checks and Better Auth's handler are infrastructure routes.
+Validation and generation must use the same resolved project model and support rules. A configuration that passes validation must not later fail simply because generation resolves a different framework, architecture, ORM, or capability combination. Diagnostics should identify the configuration path and explain the invalid or unresolved reference.
 
-The refactor does not define deployment, IaC, or generated CI/CD keys. Secrets remain outside versioned project YAML and should be supplied through the runtime/deployment environment when those future workflows are designed.
+The resolved model should normalize names, fields, relations, operation inputs/outputs, pagination, module ownership, module dependencies, and effective access requirements once. Frontend and backend generators should consume the same operation contracts rather than independently infer their meaning from raw YAML.
 
-## 4. Parsing, validation, and generation flow
+Generation should be deterministic for the same configuration and generator versions. It should detect unsafe output paths, duplicate file ownership, and conflicting generated files before writing the project. Pure generation logic should be separate from command execution, filesystem effects, package installation, and optional remote repository operations.
 
-Today the YAML library parses the source and reports syntax or duplicate-key errors. Zod validates structural shape, types, defaults, and unknown keys. Semantic validation checks project references and rules such as repository/path validity, database references, entity relations, endpoint ownership, and auth/permission references. The CLI generation path additionally composes generators and runs scaffolding/output steps; `validate` does not currently guarantee every later generator-composition step will succeed.
+NordixGen should use maintained upstream scaffolding tools for Next.js and Hono where practical, then add the configured application structure and generated business code. The generator should report unsupported configurations before side effects.
 
-The target refactor should have a single normalization/resolution boundary shared by validation and generation. It should produce one typed project model, build a generation plan for the fixed stack, render files, and keep filesystem/process/repository side effects in the CLI. Keep the useful parser, diagnostics, schema generation, safe virtual file output, collision detection, and project-specific validation. Remove framework/ORM/plugin compatibility negotiation that exists only to support arbitrary combinations.
+## 5. Business modules and architecture rules
 
-## 5. Modular-monolith architecture contract
+Every business module owns its business entities, application operations, and persistence mappings. Ownership is explicit and exclusive. Architecture families describe internal dependency organization within that ownership boundary.
 
-A modular monolith has separately owned business modules in one deployable backend. It is not a collection of microservices and does not require HTTP calls between modules. A module owns its entities, application operations, and persistence mapping. Another module may use only a typed public application contract explicitly exported by the owner and imported by the consumer.
+The generated module must keep domain and application behavior independent of Hono transport and Drizzle persistence details. HTTP controllers and persistence adapters translate between platform concerns and application contracts. The concrete folder layout may vary by architecture family, but each family's dependency direction must be real and reviewable, not just a naming convention.
 
-The YAML/model design must define unique module and entity ownership, exports/imports, valid references, dependency cycles, and diagnostics for private/deep imports. Architecture families govern internal dependency organization within a module; they do not change the module's public application contract. The backend composition root wires module implementations and their declared dependencies. Avoid a runtime plugin registry, generic dependency-injection framework, service locator, network RPC, or event bus.
+Module imports must refer to an operation explicitly exported by the owner. Unknown modules, unknown operations, private operations, undeclared dependencies, duplicate ownership, and forbidden cross-module imports must produce actionable validation errors. Synchronous dependency cycles should be rejected with a useful cycle path unless a later design defines safe cycle semantics.
 
-Internal calls must propagate a trusted actor/context where business authorization needs it. An arbitrary object claiming an admin role is not a trusted identity. HTTP transport checks and business authorization have distinct responsibilities. Do not imply that calls across modules share one atomic transaction unless the implementation explicitly provides that guarantee. These rules must be specified by RF-03 before implementation work depends on them.
+A module must not read or write another module's private table or repository. Cross-module data needed for a use case is obtained through the owner's public application contract. A foreign identifier may be represented as a scalar value; it does not imply an ORM-level relationship, cross-module join, existence guarantee, or business rule by itself.
 
-## 6. Authentication and authorization
+An import declaration grants a typed dependency and wiring opportunity. It does not invent business orchestration. For example, importing a customer lookup must not silently cause every invoice operation to call it or impose an unrequested customer-status rule. Such behavior belongs in explicit application logic or in a separately specified mapping feature.
 
-Better Auth handles identity and session lifecycle in the generated backend. `authUI: true` currently adds sign-in/sign-up pages, forms, and account controls in the frontend. It does not make all frontend pages private or add a Next.js server-side page-access gate. An unauthenticated visitor can see public UI and call intentionally public endpoints.
+## 6. Database and persistence requirements
 
-Generated secured backend endpoints validate the Better Auth session. Missing/invalid session yields 401; failed configured authorization yields 403. State-changing authenticated requests also use trusted-origin checks. Backend route policies are not implied by a frontend UI setting.
+PostgreSQL on Neon is the supported database engine/provider combination, and Drizzle is the supported ORM. A project may declare multiple named databases for separate backends or applications. The initial backend model uses one selected database resource per backend; multiple live database connections inside a single backend and cross-database transactions are outside the initial contract.
 
-The current authorization is static role-to-permission checking, not a general PBAC/policy engine. A user has one server-owned role; a route may list accepted roles and required permissions; all listed permissions must be granted and, when both role and permission constraints exist, both checks must pass. The default role is assigned during account creation and cannot be selected by an untrusted sign-up request. The implementation does not supply tenant/ownership rules, arbitrary contextual policy evaluation, multiple concurrent roles, or an administration product for role assignment. Describe this as roles and permissions rather than promising generic policy-based authorization.
+The generator should create schemas, repository/query adapters, migrations, and seed support for declared entities and supported relationships. Migrations should be reproducible and include platform-owned authentication tables where needed. Generated queries should honor declared pagination and supported filters, ordering, soft-delete rules, and endpoint projection constraints.
 
-Frontend permission helpers may hide or show controls but are not a security boundary. The backend must enforce access on every protected operation. The target module model must preserve a trusted actor/context and ensure direct in-process calls do not bypass business checks.
+Persistence ownership follows module ownership. A module's tables and adapters are private to that module. Schema aggregation for migration tooling may combine module-owned tables without making their repositories public application contracts. Cross-module SQL joins or direct access to another module's table are not implied by a scalar foreign identifier.
 
-## 7. Fixed frontend responsibilities
+Connection strings and credentials must not be stored in project YAML or generated source. Runtime secrets are supplied through the environment in the eventual application execution/deployment setup.
 
-The generated frontend uses Next.js App Router and Tailwind. TanStack Query owns remote/server data caching and synchronization; Zustand owns shared client UI state. Local component/form state remains local. These choices are fixed implementation details, not YAML selectors.
+## 7. HTTP endpoints and frontend API contracts
 
-The current frontend contract derives clients, hooks, forms and entity screens from endpoints exposed by connected backends. The target refactor should resolve endpoint input/output and access metadata once and feed the frontend and backend renderers from the same typed contract. It must not create browser actions for operations absent from the declared API.
+An entity describes domain data; it does not automatically publish a CRUD API. The `endpoints` declarations are the sole source of business HTTP routes. A module may export an operation for another in-process module without exposing it over HTTP. An HTTP route exists only when a corresponding endpoint is declared. Health checks and Better Auth's handler are explicit platform routes, not implicit business CRUD.
 
-## 8. Repository layout and implementation approach
+An endpoint declaration defines its HTTP method and path, operation identity, input bindings, request validation, response type, pagination behavior, and effective access requirements. Route paths must be unique within the relevant backend scope. Invalid entity/field bindings, missing inputs, duplicate operation identifiers, and unsupported response mappings must be diagnosed before generation.
 
-The monorepo currently contains `packages/core` and `packages/cli`; it does not contain a NordixGen web application. Generated client projects are output, not extra generator packages. Current package layout and implementation plan are described in their package documentation.
+For each frontend/backend connection, NordixGen should derive typed clients and operation metadata from the backend's declared endpoints. The frontend may generate TanStack Query hooks, forms, API exploration tools, and entity screens using those contracts. It must not advertise mutations or routes absent from the declared endpoint set. Cache identity should include sufficient backend/module/operation context to avoid collisions.
 
-The fixed-stack refactor may retain ordinary responsibility boundaries (configuration, resolved model, rendering, files, CLI orchestration) while removing generic plugin interfaces, framework contexts, capability matrices, plugin discovery, parallel technology implementations, and repeated inference across generators. Keep simple functions and explicit types. The goal is maintainability for Nordix's chosen stack, not extensibility to arbitrary technologies.
+Transport DTOs are separate from internal domain, persistence, and module-contract types. Serialization rules for dates, nullable values, numeric types, and errors must match actual HTTP behavior.
 
-## 9. Future work and exclusions
+## 8. Authentication and authorization requirements
 
-Client deployment configuration, cloud provisioning, generated CI/CD, IaC/Terraform, generated local Docker environments, and LLM tooling are not implemented and are not part of the v1.1.0 refactor. They may be considered after the refactor, with separate requirements and issues. Do not describe the repository's own package CI/release workflows as generated CI for client projects. The Hono upstream Cloudflare Workers scaffold is not deployment support.
+Better Auth provides identity, credential handling, sessions, and supported external identity-provider integrations. Authentication UI is a client feature: sign-in/sign-up forms and account controls do not by themselves make application pages private. Frontend access policy must be explicit, with public, authenticated, or mixed access as required by the project. Protected page access must be checked server-side using a validated Better Auth session; merely finding a cookie is not proof of a valid session.
 
-## 10. Related work
+The generated backend validates sessions on protected endpoints. Missing or invalid identity receives an unauthorized response; an authenticated actor without the required grant receives a forbidden response. Public endpoints remain intentionally callable without a session. State-changing authenticated requests validate trusted origins.
 
-- [v1.1.0 fixed-stack refactor milestone](https://github.com/NordixTech/NordixGen/milestone/2)
-- [RF-01: Align documentation with the fixed-stack direction](https://github.com/NordixTech/NordixGen/issues/65)
-- [RF-02: Generate business routes only from declared endpoints](https://github.com/NordixTech/NordixGen/issues/63)
-- [RF-03: Design YAML v2 for a modular monolith with per-module architectures](https://github.com/NordixTech/NordixGen/issues/64)
-- [README](../README.md)
-- [Implementation plan](IMPLEMENTATION_PLAN.md)
-- [Workspace package overview](../packages/README.md)
+Application authorization uses explicit roles and permissions. The initial authorization contract is a static role-to-permission grant model, not an unrestricted policy language. A user has a server-owned role; role assignment cannot be chosen by untrusted sign-up input. If an endpoint specifies allowed roles and required permissions, role membership and every required permission must be satisfied. Wildcard grants, if supported, must be documented and must not be confused with arbitrary policy evaluation.
+
+Frontend permission helpers are for presentation only. Every protected operation must enforce authorization in the backend/application layer. Internal module calls do not pass through HTTP middleware, so trusted actor/context must be propagated to application operations that require business authorization. Caller-supplied identity claims must not be treated as verified identity without an explicit trusted boundary.
+
+Authentication and authorization remain distinct: Better Auth verifies identity/session; project roles/permissions govern what that identity may do. The design must identify one authentication authority for a frontend when it connects to multiple backends with authentication.
+
+## 9. Frontend requirements
+
+The generated frontend uses Next.js App Router and Tailwind CSS. It follows a feature-oriented organization for project screens and reusable UI. TanStack Query handles remote server data, caching, loading/error state, and mutation invalidation. Zustand holds shared client-side UI state. Local component and form state remains local rather than being placed in a global store without need.
+
+Generated frontend API types and operations must correspond to the declared backend routes. Forms and entity screens should be produced only when the necessary operations exist. Pagination, search/filter input, empty/loading/error states, and access-aware UI should reflect the backend contract. Frontend access checks improve the user experience but never replace server-side endpoint authorization.
+
+## 10. CLI and generated project behavior
+
+The CLI should provide commands to initialize a configuration, validate it, and generate a project. Initialization should produce a valid starter configuration for the fixed stack and let the project author describe application paths, databases, modules, entities, endpoints, and access rules without asking for fixed technology selections.
+
+Generation should create or use configured repositories and paths, run the upstream scaffolding tools, render the project files, and report progress and errors clearly. It should avoid overwriting a non-empty target unexpectedly. Optional GitHub repository creation/publishing may use the user's existing authenticated GitHub CLI session and should occur only when explicitly configured or requested.
+
+Generated projects should be ordinary editable applications and should not need NordixGen installed at runtime. A configuration change followed by generation should produce a consistent output for the same generator version. Automatic in-place regeneration over user-modified output is not assumed unless separately specified.
+
+## 11. Deployment and operations capabilities
+
+Deployment configuration, cloud provisioning, generated CI/CD, infrastructure as code, and generated local Docker environments are not required capabilities of the current generator contract. They are potential later extensions to the product after the project-generation core and modular architecture are established. This requirements document does not prescribe a deployment provider, IaC tool, cost guarantee, or cloud topology.
+
+The use of an upstream Hono scaffold that targets Cloudflare Workers does not itself provide deployment configuration or provision resources. NordixGen's own build/release automation is distinct from generated workflows for client applications.
+
+## 12. Product quality requirements
+
+- Generated TypeScript should compile using the generated project's declared dependencies.
+- YAML diagnostics should point to the relevant configuration path and state how to correct it.
+- Module and entity boundaries should be explicit in generated code and validated before output.
+- A business operation should have one source contract consumed by its HTTP and frontend adapters.
+- Protected operations should enforce access on the server, independent of frontend behavior.
+- Generation should avoid path traversal, duplicate file ownership, and silent configuration loss.
+- The core should remain deterministic and testable without requiring cloud accounts or remote repository creation.
+- The implementation should use direct, typed code for the fixed stack rather than a generic plugin/capability framework.
+
+## 13. Current implementation note
+
+The repository is still transitioning from its original generic design. Its current YAML selects architecture at backend level; current generation registers Clean, and the schema's `modular` value has no matching generator. The current generated backend does not yet enforce business-module ownership or typed intermodule contracts. Architecture selection per business module and the modular-monolith contract above state what NordixGen is intended to generate as the fixed product evolves.
+
+`authUI` in the current generator adds login/signup UI and account controls, but it does not protect pages. The current renderer also has entity-derived CRUD routes in addition to declared endpoints; the intended endpoint contract above defines the single source for business HTTP exposure. These current implementation details are included only to clarify the relationship between the existing generator and the product requirements; they are not architecture decisions or issue tracking.
