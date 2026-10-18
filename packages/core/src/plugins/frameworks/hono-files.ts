@@ -30,7 +30,6 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
     architecture.directories.infrastructure,
   );
   const authFilePath = posix.join(infrastructureDirectory, "auth/auth.ts");
-  const authorizationPath = posix.join(infrastructureDirectory, "authorization/policy.ts");
 
   const model = context.domainModel;
 
@@ -141,21 +140,18 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
     if (hasRequestBody) dtoImportsList.push("RequestBodySchema");
 
     const validatorsList: string[] = [];
-    const authorizationHandlers = isSecured
-      ? [
-          "    async (c, next) => {",
-          "      const session = await createAuth(c.env as AuthEnvironment, c.executionCtx).api.getSession({ headers: c.req.raw.headers });",
-          '      if (!session) return problemResponse(c, 401, "Unauthorized", "Authentication is required");',
-          '      if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && !isTrustedAuthOrigin(c.req.header("origin"), c.env as AuthEnvironment)) return problemResponse(c, 403, "Forbidden", "A trusted Origin header is required for state-changing requests");',
-          ...(endpoint.roles.length > 0 || endpoint.permissions.length > 0
-            ? [
-                `      if (!isAuthorized(session.user, { roles: ${JSON.stringify(endpoint.roles)}, permissions: ${JSON.stringify(endpoint.permissions)} })) return problemResponse(c, 403, "Forbidden", "The authenticated user is not authorized for this operation");`,
-              ]
-            : []),
-          "      await next();",
-          "    },",
-        ]
-      : [];
+    const authorizationHandlers = [
+      "    async (c, next) => {",
+      '      if(!deps?.authorize)return problemResponse(c,500,"Internal Server Error","Operation boundary not configured");',
+      "      await deps.authorize();",
+      ...(isSecured
+        ? [
+            '      if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && !isTrustedAuthOrigin(c.req.header("origin"), c.env as AuthEnvironment)) return problemResponse(c, 403, "Forbidden", "A trusted Origin header is required for state-changing requests");',
+          ]
+        : []),
+      "      await next();",
+      "    },",
+    ];
     if (hasPathParams) {
       validatorsList.push(
         '    zValidator("param", PathParamsSchema, (result, c) => {',
@@ -187,11 +183,8 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       'import { zValidator } from "@hono/zod-validator";',
       ...(isSecured && hasAuthentication
         ? [
-            `import { createAuth, isTrustedAuthOrigin, type AuthEnvironment } from "${relativeImport(controllerPath, authFilePath)}";`,
+            `import { isTrustedAuthOrigin, type AuthEnvironment } from "${relativeImport(controllerPath, authFilePath)}";`,
           ]
-        : []),
-      ...(endpoint.roles.length > 0 || endpoint.permissions.length > 0
-        ? [`import { isAuthorized } from "${relativeImport(controllerPath, authorizationPath)}";`]
         : []),
       `import { problemResponse } from "${problemImport}";`,
       ...(dtoImportsList.length > 0
@@ -201,6 +194,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       "",
       `export interface ${operationName}ControllerDependencies {`,
       `  useCase?: Pick<${operationName}UseCase,"execute">;`,
+      "  authorize?:()=>Promise<void>;",
       "}",
       "",
       `export function create${operationName}EndpointController(deps?: ${operationName}ControllerDependencies): Hono {`,
@@ -343,7 +337,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
         ? [
             'app.all("*", (c) => {',
             hasAuthentication
-              ? '  const boundary=createOperationBoundary(async headers=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers});return session?{id:session.user.id,role:session.user.role??""}:null;});'
+              ? '  const verifySession=async(headers:Headers)=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers});return session?{id:session.user.id,role:session.user.role??""}:null;};let verified:ReturnType<typeof verifySession>|undefined;const boundary=createOperationBoundary(headers=>verified??=verifySession(headers));'
               : "  const boundary=createOperationBoundary(async()=>null);",
             "  const routes = createRoutes(createRouteDependencies(c.env.DATABASE_URL,boundary,c.req.raw.headers));",
             "  return routes.fetch(c.req.raw, c.env, c.executionCtx);",

@@ -4,7 +4,7 @@ import { backendDependencies } from "../src/generation/dependencies.js";
 import { BACKEND_SCAFFOLD_OVERLAYS, collectFiles } from "../src/generation/files.js";
 import { generateFrontend } from "../src/generation/frontend.js";
 import { generateBetterAuthFiles } from "../src/plugins/authentication/better-auth.js";
-import { generateAuthorizationFiles } from "../src/plugins/authorization/rbac-pbac.js";
+import { generateAuthorizationFiles } from "../src/plugins/authorization/roles-permissions.js";
 import { generateDrizzleFiles } from "../src/plugins/orms/drizzle.js";
 import { createSecuredConfig, createValidConfig, resolvedFixture } from "./fixtures.js";
 

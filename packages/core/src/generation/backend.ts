@@ -5,7 +5,7 @@ import { generateApplicationFiles } from "../plugins/architecture/application-fi
 import { resolveCleanArchitectureLayout } from "../plugins/architecture/clean.js";
 import { generateDomainFiles } from "../plugins/architecture/domain-files.js";
 import { generateBetterAuthFiles } from "../plugins/authentication/better-auth.js";
-import { generateAuthorizationFiles } from "../plugins/authorization/rbac-pbac.js";
+import { generateAuthorizationFiles } from "../plugins/authorization/roles-permissions.js";
 import type { BackendRenderContext } from "../plugins/contracts.js";
 import { generateHonoFiles } from "../plugins/frameworks/hono-files.js";
 import { backendPaths } from "../plugins/frameworks/hono.js";

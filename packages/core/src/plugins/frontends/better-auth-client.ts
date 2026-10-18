@@ -1,3 +1,4 @@
+import { ACCOUNT_POLICY } from "../../project/account-policy.js";
 import type { GeneratedFile } from "../contracts.js";
 import type {
   FrontendAuthenticationContract,
@@ -294,7 +295,7 @@ function signUpFormContent(): string {
     '      {error ? <Notice tone="alert">{error}</Notice> : null}',
     '      <Input autoComplete="name" id="name" label="Name" name="name" required />',
     '      <Input autoComplete="email" id="email" label="Email" name="email" required type="email" />',
-    '      <Input autoComplete="new-password" id="password" label="Password (at least 4 characters)" name="password" minLength={4} required type="password" />',
+    `      <Input autoComplete="new-password" id="password" label="Password (at least ${ACCOUNT_POLICY.minPasswordLength} characters)" name="password" minLength={${ACCOUNT_POLICY.minPasswordLength}} required type="password" />`,
     '      <Button disabled={pending} type="submit">Create account</Button>',
     '      <p className="ng-panel-note">Already registered? <a className="ng-text-link" href="/sign-in">Sign in</a></p>',
     "    </form>",

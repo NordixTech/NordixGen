@@ -120,7 +120,7 @@ function generatedApplication(
     page: 2,
     pageSize: 2,
   }));
-  let dependencies: Record<string, unknown> = {};
+  const executions: Record<string, Record<string, unknown>> = {};
   const authHandler = vi.fn(() => new Response("auth handler", { status: 200 }));
   const getSession = vi.fn(async ({ headers }: { headers: Headers }) => {
     const cookie = headers.get("cookie");
@@ -138,10 +138,14 @@ function generatedApplication(
       createAuth: () => ({ api: { getSession }, handler: authHandler }),
       isTrustedAuthOrigin: (value: string) => value === origin,
     },
-    [`${root}/platform/database/create-route-dependencies.ts`]: {
-      createRouteDependencies: () => dependencies,
-    },
+    [`${root}/platform/database/drizzle-database.ts`]: { createDrizzleDatabase: () => ({}) },
   };
+  for (const module of Object.values(project.modules)) {
+    executions[module.name] = {};
+    external[
+      `${root}/modules/${module.name}/infrastructure/adapters/create-route-dependencies.ts`
+    ] = { createRouteDependencies: () => ({ endpoints: executions[module.name] }) };
+  }
   function load(path: string): Record<string, unknown> {
     if (external[path]) return external[path] as Record<string, unknown>;
     const cached = modules.get(path);
@@ -166,7 +170,6 @@ function generatedApplication(
     return module.exports;
   }
   if (withEndpoints) {
-    const endpoints: Record<string, unknown> = {};
     for (const operation of Object.values(project.operations)) {
       const module = project.modules[operation.moduleId];
       const UseCase = load(
@@ -174,7 +177,7 @@ function generatedApplication(
       )[`${operation.typeName}UseCase`] as new (
         port: unknown,
       ) => unknown;
-      endpoints[operation.operationId] = {
+      executions[module.name][operation.operationId] = {
         useCase: new UseCase({
           execute:
             operation.entity === "PrivateRecord"
@@ -185,7 +188,6 @@ function generatedApplication(
         }),
       };
     }
-    dependencies = { endpoints };
   }
   const app = load(`${root}/index.ts`).default as hono.Hono;
   const request = (
@@ -372,7 +374,7 @@ describe("declared business routes in generated Hono applications", () => {
   );
 
   it("preserves session, role AND permission, origin, validation and success semantics", async () => {
-    const { request, query, load, authHandler } = generatedApplication();
+    const { request, query, load, authHandler, getSession } = generatedApplication();
     for (const cookie of [undefined, "verified=invalid", "expired=editor"]) {
       expect((await request("/api/sample-items", "POST", cookie, { name: "Sample" })).status).toBe(
         401,
@@ -384,7 +386,7 @@ describe("declared business routes in generated Hono applications", () => {
       });
       expect(response.status).toBe(403);
       expect(await response.json()).toMatchObject({
-        detail: "The authenticated user is not authorized for this operation",
+        detail: "Required roles or permissions are missing.",
       });
     }
     expect(
@@ -400,12 +402,14 @@ describe("declared business routes in generated Hono applications", () => {
     ).toBe(403);
     expect((await request("/api/sample-items", "POST", "verified=editor", {})).status).toBe(400);
     expect(query).not.toHaveBeenCalled();
+    getSession.mockClear();
     const allowed = await request("/api/sample-items", "POST", "verified=editor", {
       name: "Sample",
     });
     expect(allowed.status).toBe(200);
     expect(await allowed.json()).toEqual([{ entity: record, joins: {} }]);
     expect(query).toHaveBeenCalledTimes(1);
+    expect(getSession).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledWith(expect.objectContaining({ request: { name: "Sample" } }));
     const createRoutes = load(`${root}/platform/http/controllers/routes.ts`)
       .createRoutes as () => hono.Hono;
@@ -418,6 +422,35 @@ describe("declared business routes in generated Hono applications", () => {
     expect((await request("/health")).status).toBe(200);
     expect((await request("/api/auth/get-session")).status).toBe(200);
     expect(authHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks every permission, accepts either allowed role and ignores client identity claims", async () => {
+    const f = generatedApplication(true, undefined, (config) => {
+      config.backends[0].authorization.rolePermissions.editor.push("sample-items:approve");
+      config.endpoints[0].permissions.push("sample-items:approve");
+      config.backends[0].authorization.rolePermissions.outsider.push("sample-items:approve");
+      config.endpoints[0].roles.push("outsider");
+    });
+    expect(
+      (
+        await f.request("/api/sample-items", "POST", "verified=viewer", {
+          name: "Test",
+          role: "editor",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await f.request("/api/sample-items", "POST", "verified=outsider", { name: "Test" })).status,
+    ).toBe(200);
+    expect((await f.request("/api/sample-items", "POST", undefined, {})).status).toBe(401);
+    const partial = generatedApplication(true, undefined, (config) => {
+      config.endpoints[0].permissions.push("sample-items:approve");
+      config.backends[0].authorization.rolePermissions.outsider.push("sample-items:approve");
+    });
+    expect(
+      (await partial.request("/api/sample-items", "POST", "verified=editor", { name: "Test" }))
+        .status,
+    ).toBe(403);
   });
 
   it("keeps public queries, path validation, pagination and response/error handling", async () => {

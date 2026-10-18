@@ -2,9 +2,11 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import * as url from "node:url";
+import * as authAdapter from "@better-auth/drizzle-adapter";
 import * as faker from "@faker-js/faker";
 import * as validator from "@hono/zod-validator";
 import * as neon from "@neondatabase/serverless";
+import * as betterAuth from "better-auth";
 import * as orm from "drizzle-orm";
 import * as neonOrm from "drizzle-orm/neon-http";
 import * as migrator from "drizzle-orm/neon-http/migrator";
@@ -15,6 +17,7 @@ import * as httpException from "hono/http-exception";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as zod from "zod";
 import { generateBackend } from "../src/generation/backend.js";
+import { ACCOUNT_POLICY } from "../src/project/account-policy.js";
 import { resolvedFixture } from "./fixtures.js";
 import { generatedRuntime } from "./generated-runtime.js";
 import { constrainedPersistenceFixture, persistenceFixture } from "./persistence-fixture.js";
@@ -57,6 +60,7 @@ describe
     let load: ReturnType<typeof generatedRuntime>;
     let app: hono.Hono;
     let sqlText = "";
+    let generatedFiles: Readonly<Record<string, string>> = {};
     let previousFetch: unknown;
     let previousDatabase: string | undefined;
     let previousEndpoint: unknown;
@@ -100,7 +104,8 @@ describe
       sqlText = (
         await Promise.all(names.map((name) => readFile(path.join(migrations, name), "utf8")))
       ).join("\n");
-      load = generatedRuntime(result.virtualFileSystem.snapshot(), {
+      generatedFiles = result.virtualFileSystem.snapshot();
+      load = generatedRuntime(generatedFiles, {
         zod,
         hono,
         "hono/cors": cors,
@@ -322,6 +327,81 @@ describe
         true,
       );
     }, 20_000);
+    it("enforces signup password and server-owned role through real Better Auth and PostgreSQL", async () => {
+      const live = generatedRuntime(generatedFiles, {
+        zod,
+        hono,
+        "hono/cors": cors,
+        "hono/http-exception": httpException,
+        "@hono/zod-validator": validator,
+        "drizzle-orm": orm,
+        "drizzle-orm/pg-core": pg,
+        "drizzle-orm/neon-http": neonOrm,
+        "@neondatabase/serverless": neon,
+        "better-auth": betterAuth,
+        "@better-auth/drizzle-adapter": authAdapter,
+      });
+      const liveApp = live(`${root}/index.ts`).default as hono.Hono;
+      const env = {
+        DATABASE_URL: databaseUrl,
+        BETTER_AUTH_URL: "http://localhost:8787",
+        BETTER_AUTH_SECRET: "isolated-test-secret-only-32-characters",
+        AUTH_TRUSTED_ORIGINS: "http://localhost:3000",
+      };
+      const authRequest = (route: string, body?: unknown, cookie?: string) =>
+        liveApp.request(
+          `http://localhost:8787${route}`,
+          {
+            method: body === undefined ? "GET" : "POST",
+            headers: {
+              origin: "http://localhost:3000",
+              "content-type": "application/json",
+              ...(cookie ? { cookie } : {}),
+            },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          },
+          env,
+          { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+        );
+      for (const password of ["1234", "x".repeat(ACCOUNT_POLICY.minPasswordLength - 1)]) {
+        const response = await authRequest("/api/auth/sign-up/email", {
+          name: "Short",
+          email: "short@example.test",
+          password,
+        });
+        expect(response.status).toBe(400);
+      }
+      expect((await sql("SELECT count(*)::int AS count FROM auth_user"))[0].count).toBe(0);
+      const response = await authRequest("/api/auth/sign-up/email", {
+        name: "Ordinary",
+        email: "ordinary@example.test",
+        password: "test-long-password-12",
+        role: "admin",
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      const user = (await sql("SELECT role FROM auth_user WHERE email='ordinary@example.test'"))[0];
+      expect(user.role).toBe("viewer");
+      const cookie = response.headers
+        .getSetCookie()
+        .map((value) => value.split(";")[0])
+        .join("; ");
+      expect(cookie).not.toBe("");
+      const session = await authRequest("/api/auth/get-session", undefined, cookie);
+      expect(session.status).toBe(200);
+      expect((await session.json()).user.role).toBe("viewer");
+      expect((await authRequest("/api/invoices", {}, cookie)).status).toBe(403);
+      expect((await authRequest("/api/invoices", {})).status).toBe(401);
+      const forged = await authRequest(
+        "/api/auth/get-session",
+        undefined,
+        "better-auth.session_token=forged",
+      );
+      expect(await forged.json()).toBeNull();
+      expect((await authRequest("/api/auth/sign-out", {}, cookie)).status).toBe(200);
+      expect(
+        await (await authRequest("/api/auth/get-session", undefined, cookie)).json(),
+      ).toBeNull();
+    }, 30_000);
     it("also migrates and seeds the intentionally unauthenticated schema", async () => {
       if (directory) await rm(directory, { recursive: true, force: true });
       directory = "";

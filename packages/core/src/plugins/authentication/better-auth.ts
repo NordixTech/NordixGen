@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { ACCOUNT_POLICY } from "../../project/account-policy.js";
 import type { BackendRenderContext, GeneratedFile } from "../contracts.js";
 
 interface BetterAuthSelection {
@@ -198,7 +199,7 @@ function authRuntimeContent(
     `    user: { additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } } },`,
     "    emailAndPassword: {",
     "      enabled: true,",
-    "      minPasswordLength: 4,",
+    `      minPasswordLength: ${ACCOUNT_POLICY.minPasswordLength},`,
     `      requireEmailVerification: ${features.includes("email-verification")},`,
     ...(features.includes("password-recovery")
       ? [
