@@ -179,8 +179,46 @@ export async function verifyApplication(state, directory, expireAccountant) {
     page.setDefaultTimeout(15_000);
     const browserErrors = [];
     page.on("pageerror", (error) => browserErrors.push(error.message));
-    await page.goto(`${web}/invoice`);
+    const noPageOverflow = async () =>
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+    await page.goto(web);
+    const directoryLinks = page.getByRole("navigation", { name: "Application pages" });
+    await expect(directoryLinks.getByRole("link")).toHaveCount(2);
+    await expect(directoryLinks.getByRole("link", { name: /Customer/ })).toHaveAttribute(
+      "href",
+      "/customer",
+    );
+    await expect(directoryLinks.getByRole("link", { name: /Invoice/ })).toHaveAttribute(
+      "href",
+      "/invoice",
+    );
+    await expect(page.getByRole("link", { name: "View project details" })).toHaveCount(0);
+    await expect(page.getByText("Next.js App Router", { exact: true })).toHaveCount(0);
+    await noPageOverflow();
+    await page.screenshot({
+      path: join(directory, "verified-workspace-desktop.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await noPageOverflow();
+    await page.screenshot({
+      path: join(directory, "verified-workspace-mobile.png"),
+      fullPage: true,
+    });
+    await directoryLinks.getByRole("link", { name: /Customer/ }).click();
+    await expect(page).toHaveURL(`${web}/customer`);
+    await page.goto(web);
+    await page
+      .getByRole("navigation", { name: "Application pages" })
+      .getByRole("link", { name: /Invoice/ })
+      .click();
     await expect(page).toHaveURL(`${web}/sign-in`);
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await passed(
+      "Workspace links reach generated public/private pages on desktop and mobile without horizontal overflow",
+    );
     await page.goto(`${web}/customer`);
     await expect(page).toHaveURL(`${web}/customer`);
     await expect(page.getByRole("table")).toBeVisible();
@@ -206,6 +244,77 @@ export async function verifyApplication(state, directory, expireAccountant) {
       await expect(page.getByRole("status", { name: new RegExp(`role ${role}`) })).toBeVisible();
     };
     await signIn("admin");
+    await page.getByRole("link", { name: "Open API Explorer", exact: true }).click();
+    const adminOperation = page.getByRole("combobox", { name: "Select API operation" });
+    await adminOperation.selectOption("updateCustomer");
+    const bodyContract = page.getByRole("table", { name: "Request body", exact: true });
+    await expect(bodyContract.getByRole("row").filter({ hasText: "name" })).toContainText(
+      "Min. length: 1",
+    );
+    await expect(bodyContract.getByRole("row").filter({ hasText: "name" })).toContainText(
+      "Max. length: 120",
+    );
+    await expect(bodyContract.getByRole("row").filter({ hasText: "state" })).toContainText(
+      "One of: active, archived",
+    );
+    await expect(bodyContract.getByRole("row").filter({ hasText: "name" })).toContainText(
+      "Optional",
+    );
+    await noPageOverflow();
+    await page.screenshot({
+      path: join(directory, "verified-explorer-desktop.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await noPageOverflow();
+    await expect(bodyContract).toBeVisible();
+    await page.screenshot({
+      path: join(directory, "verified-explorer-mobile.png"),
+      fullPage: true,
+    });
+    const requestPanel = page.getByRole("region", { name: "Try request", exact: true });
+    const editor = requestPanel.getByRole("textbox", { name: "Request input (JSON)" });
+    await editor.scrollIntoViewIfNeeded();
+    await expect(editor).toBeVisible();
+    await noPageOverflow();
+    await page.screenshot({ path: join(directory, "verified-explorer-mobile-request.png") });
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await editor.fill("{");
+    await page.getByRole("button", { name: "Send request", exact: true }).click();
+    await expect(requestPanel.getByRole("alert")).toContainText("Invalid JSON");
+    await adminOperation.selectOption("getCustomer");
+    await expect(requestPanel.getByRole("alert")).toHaveCount(0);
+    await editor.fill(JSON.stringify({ path: { customerId: "not-a-uuid" } }));
+    await page.getByRole("button", { name: "Send request", exact: true }).click();
+    await expect(requestPanel.getByRole("alert")).toContainText('"status": 400');
+    await adminOperation.selectOption("createCustomer");
+    await expect(requestPanel.getByRole("alert")).toHaveCount(0);
+    await expect(bodyContract.getByRole("row").filter({ hasText: "name" })).toContainText(
+      "Required",
+    );
+    const explorerName = `Explorer ${state.id}`;
+    await editor.fill(
+      JSON.stringify({
+        body: { name: explorerName, email: `${state.id}@explorer.example.test`, state: "active" },
+      }),
+    );
+    const explorerCreated = page.waitForResponse(
+      (response) =>
+        response.url() === `${api}/api/customers` && response.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Send request", exact: true }).click();
+    expect((await explorerCreated).status()).toBe(200);
+    await expect(page.getByRole("heading", { name: "Response", exact: true })).toBeVisible();
+    await expect(page.locator(".ng-json-output")).toContainText(explorerName);
+    const explorerSaved = await (
+      await admin.get(`/api/customers?search=${encodeURIComponent(explorerName)}`)
+    ).json();
+    expect(explorerSaved.items[0].entity.name).toBe(explorerName);
+    await page.getByRole("link", { name: "← Workspace", exact: true }).click();
+    await expect(page).toHaveURL(`${web}/`);
+    await passed(
+      "Explorer renders readable constraints and enums on desktop/mobile, handles invalid JSON and backend errors, and persists a real authorized request",
+    );
     await page.goto(`${web}/invoice`);
     await expect(page.getByRole("heading", { name: "Invoice Management" })).toBeVisible();
     await expect(page.getByRole("button", { name: "+ New Invoice", exact: true })).toBeVisible();

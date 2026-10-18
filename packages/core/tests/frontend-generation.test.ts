@@ -100,6 +100,7 @@ declare module "react" {
   export function useState<T = undefined>(): [T | undefined, (value: T | undefined) => void];
   export function useMemo<T>(factory: () => T, dependencies: unknown[]): T;
 }
+declare module "next/link" { export default function Link(props: Record<string, unknown>): JSX.Element; }
 declare module "@/components/ui/button" { export function Button(props: Record<string, unknown>): JSX.Element; }
 declare module "@/components/ui/notice" { export function Notice(props: Record<string, unknown>): JSX.Element; }`,
         "wire-contract.ts": `import type { OrderResponse, customOrderBody } from "./lib/api/types.js";
