@@ -1,28 +1,12 @@
-import type { FrontendGeneratorPlugin } from "../frontend-contracts.js";
+import type { GeneratedFile } from "../contracts.js";
+import type { FrontendRenderContext } from "../frontend-contracts.js";
 
-export const tailwindStylingPlugin: FrontendGeneratorPlugin = {
-  descriptor: {
-    id: "tailwind",
-    version: "1.0.0",
-    role: "styling",
-    provides: ["styling:tailwind-v4"],
-    requires: [
-      {
-        capability: "framework:react",
-        description: "Tailwind styling currently requires a React-based frontend framework.",
-      },
-    ],
-    devDependencies: {
-      tailwindcss: "^4.0.0",
-      "@tailwindcss/postcss": "^4.0.0",
-    },
-  },
-  contribute(context) {
-    const root = context.framework.codeRoot;
-    return [
-      {
-        path: `${root}/app/globals.css`,
-        content: `@import "tailwindcss";
+export function generateTailwindFiles(context: FrontendRenderContext): readonly GeneratedFile[] {
+  const root = context.framework.codeRoot;
+  return [
+    {
+      path: `${root}/app/globals.css`,
+      content: `@import "tailwindcss";
 @import "../styles/ui.css";
 
 @theme {
@@ -52,16 +36,15 @@ export const tailwindStylingPlugin: FrontendGeneratorPlugin = {
 body { margin: 0; background: var(--ng-background); color: var(--ng-foreground); }
 a { color: inherit; text-decoration: none; }
 `,
-      },
-      {
-        path: `${root}/postcss.config.mjs`,
-        content: `export default {
+    },
+    {
+      path: `${root}/postcss.config.mjs`,
+      content: `export default {
   plugins: {
     "@tailwindcss/postcss": {},
   },
 };
 `,
-      },
-    ];
-  },
-};
+    },
+  ];
+}

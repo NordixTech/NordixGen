@@ -1,12 +1,12 @@
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import type { NordixConfig } from "../src/configuration/schema.js";
+import { frontendRenderContext } from "../src/generation/frontend.js";
 import {
   buildFrontendApiContract,
   frontendRenderSettings,
 } from "../src/plugins/frontend-api-contract.js";
-import { betterAuthFrontendPlugin } from "../src/plugins/frontends/better-auth-client.js";
-import { nextjsFrontendPlugin } from "../src/plugins/frontends/nextjs.js";
+import { generateFrontendAuthFiles } from "../src/plugins/frontends/better-auth-client.js";
 import { resolveProject } from "../src/project/resolve.js";
 import { ProjectModelError, backendView, frontendView, moduleView } from "../src/project/views.js";
 import { createValidConfig, resolvedFixture, targetConfig } from "./fixtures.js";
@@ -157,16 +157,7 @@ describe("own configuration references and immutable dictionary values", () => {
   });
   it("executes generated presentation permissions without inheriting undeclared role grants", async () => {
     const project = resolvedFixture(targetConfig());
-    const frontend = frontendRenderSettings(project, "web");
-    const framework = nextjsFrontendPlugin.createFrameworkContext?.(frontend);
-    if (!framework) throw new Error("Missing frontend framework");
-    const files = betterAuthFrontendPlugin.contribute({
-      projectName: "Shop",
-      frontend,
-      framework,
-      api: buildFrontendApiContract(project, "web"),
-      availableCapabilities: new Set(),
-    });
+    const files = generateFrontendAuthFiles(frontendRenderContext(project, "web"));
     const source = files.find((file) => file.path.endsWith("/permissions.ts"))?.content;
     if (!source) throw new Error("Missing presentation policy");
     const javascript = ts.transpileModule(source, {

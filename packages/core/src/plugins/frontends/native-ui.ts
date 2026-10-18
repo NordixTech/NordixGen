@@ -1,7 +1,5 @@
-import type {
-  FrontendGeneratorPlugin,
-  FrontendPluginContributionContext,
-} from "../frontend-contracts.js";
+import type { GeneratedFile } from "../contracts.js";
+import type { FrontendRenderContext } from "../frontend-contracts.js";
 
 function escapeText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -11,7 +9,7 @@ function source(lines: readonly string[]): string {
   return lines.join("\n");
 }
 
-function pageSource(context: FrontendPluginContributionContext): string {
+function pageSource(context: FrontendRenderContext): string {
   const title = JSON.stringify(`${context.projectName} | NordixGen`);
   const projectName = escapeText(context.projectName);
   const frontendName = escapeText(context.frontend.name);
@@ -71,7 +69,7 @@ function pageSource(context: FrontendPluginContributionContext): string {
   ]);
 }
 
-function componentFiles(context: FrontendPluginContributionContext) {
+function componentFiles(context: FrontendRenderContext) {
   const root = `${context.framework.codeRoot}/components/ui`;
   return [
     {
@@ -309,25 +307,11 @@ const uiStyles = [
   "@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }",
 ].join("\n");
 
-export const nativeReactUiPlugin: FrontendGeneratorPlugin = {
-  descriptor: {
-    id: "native",
-    version: "1.0.0",
-    role: "ui",
-    provides: ["ui:accessible-primitives"],
-    requires: [
-      {
-        capability: "framework:react",
-        description: "The native UI plugin currently generates React components.",
-      },
-    ],
-  },
-  contribute(context) {
-    const root = context.framework.codeRoot;
-    return [
-      { path: `${root}/app/page.tsx`, content: pageSource(context) },
-      ...componentFiles(context),
-      { path: `${root}/styles/ui.css`, content: `${uiStyles}\n` },
-    ];
-  },
-};
+export function generateUiFiles(context: FrontendRenderContext): readonly GeneratedFile[] {
+  const root = context.framework.codeRoot;
+  return [
+    { path: `${root}/app/page.tsx`, content: pageSource(context) },
+    ...componentFiles(context),
+    { path: `${root}/styles/ui.css`, content: `${uiStyles}\n` },
+  ];
+}

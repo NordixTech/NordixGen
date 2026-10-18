@@ -7,20 +7,10 @@ import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import * as zod from "zod";
 import {
-  FrontendPluginRegistry,
-  betterAuthFrontendPlugin,
   buildFrontendApiContract,
-  composeFrontendPlugins,
-  featureScreensFrontendPlugin,
-  frontendRenderSettings,
   generateBackend,
-  nativeReactUiPlugin,
-  nextjsFrontendPlugin,
+  generateFrontend,
   parseNordixYaml,
-  tailwindStylingPlugin,
-  tanstackQueryServerStatePlugin,
-  typedFetchApiPlugin,
-  zustandClientStatePlugin,
 } from "../src/index.js";
 import { resolvedFixture } from "./fixtures.js";
 
@@ -459,27 +449,14 @@ describe("declared business routes in generated Hono applications", () => {
       const config = configuration(withEndpoints);
       const declaration = config.frontends[0];
       const project = resolvedFixture(config);
-      const frontend = declaration ? frontendRenderSettings(project, declaration.name) : undefined;
+      const frontend = declaration ? project.frontends[declaration.name] : undefined;
       if (!frontend) throw new Error("Frontend fixture is missing");
       const api = buildFrontendApiContract(project, frontend.name);
       expect(api.endpoints.map(({ operationId }) => operationId)).toEqual(
         withEndpoints ? ["listSampleItems", "createSampleItem", "getSampleItem"] : [],
       );
       expect(api.entities.PrivateRecord).toBeUndefined();
-      const registry = new FrontendPluginRegistry();
-      for (const plugin of [
-        nextjsFrontendPlugin,
-        tailwindStylingPlugin,
-        nativeReactUiPlugin,
-        typedFetchApiPlugin,
-        tanstackQueryServerStatePlugin,
-        featureScreensFrontendPlugin,
-        betterAuthFrontendPlugin,
-        zustandClientStatePlugin,
-      ])
-        registry.register(plugin);
-      const result = composeFrontendPlugins(config.name, frontend, registry, api);
-      if (!result.success) throw new Error(JSON.stringify(result.diagnostics));
+      const result = generateFrontend(resolvedFixture(config), "web");
       const files = result.virtualFileSystem.snapshot();
       const output = Object.values(files).join("\n");
       expect(output).not.toContain("/sampleitems");

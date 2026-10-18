@@ -16,4 +16,4 @@ The functional tests execute generated Hono handlers, compile application/client
 
 A separately generated single-module persisted backend installs real dependencies and passes strict TypeScript checking, with and without all configured identity options. Real Better Auth also verifies the no-cookie session and rejects malformed registration without a database call. These checks do not claim successful database migrations, persisted HTTP acceptance or browser journeys. Those remain dedicated later work.
 
-Frontend registration is still used only by the existing frontend assembly and is replaced by its dedicated refactor. The multi-module layout, public application wiring and module-owned persistence each retain their own implementation boundaries.
+[Frontend generation](DIRECT_FRONTEND.md) now also uses direct typed functions without registration. The multi-module layout, public application wiring and module-owned persistence each retain their own implementation boundaries.

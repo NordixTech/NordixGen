@@ -1,19 +1,12 @@
 import type { TransportField, TransportOperation } from "../../project/types.js";
 import type { GeneratedFile } from "../contracts.js";
-import type {
-  FrontendApiEntity,
-  FrontendGeneratorPlugin,
-  FrontendPluginContributionContext,
-} from "../frontend-contracts.js";
-
+import type { FrontendApiEntity, FrontendRenderContext } from "../frontend-contracts.js";
 function escapeText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
-
 function source(lines: readonly string[]): string {
   return `${lines.join("\n")}\n`;
 }
-
 export interface EntityEndpointsGroup {
   readonly entityName: string;
   readonly listEndpoint?: TransportOperation;
@@ -23,7 +16,6 @@ export interface EntityEndpointsGroup {
   readonly deleteEndpoint?: TransportOperation;
   readonly customEndpoints: readonly TransportOperation[];
 }
-
 function endpointBodyFields(
   endpoint: TransportOperation | undefined,
 ): Readonly<Record<string, TransportField>> {
@@ -34,7 +26,6 @@ function endpointBodyFields(
     ]),
   );
 }
-
 function zodField(
   field: TransportField,
   enums: Readonly<Record<string, readonly string[]>>,
@@ -63,7 +54,6 @@ function zodField(
   if (field.default !== undefined) schema += `.default(${JSON.stringify(field.default)})`;
   return schema;
 }
-
 function bodySchemaSource(
   endpoint: TransportOperation | undefined,
   fallbackFields: Readonly<Record<string, TransportField>>,
@@ -76,17 +66,14 @@ function bodySchemaSource(
   );
   return `z.object({\n${entries.join("\n")}\n})`;
 }
-
 function slugify(name: string): string {
   return name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 }
-
 function fieldInputs(
   fields: Readonly<Record<string, TransportField>>,
   enums: Readonly<Record<string, readonly string[]>>,
 ): string {
-  const entries = Object.entries(fields).filter(([, field]) => !field.generated);
-
+  const entries = Object.entries(fields);
   return entries
     .map(([name, field]) => {
       const required = field.required && field.default === undefined;
@@ -113,14 +100,12 @@ ${options}
             : field.type === "boolean"
               ? "checkbox"
               : "text";
-
       if (type === "checkbox") {
         return `          <div className="ng-field" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <input className="ng-checkbox" id="${name}" type="checkbox" {...featureForm.register(${JSON.stringify(name)})} />
             <label className="ng-label" htmlFor="${name}" style={{ margin: 0 }}>${name}</label>
           </div>`;
       }
-
       return `          <Input
             id="${name}"
             label="${name}${required ? " *" : ""}"
@@ -132,26 +117,18 @@ ${options}
     })
     .join("\n");
 }
-
 function generateFeatureView(
   group: EntityEndpointsGroup,
   entity: FrontendApiEntity,
   entities: Readonly<Record<string, FrontendApiEntity>>,
   enums: Readonly<Record<string, readonly string[]>>,
   operationNames: ReadonlyMap<TransportOperation, string>,
-  serverState: "tanstack-query" | "swr" | "native-fetch",
   hasAuth: boolean,
 ): string {
   const entityName = group.entityName;
   const listOp = group.listEndpoint ? operationNames.get(group.listEndpoint) : undefined;
-  const createOp =
-    group.createEndpoint && group.createEndpoint.body.kind !== "none"
-      ? operationNames.get(group.createEndpoint)
-      : undefined;
-  const updateOp =
-    group.updateEndpoint && group.updateEndpoint.body.kind !== "none"
-      ? operationNames.get(group.updateEndpoint)
-      : undefined;
+  const createOp = group.createEndpoint ? operationNames.get(group.createEndpoint) : undefined;
+  const updateOp = group.updateEndpoint ? operationNames.get(group.updateEndpoint) : undefined;
   const deleteOp = group.deleteEndpoint ? operationNames.get(group.deleteEndpoint) : undefined;
   const updatePathParam = group.updateEndpoint?.pathParams[0]?.name ?? "id";
   const deletePathParam = group.deleteEndpoint?.pathParams[0]?.name ?? "id";
@@ -185,7 +162,6 @@ function generateFeatureView(
   const hasPagination = Boolean(group.listEndpoint?.pagination);
   const fields = Object.entries(entityFields);
   const generatedInputTypes = [...new Set([createOp, updateOp, deleteOp].filter(Boolean))];
-
   const imports: string[] = ['"use client";', ""];
   imports.push(
     'import { useState } from "react";',
@@ -198,8 +174,7 @@ function generateFeatureView(
     'import { Notice } from "@/components/ui/notice";',
     'import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";',
   );
-
-  if (serverState === "tanstack-query") {
+  {
     const hookImports: string[] = [];
     if (listOp) hookImports.push(`use${listOp[0]?.toUpperCase()}${listOp.slice(1)}`);
     if (createOp) hookImports.push(`use${createOp[0]?.toUpperCase()}${createOp.slice(1)}`);
@@ -207,28 +182,8 @@ function generateFeatureView(
     if (deleteOp) hookImports.push(`use${deleteOp[0]?.toUpperCase()}${deleteOp.slice(1)}`);
     if (hookImports.length) {
       imports.push(`import { ${hookImports.join(", ")} } from "@/lib/api/hooks";`);
-    }
-  } else if (serverState === "swr") {
-    const hookImports: string[] = [];
-    if (listOp) hookImports.push(`use${listOp[0]?.toUpperCase()}${listOp.slice(1)}`);
-    if (createOp) hookImports.push(`use${createOp[0]?.toUpperCase()}${createOp.slice(1)}`);
-    if (updateOp) hookImports.push(`use${updateOp[0]?.toUpperCase()}${updateOp.slice(1)}`);
-    if (deleteOp) hookImports.push(`use${deleteOp[0]?.toUpperCase()}${deleteOp.slice(1)}`);
-    if (hookImports.length) {
-      imports.push(`import { ${hookImports.join(", ")} } from "@/lib/api/hooks";`);
-    }
-  } else {
-    const apiImports: string[] = [];
-    if (listOp) apiImports.push(listOp);
-    if (createOp) apiImports.push(createOp);
-    if (updateOp) apiImports.push(updateOp);
-    if (deleteOp) apiImports.push(deleteOp);
-    if (apiImports.length) {
-      imports.push(`import { ${apiImports.join(", ")} } from "@/lib/api";`);
-      imports.push('import { useCallback, useEffect } from "react";');
     }
   }
-
   if (hasAuth) {
     imports.push('import { useSessionView } from "@/lib/auth/use-session-view";');
   }
@@ -237,7 +192,6 @@ function generateFeatureView(
       `import type { ${generatedInputTypes.map((operation) => `${operation}Input`).join(", ")} } from "@/lib/api/types";`,
     );
   }
-
   const queryState = [
     ...(hasPagination ? ["  const [page, setPage] = useState(1);"] : []),
     ...(searchParam ? ['  const [searchFilter, setSearchFilter] = useState("");'] : []),
@@ -245,88 +199,45 @@ function generateFeatureView(
   const queryFields = [
     ...(hasPagination
       ? [
-          `${JSON.stringify(group.listEndpoint?.pagination?.pageParam ?? "page")}: page`,
-          `${JSON.stringify(group.listEndpoint?.pagination?.pageSizeParam ?? "pageSize")}: ${group.listEndpoint?.pagination?.defaultPageSize ?? 25}`,
+          `${JSON.stringify(group.listEndpoint?.pagination?.pageParam)}: page`,
+          `${JSON.stringify(group.listEndpoint?.pagination?.pageSizeParam)}: ${group.listEndpoint?.pagination?.defaultPageSize}`,
         ]
       : []),
     ...(searchParam ? [`${JSON.stringify(searchParam.name)}: searchFilter`] : []),
   ];
   const queryParam = queryFields.length ? `{ query: { ${queryFields.join(", ")} } }` : "{}";
-
   const hookCalls: string[] = [];
-  if (serverState === "tanstack-query") {
-    if (listOp) {
-      hookCalls.push(
-        `  const { data, isLoading, error } = use${listOp[0]?.toUpperCase()}${listOp.slice(1)}(${queryParam});`,
-      );
-    }
-    if (createOp) {
-      hookCalls.push(
-        `  const createMutation = use${createOp[0]?.toUpperCase()}${createOp.slice(1)}();`,
-      );
-    }
-    if (updateOp) {
-      hookCalls.push(
-        `  const updateMutation = use${updateOp[0]?.toUpperCase()}${updateOp.slice(1)}();`,
-      );
-    }
-    if (deleteOp) {
-      hookCalls.push(
-        `  const deleteMutation = use${deleteOp[0]?.toUpperCase()}${deleteOp.slice(1)}();`,
-      );
-    }
-  } else if (serverState === "swr") {
-    if (listOp) {
-      hookCalls.push(
-        `  const { data, isLoading, error } = use${listOp[0]?.toUpperCase()}${listOp.slice(1)}(${queryParam});`,
-      );
-    }
-    if (createOp) {
-      hookCalls.push(
-        `  const createMutation = use${createOp[0]?.toUpperCase()}${createOp.slice(1)}();`,
-      );
-    }
-    if (updateOp) {
-      hookCalls.push(
-        `  const updateMutation = use${updateOp[0]?.toUpperCase()}${updateOp.slice(1)}();`,
-      );
-    }
-    if (deleteOp) {
-      hookCalls.push(
-        `  const deleteMutation = use${deleteOp[0]?.toUpperCase()}${deleteOp.slice(1)}();`,
-      );
-    }
-  } else {
+  if (listOp) {
     hookCalls.push(
-      "  const [data, setData] = useState<unknown>(null);",
-      "  const [isLoading, setIsLoading] = useState(false);",
-      "  const [error, setError] = useState<Error | null>(null);",
-      "  const refetch = useCallback(async () => {",
-      "    setIsLoading(true);",
-      "    setError(null);",
-      "    try {",
-      listOp
-        ? `      const res = await ${listOp}(${queryParam});\n      setData(res);`
-        : "      setData([]);",
-      "    } catch (err: unknown) {",
-      "      setError(err instanceof Error ? err : new Error(String(err)));",
-      "    } finally {",
-      "      setIsLoading(false);",
-      "    }",
-      `  }, [${[...(hasPagination ? ["page"] : []), ...(searchParam ? ["searchFilter"] : [])].join(", ")}]);`,
-      "  useEffect(() => { void refetch(); }, [refetch]);",
+      `  const { data, isLoading, error } = use${listOp[0]?.toUpperCase()}${listOp.slice(1)}(${queryParam});`,
     );
   }
-
+  if (createOp) {
+    hookCalls.push(
+      `  const createMutation = use${createOp[0]?.toUpperCase()}${createOp.slice(1)}();`,
+    );
+  }
+  if (updateOp) {
+    hookCalls.push(
+      `  const updateMutation = use${updateOp[0]?.toUpperCase()}${updateOp.slice(1)}();`,
+    );
+  }
+  if (deleteOp) {
+    hookCalls.push(
+      `  const deleteMutation = use${deleteOp[0]?.toUpperCase()}${deleteOp.slice(1)}();`,
+    );
+  }
+  if (!listOp)
+    hookCalls.push(
+      "  const {data,isLoading,error} = {data: [],isLoading:false,error:null as Error | null};",
+    );
   const itemsAccessor = hasPagination
     ? "  const items = (data as unknown as { items?: readonly FeatureRow[] } | null)?.items ?? (Array.isArray(data) ? data as unknown as readonly FeatureRow[] : []);"
     : "  const items = Array.isArray(data) ? data as unknown as readonly FeatureRow[] : (data as unknown as { items?: readonly FeatureRow[] } | null)?.items ?? [];";
-
   const tableHeaders = fields
     .slice(0, 5)
     .map(([name]) => `            <TableHeaderCell>${name}</TableHeaderCell>`)
     .join("\n");
-
   const tableCells = fields
     .slice(0, 5)
     .map(
@@ -334,7 +245,6 @@ function generateFeatureView(
         `              <TableCell>{String(row.entity ? row.entity[${JSON.stringify(name)}] ?? "" : row[${JSON.stringify(name)}] ?? "")}</TableCell>`,
     )
     .join("\n");
-
   const createForm =
     createOp || updateOp
       ? `      <Dialog onOpenChange={(open) => { setIsCreateOpen(open); if (!open) setEditingItem(null); }} open={isCreateOpen} title={editingItem ? "Edit ${entityName}" : "Create ${entityName}"}>
@@ -348,7 +258,6 @@ ${fieldInputs(formFields, enums)}
         </form>
       </Dialog>`
       : "";
-
   const deleteDialog = deleteOp
     ? `      <Dialog onOpenChange={(open) => !open && setDeletingItem(null)} open={Boolean(deletingItem)} title="Delete ${entityName}">
         <div>
@@ -361,7 +270,6 @@ ${fieldInputs(formFields, enums)}
         </div>
       </Dialog>`
     : "";
-
   const paginationControls = hasPagination
     ? `        <div className="ng-actions" style={{ justifyContent: "space-between", alignItems: "center", marginTop: "16px" }}>
           <span>Page {page}</span>
@@ -371,7 +279,6 @@ ${fieldInputs(formFields, enums)}
           </div>
         </div>`
     : "";
-
   return source([
     ...imports,
     "",
@@ -399,19 +306,11 @@ ${fieldInputs(formFields, enums)}
     "    try {",
     "      if (editingItem) {",
     updateOp
-      ? serverState === "tanstack-query"
-        ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.mutateAsync({ path: { ${JSON.stringify(updatePathParam)}: id }, body } as unknown as ${updateOp}Input);`
-        : serverState === "swr"
-          ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.trigger({ path: { ${JSON.stringify(updatePathParam)}: id }, body } as unknown as ${updateOp}Input);`
-          : `        const id = editingItem.id ?? editingItem.entity?.id; await ${updateOp}({ path: { ${JSON.stringify(updatePathParam)}: id }, body } as unknown as ${updateOp}Input); await refetch();`
+      ? `        const id = editingItem.id ?? editingItem.entity?.id; await updateMutation.mutateAsync({ path: { ${JSON.stringify(updatePathParam)}: id }, body } as unknown as ${updateOp}Input);`
       : '        throw new Error("This entity has no update endpoint.");',
     "      } else {",
     createOp
-      ? serverState === "tanstack-query"
-        ? `        await createMutation.mutateAsync({ body } as unknown as ${createOp}Input);`
-        : serverState === "swr"
-          ? `        await createMutation.trigger({ body } as unknown as ${createOp}Input);`
-          : `        await ${createOp}({ body } as unknown as ${createOp}Input); await refetch();`
+      ? `        await createMutation.mutateAsync({ body } as unknown as ${createOp}Input);`
       : '        throw new Error("This entity has no create endpoint.");',
     "      }",
     "      setIsCreateOpen(false);",
@@ -430,13 +329,9 @@ ${fieldInputs(formFields, enums)}
     "    setIsSubmitting(true);",
     "    const id = deletingItem.id ?? deletingItem.entity?.id;",
     "    try {",
-    serverState === "tanstack-query" && deleteOp
+    deleteOp
       ? `      await deleteMutation.mutateAsync({ path: { ${JSON.stringify(deletePathParam)}: id } } as unknown as ${deleteOp}Input);`
-      : serverState === "swr" && deleteOp
-        ? `      await deleteMutation.trigger({ path: { ${JSON.stringify(deletePathParam)}: id } } as unknown as ${deleteOp}Input);`
-        : deleteOp
-          ? `      await ${deleteOp}({ path: { ${JSON.stringify(deletePathParam)}: id } } as unknown as ${deleteOp}Input); await refetch();`
-          : "      // No delete endpoint",
+      : "      // No delete endpoint",
     "      setDeletingItem(null);",
     "    } catch (err: unknown) {",
     "      setMutationError(err instanceof Error ? err.message : String(err));",
@@ -509,14 +404,12 @@ ${fieldInputs(formFields, enums)}
     "}",
   ]);
 }
-
 export function generateFeatureScreenFiles(
-  context: FrontendPluginContributionContext,
+  context: FrontendRenderContext,
 ): readonly GeneratedFile[] {
   const root = context.framework.codeRoot;
   const endpoints = context.api.endpoints;
-  if (!endpoints || endpoints.length === 0) return [];
-
+  if (endpoints.length === 0) return [];
   const byId = Object.fromEntries(endpoints.map((endpoint) => [endpoint.id, endpoint]));
   const groups = new Map(
     Object.entries(context.api.features).map(([entityName, feature]) => [
@@ -535,15 +428,8 @@ export function generateFeatureScreenFiles(
   const operationNames = new Map(
     endpoints.map((endpoint) => [endpoint, context.api.operationNames[endpoint.id]]),
   );
-  const serverState =
-    typeof context.frontend.stateManagement === "object" &&
-    context.frontend.stateManagement.generateHooks
-      ? (context.frontend.stateManagement.server as "tanstack-query" | "swr" | "native-fetch")
-      : "native-fetch";
   const hasAuth = Boolean(context.api.authentication);
-
   const files: GeneratedFile[] = [];
-
   for (const [entityName, group] of groups.entries()) {
     const slug = slugify(entityName);
     const entity = context.api.entities[entityName];
@@ -553,15 +439,12 @@ export function generateFeatureScreenFiles(
       context.api.entities,
       context.api.enums,
       operationNames,
-      serverState,
       hasAuth,
     );
-
     files.push({
       path: `${root}/components/features/${slug}-screen.tsx`,
       content: screenContent,
     });
-
     files.push({
       path: `${root}/app/${slug}/page.tsx`,
       content: source([
@@ -579,25 +462,5 @@ export function generateFeatureScreenFiles(
       ]),
     });
   }
-
   return files;
 }
-
-export const featureScreensFrontendPlugin: FrontendGeneratorPlugin = {
-  descriptor: {
-    id: "feature-screens",
-    version: "1.0.0",
-    role: "feature-screens",
-    provides: ["frontend:entity-management-screens"],
-    requires: [
-      { capability: "api:typed-fetch-client" },
-      { capability: "ui:accessible-primitives" },
-    ],
-    dependencies: {
-      "@hookform/resolvers": "^5.2.2",
-      "react-hook-form": "^7.62.0",
-      zod: "^3.24.2",
-    },
-  },
-  contribute: generateFeatureScreenFiles,
-};
