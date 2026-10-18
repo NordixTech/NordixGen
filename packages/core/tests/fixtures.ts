@@ -1,48 +1,72 @@
+import { readFileSync } from "node:fs";
+import { stringify } from "yaml";
+import { parseNordixYaml } from "../src/configuration/validate.js";
+
 export function createValidConfig() {
   return {
     name: "sample-commerce",
     version: "1.0.0",
-    organizations: [{ name: "nordix", provider: "github", handle: "NordixTech" }],
-    repositories: [{ name: "commerce", path: ".", organization: "nordix", initializeGit: true }],
+    organizations: [
+      {
+        name: "nordix",
+        handle: "NordixTech",
+      },
+    ],
+    repositories: [
+      {
+        name: "commerce",
+        path: ".",
+        organization: "nordix",
+        initializeGit: true,
+      },
+    ],
     frontends: [
       {
         name: "store-web",
-        framework: "nextjs",
         path: "apps/store-web",
         repository: "commerce",
         connectsTo: ["core-api"],
-        stateManagement: {
-          client: "zustand",
-          server: "tanstack-query",
-          generateHooks: true,
-          optimisticUpdates: true,
+        access: {
+          mode: "public",
         },
       },
     ],
     backends: [
       {
         name: "core-api",
-        framework: "hono",
         repository: "commerce",
         path: "apps/api-core",
-        auth: {
-          type: "jwt",
-          providers: ["credentials"],
-          roles: ["admin", "customer"],
-          permissions: ["orders:read"],
+        persistence: {
+          database: "commerce-db",
         },
-        persistence: { database: "commerce-db", orm: "drizzle" },
+        modules: {
+          commerce: {
+            architecture: "clean",
+            entities: ["User", "Order", "OrderItem"],
+          },
+        },
       },
     ],
-    databases: { "commerce-db": { engine: "postgres", provider: "neon" } },
-    deployment: { provider: "cloudflare", ci: "cloudflare-native" },
-    enums: { OrderStatus: ["PENDING", "PAID"], UserRole: ["ADMIN", "CUSTOMER"] },
+    databases: {
+      "commerce-db": {},
+    },
+    enums: {
+      OrderStatus: ["PENDING", "PAID"],
+      UserRole: ["ADMIN", "CUSTOMER"],
+    },
     entities: {
       User: {
         backend: "core-api",
         fields: {
-          email: { type: "string", unique: true },
-          role: { type: "enum", enumName: "UserRole", default: "CUSTOMER" },
+          email: {
+            type: "string",
+            unique: true,
+          },
+          role: {
+            type: "enum",
+            enumName: "UserRole",
+            default: "CUSTOMER",
+          },
         },
         relations: {},
         timestamps: {
@@ -54,8 +78,15 @@ export function createValidConfig() {
       Order: {
         backend: "core-api",
         fields: {
-          status: { type: "enum", enumName: "OrderStatus", default: "PENDING" },
-          total: { type: "number", default: 10.5 },
+          status: {
+            type: "enum",
+            enumName: "OrderStatus",
+            default: "PENDING",
+          },
+          total: {
+            type: "number",
+            default: 10.5,
+          },
         },
         relations: {
           customer: {
@@ -64,7 +95,11 @@ export function createValidConfig() {
             foreignKey: "customer_id",
             onDelete: "restrict",
           },
-          items: { type: "one-to-many", target: "OrderItem", foreignKey: "order_id" },
+          items: {
+            type: "one-to-many",
+            target: "OrderItem",
+            foreignKey: "order_id",
+          },
         },
         timestamps: {
           createdAt: true,
@@ -75,8 +110,14 @@ export function createValidConfig() {
       OrderItem: {
         backend: "core-api",
         fields: {
-          quantity: { type: "number", default: 1 },
-          note: { type: "string", required: false },
+          quantity: {
+            type: "number",
+            default: 1,
+          },
+          note: {
+            type: "string",
+            required: false,
+          },
         },
         relations: {
           order: {
@@ -86,7 +127,10 @@ export function createValidConfig() {
             onDelete: "cascade",
           },
         },
-        timestamps: { createdAt: true, updatedAt: false },
+        timestamps: {
+          createdAt: true,
+          updatedAt: false,
+        },
         softDelete: false,
       },
     },
@@ -97,76 +141,52 @@ export function createValidConfig() {
         operationId: "getOrderSummary",
         backend: "core-api",
         entity: "Order",
-        authRequired: true,
-        roles: ["admin"],
+        authRequired: false,
+        roles: [],
         queryParams: [
-          { name: "status", field: { entity: "Order", field: "status" }, required: false },
+          {
+            name: "status",
+            field: {
+              entity: "Order",
+              field: "status",
+            },
+            required: false,
+          },
         ],
         pagination: "standard",
         joins: [
-          { entity: "User", type: "inner", fields: ["id", "email"] },
-          { entity: "OrderItem", type: "left", fields: ["quantity"] },
+          {
+            entity: "User",
+            type: "inner",
+            fields: ["id", "email"],
+          },
+          {
+            entity: "OrderItem",
+            type: "left",
+            fields: ["quantity"],
+          },
         ],
       },
     ],
     pagination: {
-      standard: { strategy: "offset", defaultPageSize: 20, maxPageSize: 80 },
+      standard: {
+        strategy: "offset",
+        defaultPageSize: 20,
+        maxPageSize: 80,
+      },
     },
+    schemaVersion: 2,
   };
 }
+export const comprehensiveYaml = stringify(createValidConfig());
 
-export const comprehensiveYaml = `
-name: sample-commerce
-version: 1.0.0
-organizations:
-  - { name: nordix, provider: github, handle: NordixTech }
-repositories:
-  - { name: commerce, path: ., organization: nordix, initializeGit: true }
-frontends:
-  - name: store-web
-    framework: nextjs
-    path: apps/store-web
-    repository: commerce
-    connectsTo: [core-api]
-    stateManagement: { client: zustand, server: tanstack-query, generateHooks: true }
-backends:
-  - name: core-api
-    framework: hono
-    path: apps/api-core
-    repository: commerce
-    auth: { type: jwt, roles: [admin, customer] }
-    persistence: { database: commerce-db, orm: drizzle }
-databases:
-  commerce-db: { engine: postgres, provider: neon }
-deployment: { provider: cloudflare, ci: cloudflare-native }
-enums:
-  UserRole: [ADMIN, CUSTOMER]
-  OrderStatus: [PENDING, PAID]
-entities:
-  User:
-    backend: core-api
-    fields:
-      email: { type: string, unique: true }
-      role: { type: enum, enumName: UserRole, default: CUSTOMER }
-    timestamps:
-      createdAt: true
-      updatedAt: true
-    softDelete: timestamp
-  Order:
-    backend: core-api
-    fields:
-      status: { type: enum, enumName: OrderStatus, default: PENDING }
-    relations:
-      customer: { type: many-to-one, target: User, foreignKey: customer_id, onDelete: restrict }
-endpoints:
-  - path: /api/orders/summary
-    method: GET
-    backend: core-api
-    entity: Order
-    authRequired: true
-    roles: [admin]
-    queryParams:
-      - { name: status, type: enum, enumName: OrderStatus, required: false }
-    joins:
-      - { entity: User, type: inner, fields: [id, email] }
-`;
+export function targetConfig(name = "clean-modules") {
+  const result = parseNordixYaml(
+    readFileSync(
+      new URL(`../../../docs/configuration/samples/${name}.yaml`, import.meta.url),
+      "utf8",
+    ),
+  );
+  if (!result.success) throw new Error(JSON.stringify(result.diagnostics));
+  return result.config;
+}

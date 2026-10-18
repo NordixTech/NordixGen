@@ -478,12 +478,12 @@ export function composeBackendPlugins(
       ]);
     }
     selections.push({ pluginId: backend.persistence.orm });
-    externalCapabilities.push(`database:${database.engine}`, `provider:${database.provider}`);
+    externalCapabilities.push("database:postgres", "provider:neon");
     persistence = {
       database: {
         name: backend.persistence.database,
-        engine: database.engine,
-        provider: database.provider,
+        engine: "postgres",
+        provider: "neon",
       },
       connectionStringEnvironmentVariable: "DATABASE_URL",
     };

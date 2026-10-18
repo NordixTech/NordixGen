@@ -1,12 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { intro, outro, spinner } from "@clack/prompts";
-import {
-  formatDiagnostic,
-  getCoreInfo,
-  normalizeBackends,
-  normalizeFrontends,
-  parseNordixYaml,
-} from "@nordixgen/core";
+import { formatDiagnostic, getCoreInfo, parseNordixYaml } from "@nordixgen/core";
 import { Command } from "commander";
 import pc from "picocolors";
 import { runGenerate, runInit } from "./orchestrator.js";
@@ -49,9 +43,19 @@ export function createProgram(): Command {
       const task = spinner();
       task.start(`Validating ${file}`);
       try {
-        const result = parseNordixYaml(await readFile(file, "utf8"));
+        const result = parseNordixYaml(await readFile(file, "utf8"), file, {
+          requireGeneration: true,
+        });
         if (!result.success) {
-          task.stop("Configuration is invalid");
+          task.stop(
+            result.diagnostics.some(
+              (d) =>
+                d.code.startsWith("MODULE_GENERATION") ||
+                d.code === "MODULE_ARCHITECTURE_UNIMPLEMENTED",
+            )
+              ? "Configuration is valid; generation is not ready"
+              : "Configuration is invalid",
+          );
           for (const diagnostic of result.diagnostics) {
             console.error(pc.red(formatDiagnostic(diagnostic)));
           }
@@ -61,7 +65,7 @@ export function createProgram(): Command {
         task.stop("Configuration is valid");
         console.log(`Project: ${result.config.name} v${result.config.version}`);
         console.log(
-          `Repositories: ${result.config.repositories.length}; frontends: ${normalizeFrontends(result.config).length}; backends: ${normalizeBackends(result.config).length}; entities: ${Object.keys(result.config.entities).length}; endpoints: ${result.config.endpoints.length}`,
+          `Repositories: ${result.config.repositories.length}; frontends: ${result.config.frontends.length}; backends: ${result.config.backends.length}; entities: ${Object.keys(result.config.entities).length}; endpoints: ${result.config.endpoints.length}`,
         );
         for (const diagnostic of result.diagnostics) {
           console.warn(pc.yellow(formatDiagnostic(diagnostic)));

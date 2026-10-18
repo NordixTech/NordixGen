@@ -1,4 +1,4 @@
-import type { FrontendDefinition } from "../configuration/schema.js";
+import type { FrontendRenderSettings } from "../configuration/schema.js";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
 import { VirtualFileSystem, normalizeVirtualPath } from "../virtual-file-system.js";
 import type { GeneratedFile } from "./contracts.js";
@@ -60,18 +60,15 @@ function validateFrameworkContext(
   }
 }
 
-function clientStatePluginId(frontend: FrontendDefinition): string | undefined {
+function clientStatePluginId(frontend: FrontendRenderSettings): string | undefined {
   if (typeof frontend.stateManagement === "object") {
     return frontend.stateManagement.client === "none" ? undefined : frontend.stateManagement.client;
-  }
-  if (frontend.stateManagement === "zustand" || frontend.stateManagement === "context") {
-    return frontend.stateManagement;
   }
   return undefined;
 }
 
 function selectedPlugins(
-  frontend: FrontendDefinition,
+  frontend: FrontendRenderSettings,
   registry: FrontendPluginRegistry,
   api: FrontendApiContract,
 ): { plugins: FrontendGeneratorPlugin[]; diagnostics: ConfigDiagnostic[] } {
@@ -138,7 +135,7 @@ function selectedPlugins(
 /** Composes one frontend without coupling its framework, styling, and UI plugins. */
 export function composeFrontendPlugins(
   projectName: string,
-  frontend: FrontendDefinition,
+  frontend: FrontendRenderSettings,
   registry: FrontendPluginRegistry,
   api: FrontendApiContract = { endpoints: [], entities: {}, enums: {} },
 ): FrontendPluginCompositionResult {

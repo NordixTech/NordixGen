@@ -1,257 +1,82 @@
 import { describe, expect, it } from "vitest";
-import {
-  AuthenticationSchema,
-  AuthorizationSchema,
-  BackendSchema,
-  EndpointSchema,
-  EntitySchema,
-  FieldSchema,
-  FrontendSchema,
-  NordixConfigSchema,
-  RelationSchema,
-  normalizeBackends,
-  normalizeFrontends,
-} from "../src/configuration/schema.js";
+import { NordixConfigSchema } from "../src/configuration/schema.js";
+import { validateNordixConfig } from "../src/configuration/validate.js";
 import { createValidConfig } from "./fixtures.js";
 
-describe("Nordix configuration schemas", () => {
-  it("validates authorization role defaults and grant references", () => {
-    expect(AuthorizationSchema.safeParse({ roles: ["admin"] }).success).toBe(false);
-    expect(
-      AuthorizationSchema.safeParse({
-        roles: ["admin", "admin"],
-        defaultRole: "admin",
-      }).success,
-    ).toBe(false);
-    expect(
-      AuthorizationSchema.safeParse({
-        roles: ["admin"],
-        defaultRole: "customer",
-        rolePermissions: { guest: ["orders:read"] },
-      }).success,
-    ).toBe(false);
-    expect(
-      AuthorizationSchema.safeParse({
-        roles: ["admin"],
-        defaultRole: "admin",
-        rolePermissions: { admin: ["orders:read"] },
-      }).success,
-    ).toBe(true);
-  });
-
-  it("rejects incomplete or unsupported Better Auth sign-in capabilities", () => {
-    expect(
-      AuthenticationSchema.safeParse({ plugin: "better-auth", methods: ["username-password"] })
-        .success,
-    ).toBe(false);
-    expect(
-      AuthenticationSchema.safeParse({
-        plugin: "better-auth",
-        methods: ["email-password", "magic-link"],
-      }).success,
-    ).toBe(false);
-    expect(
-      AuthenticationSchema.safeParse({
-        plugin: "better-auth",
-        methods: ["email-password", "email-password"],
-      }).success,
-    ).toBe(false);
-  });
-
-  it("accepts supported field types and rejects unsupported ones", () => {
-    const values = [
-      { type: "string" },
-      { type: "number" },
-      { type: "boolean" },
-      { type: "date" },
-      { type: "uuid" },
-      { type: "json" },
-      { type: "enum", enumName: "Status" },
-    ];
-    for (const value of values) expect(FieldSchema.safeParse(value).success).toBe(true);
-    expect(FieldSchema.safeParse({ type: "unknown" }).success).toBe(false);
-  });
-
-  it("applies field, relation, entity, frontend, and backend defaults", () => {
-    expect(FieldSchema.parse({ type: "string" })).toMatchObject({ required: true, unique: false });
-    expect(RelationSchema.parse({ type: "many-to-one", target: "User" })).toMatchObject({
-      onDelete: "no-action",
-      required: false,
-    });
-    expect(EntitySchema.parse({ backend: "api" })).toMatchObject({
-      fields: {},
-      relations: {},
-      timestamps: { createdAt: false, updatedAt: false },
-      softDelete: false,
-    });
-    expect(
-      FrontendSchema.parse({
-        name: "web",
-        framework: "nextjs",
-        path: "apps/web",
-        repository: "app",
-      }),
-    ).toMatchObject({ type: "web", authUI: false, styling: "tailwind", ui: "native" });
-    expect(
-      FrontendSchema.parse({
-        name: "web",
-        framework: "nextjs",
-        path: "apps/web",
-        repository: "app",
-        styling: "css",
-        ui: "native",
-      }),
-    ).toMatchObject({ styling: "css", ui: "native" });
-    expect(
-      BackendSchema.parse({ name: "api", framework: "hono", path: "apps/api", repository: "app" }),
-    ).toMatchObject({ architecture: "clean", auth: { type: "none" } });
-  });
-
-  it("rejects malformed names, paths, relations, and unknown properties", () => {
-    expect(
-      FrontendSchema.safeParse({
-        name: "Bad Name",
-        framework: "nextjs",
-        path: "apps/web",
-        repository: "app",
-      }).success,
-    ).toBe(false);
-    expect(
-      FrontendSchema.safeParse({
-        name: "web",
-        framework: "nextjs",
-        path: "apps\\web",
-        repository: "app",
-      }).success,
-    ).toBe(false);
-    expect(RelationSchema.safeParse({ type: "owns", target: "User" }).success).toBe(false);
-    expect(EntitySchema.safeParse({ unexpected: true }).success).toBe(false);
-  });
-
-  it("accepts the full configuration shape and rejects invalid required values", () => {
-    expect(NordixConfigSchema.safeParse(createValidConfig()).success).toBe(true);
-    expect(
-      NordixConfigSchema.safeParse({
-        name: "sample",
-        version: "1.0.0",
-        repositories: [{ name: "repo", path: "." }],
-        entities: {},
-      }).success,
-    ).toBe(false);
-    expect(
-      NordixConfigSchema.safeParse({ name: "sample", version: "latest", entities: { User: {} } })
-        .success,
-    ).toBe(false);
-    expect(NordixConfigSchema.safeParse({ ...createValidConfig(), unexpected: true }).success).toBe(
-      false,
+describe("canonical fixed-stack configuration structure", () => {
+  it("requires schema version, explicit modules and operation identities", () => {
+    const config = createValidConfig();
+    expect(NordixConfigSchema.safeParse(config).success).toBe(true);
+    for (const field of ["schemaVersion", "backends", "entities"]) {
+      const invalid = { ...config } as Record<string, unknown>;
+      delete invalid[field];
+      expect(validateNordixConfig(invalid).success, field).toBe(false);
+    }
+    const missingOperation = structuredClone(config);
+    (missingOperation.endpoints[0] as Record<string, unknown>).operationId = undefined;
+    expect(validateNordixConfig(missingOperation).diagnostics).toContainEqual(
+      expect.objectContaining({ code: "CONFIG_FIELD_REQUIRED", path: "endpoints[0].operationId" }),
     );
-    expect(
-      NordixConfigSchema.safeParse({
-        ...createValidConfig(),
-        database: { engine: "postgres", provider: "local", orm: "drizzle" },
-      }).success,
-    ).toBe(false);
   });
 
-  it("normalizes singular and plural application forms into stable name order", () => {
-    const pluralConfig = NordixConfigSchema.parse({
-      ...createValidConfig(),
-      frontends: [
-        { name: "z-web", framework: "nextjs", path: "apps/z", repository: "commerce" },
-        { name: "a-web", framework: "nextjs", path: "apps/a", repository: "commerce" },
-      ],
-    });
-    expect(normalizeFrontends(pluralConfig).map((app) => app.name)).toEqual(["a-web", "z-web"]);
-    const singularConfig = NordixConfigSchema.parse({
-      name: "singular",
-      version: "1.0.0",
-      repositories: [{ name: "app", path: "." }],
-      entities: { User: { backend: "backend" } },
-      frontend: { framework: "nextjs", path: "apps/web", repository: "app" },
-      backend: { framework: "hono", path: "apps/api", repository: "app" },
-    });
-    expect(normalizeFrontends(singularConfig)[0]).toMatchObject({ name: "frontend", type: "web" });
-    expect(normalizeBackends(singularConfig)[0]).toMatchObject({
-      name: "backend",
+  it("applies project defaults without reintroducing technology selectors", () => {
+    const config = NordixConfigSchema.parse(createValidConfig());
+    expect(config.frontends[0]?.access).toEqual({ mode: "public" });
+    expect(config.backends[0]?.modules.commerce).toMatchObject({
       architecture: "clean",
-      auth: { type: "none" },
+      exports: [],
+      imports: {},
     });
-    expect(
-      normalizeBackends(NordixConfigSchema.parse(createValidConfig())).map((app) => app.name),
-    ).toEqual(["core-api"]);
+    expect(config.backends[0]).not.toHaveProperty("framework");
+    expect(config.backends[0]?.persistence).toEqual({ database: "commerce-db" });
+    expect(config.databases["commerce-db"]).toEqual({});
   });
 
-  it("fills normalization fallbacks when called with pre-schema legacy objects", () => {
-    const legacy = {
-      ...NordixConfigSchema.parse(createValidConfig()),
-      frontend: { framework: "nextjs", path: "apps/legacy-web" },
-      backend: { framework: "hono", path: "apps/legacy-api" },
-    } as unknown as ReturnType<typeof NordixConfigSchema.parse>;
-    expect(normalizeFrontends(legacy)[0]).toMatchObject({ type: "web", authUI: false });
-    expect(normalizeBackends(legacy)[0]).toMatchObject({
-      architecture: "clean",
-      auth: { type: "none" },
-    });
+  it.each([
+    ["framework", "hono"],
+    ["architecture", "clean"],
+    ["auth", { type: "jwt" }],
+  ])("rejects retired backend selector %s with a correction", (key, value) => {
+    const config = createValidConfig();
+    Object.assign(config.backends[0] ?? {}, { [key]: value });
+    expect(validateNordixConfig(config).diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "CONFIG_FIELD_REMOVED",
+        path: `backends[0].${key}`,
+        message: expect.stringMatching(/Remove|remove/),
+      }),
+    );
   });
-  it("validates endpoint path templates and opt-in pagination bounds", () => {
-    const endpoint = {
-      backend: "api",
-      path: "/orders/{orderId}",
-      method: "GET",
-      entity: "Order",
-    };
-    expect(
-      EndpointSchema.safeParse({
-        ...endpoint,
-        pathParams: [{ name: "orderId", type: "uuid" }],
-      }).success,
-    ).toBe(true);
-    expect(EndpointSchema.safeParse({ ...endpoint }).success).toBe(false);
-    expect(
-      EndpointSchema.safeParse({
-        ...endpoint,
-        path: "/orders",
-        pathParams: [{ name: "orderId", type: "uuid" }],
-      }).success,
-    ).toBe(false);
-    expect(
-      EndpointSchema.safeParse({
-        ...endpoint,
-        path: "/orders/{orderId}/{orderId}",
-        pathParams: [{ name: "orderId", type: "uuid" }],
-      }).success,
-    ).toBe(false);
-    expect(
-      EndpointSchema.safeParse({
-        ...endpoint,
-        path: "/orders/{orderId",
-        pathParams: [{ name: "orderId", type: "uuid" }],
-      }).success,
-    ).toBe(false);
-    expect(
-      EndpointSchema.safeParse({
-        ...endpoint,
-        pagination: "standard",
-      }).success,
-    ).toBe(false);
-    expect(
-      EndpointSchema.safeParse({
-        ...endpoint,
-        path: "/orders",
-        pagination: "standard",
-      }).success,
-    ).toBe(true);
-    expect(
-      EndpointSchema.safeParse({
-        ...endpoint,
-        pagination: { strategy: "offset" },
-      }).success,
-    ).toBe(false);
-    expect(
-      NordixConfigSchema.safeParse({
-        ...createValidConfig(),
-        pagination: { standard: { strategy: "offset", defaultPageSize: 25, maxPageSize: 100 } },
-      }).success,
-    ).toBe(true);
+
+  it.each(["framework", "type", "styling", "ui", "stateManagement", "authUI"])(
+    "rejects retired frontend option %s",
+    (key) => {
+      const config = createValidConfig();
+      Object.assign(config.frontends[0] ?? {}, { [key]: "obsolete" });
+      expect(validateNordixConfig(config).diagnostics).toContainEqual(
+        expect.objectContaining({ code: "CONFIG_FIELD_REMOVED", path: `frontends[0].${key}` }),
+      );
+    },
+  );
+
+  it.each(["frontend", "backend", "deployment", "docker", "llm"])(
+    "rejects removed root field %s",
+    (key) => {
+      expect(
+        validateNordixConfig({ ...createValidConfig(), [key]: {} }).diagnostics,
+      ).toContainEqual(expect.objectContaining({ code: "CONFIG_FIELD_REMOVED", path: key }));
+    },
+  );
+
+  it("reports unknown, missing and mistyped fields without semantic cascades", () => {
+    const config = createValidConfig();
+    Object.assign(config.backends[0] ?? {}, { modules: "broken", mystery: "private-token" });
+    const result = validateNordixConfig(config);
+    expect(result.success).toBe(false);
+    expect(result.diagnostics.map((d) => d.code)).toEqual(
+      expect.arrayContaining(["CONFIG_FIELD_TYPE_INVALID", "CONFIG_FIELD_UNKNOWN"]),
+    );
+    expect(result.diagnostics.some((d) => /OWNER|IMPORT/.test(d.code))).toBe(false);
+    expect(JSON.stringify(result)).not.toContain("private-token");
   });
 });

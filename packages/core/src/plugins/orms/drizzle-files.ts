@@ -21,12 +21,7 @@ function pgColumnName(fieldName: string): string {
 }
 
 function endpointTypeName(endpoint: DomainModelContext["endpoints"][number]): string {
-  if (endpoint.operationId) {
-    return endpoint.operationId.charAt(0).toUpperCase() + endpoint.operationId.slice(1);
-  }
-  const words = endpoint.path.split(/[^A-Za-z0-9]+/).filter(Boolean);
-  const pathName = words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join("");
-  return `${endpoint.method.charAt(0)}${endpoint.method.slice(1).toLowerCase()}${pathName || "Endpoint"}`;
+  return endpoint.operationId.charAt(0).toUpperCase() + endpoint.operationId.slice(1);
 }
 
 function lowerFirst(value: string): string {
@@ -172,7 +167,7 @@ export function generateDrizzleSchemaFiles(
             ? "set null"
             : relation.onDelete === "no-action"
               ? "no action"
-              : relation.onDelete;
+              : (relation.onDelete ?? "no-action");
         builder += `.references(() => ${relation.target}Table.id, { onDelete: ${JSON.stringify(onDelete)} })`;
       }
       columnDefs.push(`  ${fieldName}: ${builder},`);

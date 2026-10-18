@@ -27,16 +27,13 @@ export interface NordixDependencyEdge {
 }
 
 export interface NordixIntermediateRepresentation {
-  formatVersion: 3;
+  formatVersion: 4;
   project: { name: string; version: string; description?: string };
   organizations: NordixConfig["organizations"];
   repositories: NordixConfig["repositories"];
-  frontends: ReturnType<typeof normalizeFrontends>;
-  backends: ReturnType<typeof normalizeBackends>;
+  frontends: NordixConfig["frontends"];
+  backends: NordixConfig["backends"];
   databases: NordixConfig["databases"];
-  docker?: NordixConfig["docker"];
-  llm?: NordixConfig["llm"];
-  deployment?: NordixConfig["deployment"];
   enums: Record<string, string[]>;
   entities: Record<string, NordixEntityRepresentation>;
   dependencyEdges: NordixDependencyEdge[];
@@ -229,7 +226,7 @@ export function buildIntermediateRepresentation(input: unknown): NordixIntermedi
   const edges = relationEdgeOrder(config.entities);
 
   return {
-    formatVersion: 3,
+    formatVersion: 4,
     project: {
       name: config.name,
       version: config.version,
@@ -241,12 +238,9 @@ export function buildIntermediateRepresentation(input: unknown): NordixIntermedi
     repositories: [...config.repositories].sort((left, right) =>
       left.name.localeCompare(right.name),
     ),
-    frontends: normalizeFrontends(config),
-    backends: normalizeBackends(config),
+    frontends: [...config.frontends].sort((a, b) => a.name.localeCompare(b.name)),
+    backends: [...config.backends].sort((a, b) => a.name.localeCompare(b.name)),
     databases: sortedRecord(config.databases),
-    ...(config.docker === undefined ? {} : { docker: config.docker }),
-    ...(config.llm === undefined ? {} : { llm: config.llm }),
-    ...(config.deployment === undefined ? {} : { deployment: config.deployment }),
     enums: sortedRecord(config.enums),
     entities,
     dependencyEdges: edges,

@@ -25,7 +25,7 @@ function composeFixture(config = createValidConfig()) {
   config.entities.User.fields.level = { type: "number", format: "integer" };
   config.entities.Order.fields.submittedAt = { type: "date", default: { kind: "now" } };
   const summaryEndpoint = config.endpoints[0];
-  if (summaryEndpoint) summaryEndpoint.permissions = ["orders:read"];
+  if (summaryEndpoint) summaryEndpoint.permissions = [];
   config.endpoints.push({
     backend: "core-api",
     path: "/api/orders/custom",
@@ -50,6 +50,7 @@ function composeFixture(config = createValidConfig()) {
     backend: "core-api",
     path: "/",
     method: "GET",
+    operationId: "getRoot",
     entity: "User",
     authRequired: false,
     roles: [],
@@ -62,6 +63,7 @@ function composeFixture(config = createValidConfig()) {
     backend: "core-api",
     path: "/api/orders/{orderId}/notes",
     method: "POST",
+    operationId: "postApiOrdersOrderIdNotes",
     entity: "Order",
     authRequired: true,
     roles: ["admin"],
@@ -79,6 +81,7 @@ function composeFixture(config = createValidConfig()) {
     backend: "core-api",
     path: "/api/orders/{orderId}/notes",
     method: "PATCH",
+    operationId: "patchApiOrdersOrderIdNotes",
     entity: "Order",
     authRequired: true,
     roles: [],
@@ -185,9 +188,9 @@ describe("Clean Architecture application artifacts", () => {
     expect(dto).toContain('"User": z.object');
     expect(dto).toContain('"email": UserResponseSchema.shape["email"]');
     expect(dto).toContain('"OrderItem": z.array');
-    expect(dto).toContain('"authRequired": true');
-    expect(dto).toContain('"roles": [\n    "admin"');
-    expect(dto).toContain('"permissions": [\n    "orders:read"');
+    expect(dto).toContain('"authRequired": false');
+    expect(dto).toContain('"roles": []');
+    expect(dto).toContain('"permissions": []');
     expect(useCase).toContain("InputSchema.parse(rawInput)");
     expect(useCase).toContain("ResponseSchema.parse(result)");
     expect(useCase).toContain('field: "status"');
@@ -211,7 +214,7 @@ describe("Clean Architecture application artifacts", () => {
     expect(files["apps/api-core/src/application/ports/outbound/clock.port.ts"]).toContain(
       "now(): Date",
     );
-    expect(files[`${root}/dtos/endpoints/GetEndpoint.dto.ts`]).toBeDefined();
+    expect(files[`${root}/dtos/endpoints/GetRoot.dto.ts`]).toBeDefined();
   });
 
   it("typechecks generated application DTOs and use cases against domain contracts", async () => {
@@ -271,7 +274,7 @@ describe("Clean Architecture application artifacts", () => {
     expect(files.find((file) => file.path.endsWith("clock.port.ts"))?.content).toContain(
       "now(): Date",
     );
-    expect(files.find((file) => file.path.endsWith("PostTest.use-case.ts"))?.content).toContain(
+    expect(files.find((file) => file.path.endsWith("ExecuteTest.use-case.ts"))?.content).toContain(
       "scheduledAt: input.body.scheduledAt ?? this.clock.now()",
     );
   });
@@ -284,7 +287,7 @@ describe("Clean Architecture application artifacts", () => {
     const files = generateApplicationFiles(
       applicationContext({ User: domainEntity("User") }, [updateEndpoint]),
     );
-    expect(files.find((file) => file.path.endsWith("PatchTest.dto.ts"))?.content).toContain(
+    expect(files.find((file) => file.path.endsWith("ExecuteTest.dto.ts"))?.content).toContain(
       "UpdateUserSchema",
     );
 
@@ -328,7 +331,7 @@ describe("Clean Architecture application artifacts", () => {
     const files = generateApplicationFiles(
       applicationContext({ User: domainEntity("User") }, [endpoint]),
     );
-    expect(files.find((file) => file.path.endsWith("PostTest.dto.ts"))?.content).toContain(
+    expect(files.find((file) => file.path.endsWith("ExecuteTest.dto.ts"))?.content).toContain(
       'z.coerce.date().default(() => new Date("2026-10-10T00:00:00Z"))',
     );
   });
@@ -433,6 +436,7 @@ function endpointDefinition(
     backend: "api",
     path: "/test",
     method: "GET",
+    operationId: "executeTest",
     entity: "User",
     authRequired: false,
     roles: [],

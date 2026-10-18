@@ -3,6 +3,10 @@
   "title": "NordixGen Configuration",
   "type": "object",
   "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 2
+    },
     "name": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*$"
@@ -14,44 +18,6 @@
     "description": {
       "type": "string"
     },
-    "pagination": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "strategy": {
-            "type": "string",
-            "const": "offset",
-            "default": "offset"
-          },
-          "pageParam": {
-            "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
-            "default": "page"
-          },
-          "pageSizeParam": {
-            "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
-            "default": "pageSize"
-          },
-          "defaultPageSize": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "default": 25
-          },
-          "maxPageSize": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "default": 100
-          }
-        },
-        "additionalProperties": false
-      },
-      "propertyNames": {
-        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
-      },
-      "default": {}
-    },
     "organizations": {
       "type": "array",
       "items": {
@@ -61,22 +27,13 @@
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
           },
-          "provider": {
-            "type": "string",
-            "enum": [
-              "github",
-              "gitlab",
-              "bitbucket"
-            ]
-          },
           "handle": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^[A-Za-z0-9-]+$"
           }
         },
         "required": [
           "name",
-          "provider",
           "handle"
         ],
         "additionalProperties": false
@@ -125,410 +82,17 @@
       },
       "minItems": 1
     },
-    "frontend": {
+    "databases": {
       "type": "object",
-      "properties": {
-        "framework": {
-          "type": "string",
-          "minLength": 1
-        },
-        "type": {
-          "type": "string",
-          "enum": [
-            "web",
-            "mobile",
-            "desktop"
-          ],
-          "default": "web"
-        },
-        "styling": {
-          "type": "string",
-          "minLength": 1,
-          "default": "tailwind"
-        },
-        "ui": {
-          "type": "string",
-          "minLength": 1,
-          "default": "native"
-        },
-        "stateManagement": {
-          "anyOf": [
-            {
-              "type": "string",
-              "minLength": 1
-            },
-            {
-              "type": "object",
-              "properties": {
-                "client": {
-                  "type": "string",
-                  "enum": [
-                    "zustand",
-                    "context",
-                    "none"
-                  ],
-                  "default": "zustand"
-                },
-                "server": {
-                  "type": "string",
-                  "enum": [
-                    "tanstack-query",
-                    "swr",
-                    "native-fetch"
-                  ],
-                  "default": "tanstack-query"
-                },
-                "generateHooks": {
-                  "type": "boolean",
-                  "default": true
-                },
-                "optimisticUpdates": {
-                  "type": "boolean",
-                  "default": false
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
-        },
-        "repository": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*$"
-        },
-        "connectsTo": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9-]*$"
-          },
-          "default": []
-        },
-        "authUI": {
-          "type": "boolean",
-          "default": false
-        },
-        "path": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "framework",
-        "repository",
-        "path"
-      ],
-      "additionalProperties": false
-    },
-    "frontends": {
-      "type": "array",
-      "items": {
+      "additionalProperties": {
         "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9-]*$"
-          },
-          "framework": {
-            "type": "string",
-            "minLength": 1
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "web",
-              "mobile",
-              "desktop"
-            ],
-            "default": "web"
-          },
-          "styling": {
-            "type": "string",
-            "minLength": 1,
-            "default": "tailwind"
-          },
-          "ui": {
-            "type": "string",
-            "minLength": 1,
-            "default": "native"
-          },
-          "stateManagement": {
-            "anyOf": [
-              {
-                "type": "string",
-                "minLength": 1
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "client": {
-                    "type": "string",
-                    "enum": [
-                      "zustand",
-                      "context",
-                      "none"
-                    ],
-                    "default": "zustand"
-                  },
-                  "server": {
-                    "type": "string",
-                    "enum": [
-                      "tanstack-query",
-                      "swr",
-                      "native-fetch"
-                    ],
-                    "default": "tanstack-query"
-                  },
-                  "generateHooks": {
-                    "type": "boolean",
-                    "default": true
-                  },
-                  "optimisticUpdates": {
-                    "type": "boolean",
-                    "default": false
-                  }
-                },
-                "additionalProperties": false
-              }
-            ]
-          },
-          "repository": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9-]*$"
-          },
-          "connectsTo": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "pattern": "^[a-z][a-z0-9-]*$"
-            },
-            "default": []
-          },
-          "authUI": {
-            "type": "boolean",
-            "default": false
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "name",
-          "framework",
-          "repository",
-          "path"
-        ],
+        "properties": {},
         "additionalProperties": false
       },
-      "default": []
-    },
-    "backend": {
-      "type": "object",
-      "properties": {
-        "framework": {
-          "type": "string",
-          "minLength": 1
-        },
-        "architecture": {
-          "type": "string",
-          "enum": [
-            "clean",
-            "modular"
-          ],
-          "default": "clean"
-        },
-        "repository": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*$"
-        },
-        "path": {
-          "type": "string",
-          "minLength": 1
-        },
-        "auth": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "enum": [
-                    "jwt",
-                    "pin",
-                    "oauth"
-                  ]
-                },
-                "providers": {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "enum": [
-                          "credentials",
-                          "google",
-                          "github"
-                        ]
-                      },
-                      {
-                        "type": "string",
-                        "minLength": 1
-                      }
-                    ]
-                  },
-                  "default": []
-                },
-                "twoFactor": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "passwordRecovery": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "roles": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9-]*$"
-                  },
-                  "default": []
-                },
-                "permissions": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "default": []
-                }
-              },
-              "required": [
-                "type"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "none"
-                }
-              },
-              "required": [
-                "type"
-              ],
-              "additionalProperties": false
-            }
-          ],
-          "default": {
-            "type": "none"
-          }
-        },
-        "authentication": {
-          "type": "object",
-          "properties": {
-            "plugin": {
-              "type": "string",
-              "pattern": "^[a-z][a-z0-9-]*$"
-            },
-            "methods": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
-              "minItems": 1,
-              "default": [
-                "email-password"
-              ]
-            },
-            "identityProviders": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
-              "default": []
-            },
-            "features": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
-              "default": []
-            }
-          },
-          "required": [
-            "plugin"
-          ],
-          "additionalProperties": false
-        },
-        "authorization": {
-          "type": "object",
-          "properties": {
-            "plugin": {
-              "type": "string",
-              "pattern": "^[a-z][a-z0-9-]*$",
-              "default": "rbac-pbac"
-            },
-            "roles": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]*$"
-              },
-              "default": []
-            },
-            "defaultRole": {
-              "type": "string",
-              "pattern": "^[a-z][a-z0-9-]*$"
-            },
-            "rolePermissions": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "propertyNames": {
-                "pattern": "^[a-z][a-z0-9-]*$"
-              },
-              "default": {}
-            }
-          },
-          "additionalProperties": false,
-          "default": {}
-        },
-        "persistence": {
-          "type": "object",
-          "properties": {
-            "database": {
-              "type": "string",
-              "pattern": "^[a-z][a-z0-9-]*$"
-            },
-            "orm": {
-              "type": "string",
-              "pattern": "^[a-z][a-z0-9-]*$"
-            }
-          },
-          "required": [
-            "database",
-            "orm"
-          ],
-          "additionalProperties": false
-        }
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
       },
-      "required": [
-        "framework",
-        "repository",
-        "path"
-      ],
-      "additionalProperties": false
+      "default": {}
     },
     "backends": {
       "type": "array",
@@ -539,18 +103,6 @@
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
           },
-          "framework": {
-            "type": "string",
-            "minLength": 1
-          },
-          "architecture": {
-            "type": "string",
-            "enum": [
-              "clean",
-              "modular"
-            ],
-            "default": "clean"
-          },
           "repository": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
@@ -559,101 +111,84 @@
             "type": "string",
             "minLength": 1
           },
-          "auth": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "jwt",
-                      "pin",
-                      "oauth"
-                    ]
-                  },
-                  "providers": {
-                    "type": "array",
-                    "items": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "enum": [
-                            "credentials",
-                            "google",
-                            "github"
-                          ]
-                        },
-                        {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      ]
-                    },
-                    "default": []
-                  },
-                  "twoFactor": {
-                    "type": "boolean",
-                    "default": false
-                  },
-                  "passwordRecovery": {
-                    "type": "boolean",
-                    "default": false
-                  },
-                  "roles": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "pattern": "^[a-z][a-z0-9-]*$"
-                    },
-                    "default": []
-                  },
-                  "permissions": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "default": []
-                  }
-                },
-                "required": [
-                  "type"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "none"
-                  }
-                },
-                "required": [
-                  "type"
-                ],
-                "additionalProperties": false
+          "persistence": {
+            "type": "object",
+            "properties": {
+              "database": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
               }
+            },
+            "required": [
+              "database"
             ],
-            "default": {
-              "type": "none"
+            "additionalProperties": false
+          },
+          "modules": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "architecture": {
+                  "type": "string",
+                  "enum": [
+                    "clean",
+                    "hexagonal",
+                    "onion"
+                  ]
+                },
+                "entities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  }
+                },
+                "exports": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][A-Za-z0-9]*$"
+                  },
+                  "default": []
+                },
+                "imports": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][A-Za-z0-9]*$"
+                    }
+                  },
+                  "propertyNames": {
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                  },
+                  "default": {}
+                }
+              },
+              "required": [
+                "architecture",
+                "entities"
+              ],
+              "additionalProperties": false
+            },
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9-]*$"
             }
           },
           "authentication": {
             "type": "object",
             "properties": {
-              "plugin": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]*$"
-              },
               "methods": {
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "minLength": 1
+                  "enum": [
+                    "email-password",
+                    "username-password"
+                  ]
                 },
-                "minItems": 1,
                 "default": [
                   "email-password"
                 ]
@@ -662,7 +197,10 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "minLength": 1
+                  "enum": [
+                    "google",
+                    "github"
+                  ]
                 },
                 "default": []
               },
@@ -670,31 +208,26 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "minLength": 1
+                  "enum": [
+                    "email-verification",
+                    "password-recovery",
+                    "two-factor"
+                  ]
                 },
                 "default": []
               }
             },
-            "required": [
-              "plugin"
-            ],
             "additionalProperties": false
           },
           "authorization": {
             "type": "object",
             "properties": {
-              "plugin": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]*$",
-                "default": "rbac-pbac"
-              },
               "roles": {
                 "type": "array",
                 "items": {
                   "type": "string",
                   "pattern": "^[a-z][a-z0-9-]*$"
-                },
-                "default": []
+                }
               },
               "defaultRole": {
                 "type": "string",
@@ -706,7 +239,7 @@
                   "type": "array",
                   "items": {
                     "type": "string",
-                    "minLength": 1
+                    "pattern": "^\\S+$"
                   }
                 },
                 "propertyNames": {
@@ -715,123 +248,83 @@
                 "default": {}
               }
             },
-            "additionalProperties": false,
-            "default": {}
-          },
-          "persistence": {
-            "type": "object",
-            "properties": {
-              "database": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]*$"
-              },
-              "orm": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]*$"
-              }
-            },
             "required": [
-              "database",
-              "orm"
+              "roles",
+              "defaultRole"
             ],
             "additionalProperties": false
           }
         },
         "required": [
           "name",
-          "framework",
+          "repository",
+          "path",
+          "modules"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "frontends": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "repository": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "connectsTo": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "default": []
+          },
+          "access": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "authenticated",
+                  "mixed"
+                ],
+                "default": "public"
+              },
+              "backend": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "publicRoutes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false,
+            "default": {}
+          }
+        },
+        "required": [
+          "name",
           "repository",
           "path"
         ],
         "additionalProperties": false
       },
       "default": []
-    },
-    "databases": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "engine": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9-]*$"
-          },
-          "provider": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9-]*$"
-          }
-        },
-        "required": [
-          "engine",
-          "provider"
-        ],
-        "additionalProperties": false
-      },
-      "propertyNames": {
-        "pattern": "^[a-z][a-z0-9-]*$"
-      },
-      "default": {}
-    },
-    "docker": {
-      "type": "object",
-      "properties": {
-        "postgres": {
-          "type": "boolean",
-          "default": false
-        },
-        "mailpit": {
-          "type": "boolean",
-          "default": false
-        },
-        "minio": {
-          "type": "boolean",
-          "default": false
-        },
-        "redis": {
-          "type": "boolean",
-          "default": false
-        }
-      },
-      "additionalProperties": false
-    },
-    "llm": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false
-        },
-        "exposeUseCases": {
-          "type": "boolean",
-          "default": false
-        },
-        "endpoint": {
-          "type": "string",
-          "pattern": "^\\/"
-        }
-      },
-      "additionalProperties": false
-    },
-    "deployment": {
-      "type": "object",
-      "properties": {
-        "provider": {
-          "type": "string",
-          "minLength": 1
-        },
-        "ci": {
-          "type": "string",
-          "minLength": 1
-        },
-        "iac": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "provider"
-      ],
-      "additionalProperties": false
     },
     "enums": {
       "type": "object",
@@ -840,8 +333,7 @@
         "items": {
           "type": "string",
           "minLength": 1
-        },
-        "minItems": 1
+        }
       },
       "propertyNames": {
         "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
@@ -1108,8 +600,7 @@
                     "set-null",
                     "restrict",
                     "no-action"
-                  ],
-                  "default": "no-action"
+                  ]
                 },
                 "required": {
                   "type": "boolean",
@@ -1169,6 +660,43 @@
       },
       "propertyNames": {
         "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "const": "offset",
+            "default": "offset"
+          },
+          "pageParam": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+            "default": "page"
+          },
+          "pageSizeParam": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+            "default": "pageSize"
+          },
+          "defaultPageSize": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "default": 25
+          },
+          "maxPageSize": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "default": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
       },
       "default": {}
     },
@@ -1197,7 +725,7 @@
           },
           "operationId": {
             "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+            "pattern": "^[a-z][A-Za-z0-9]*$"
           },
           "summary": {
             "type": "string"
@@ -1207,8 +735,7 @@
             "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
           },
           "authRequired": {
-            "type": "boolean",
-            "default": false
+            "type": "boolean"
           },
           "roles": {
             "type": "array",
@@ -1222,7 +749,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "minLength": 1
+              "pattern": "^\\S+$"
             },
             "default": []
           },
@@ -1365,6 +892,36 @@
           },
           "requestBody": {
             "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "useCase": {
+                    "type": "object",
+                    "properties": {
+                      "entity": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                      },
+                      "operation": {
+                        "type": "string",
+                        "enum": [
+                          "create",
+                          "update"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "entity",
+                      "operation"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "useCase"
+                ],
+                "additionalProperties": false
+              },
               {
                 "type": "object",
                 "additionalProperties": {
@@ -1610,38 +1167,8 @@
                   ]
                 },
                 "propertyNames": {
-                  "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                  "pattern": "^(?!useCase$)[A-Za-z][A-Za-z0-9_]*$"
                 }
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "useCase": {
-                    "type": "object",
-                    "properties": {
-                      "entity": {
-                        "type": "string",
-                        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
-                      },
-                      "operation": {
-                        "type": "string",
-                        "enum": [
-                          "create",
-                          "update"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "entity",
-                      "operation"
-                    ],
-                    "additionalProperties": false
-                  }
-                },
-                "required": [
-                  "useCase"
-                ],
-                "additionalProperties": false
               }
             ]
           },
@@ -1687,6 +1214,7 @@
           "backend",
           "path",
           "method",
+          "operationId",
           "entity"
         ],
         "additionalProperties": false
@@ -1695,9 +1223,12 @@
     }
   },
   "required": [
+    "schemaVersion",
     "name",
     "version",
-    "repositories"
+    "repositories",
+    "backends",
+    "entities"
   ],
   "additionalProperties": false
 }

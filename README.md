@@ -4,7 +4,13 @@ NordixGen is an internal Nordix tool for generating the starting point of client
 
 A generated backend is a modular monolith: business modules run together in one process. Each module may use Clean, Hexagonal, or Onion architecture, and a project may combine these approaches within one backend. Modules communicate through explicit, typed application contracts and direct in-process calls. Project configuration describes the business system—its repositories and paths, applications and connections, databases, modules, entities, endpoints, pagination, and authentication/authorization needs—rather than selecting unrelated technology stacks.
 
-## What NordixGen generates
+## Implementation status
+
+The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
+
+**End-to-end generation is temporarily unavailable.** Both CLI validation and generation report readiness errors before creating files or running scaffolding, installations or remote publication. Restoring generation requires the resolved model, direct pipeline and Clean modules (RF-05, RF-07 and RF-09). No complete generated-project acceptance is claimed at this stage.
+
+## Target generated project
 
 From a `nordix.config.yaml` file, NordixGen scaffolds a Next.js frontend and Hono backend, then generates project code for declared business entities and operations. The generated project includes Drizzle persistence for PostgreSQL/Neon, Better Auth identity and sessions, typed frontend API clients, TanStack Query hooks, Zustand UI state, and entity screens based on connected backend operations.
 
@@ -20,16 +26,14 @@ NordixGen generates application scaffolding and source code. Cloud deployment co
 # Create a starter configuration
 npx nordixgen init
 
-# Validate the configuration
+# Validate configuration and generation readiness (currently exits 1 for valid v2)
 npx nordixgen validate -f nordix.config.yaml
 
-# Generate the project
+# Generation remains blocked until modular integration is complete
 npx nordixgen generate -f nordix.config.yaml -o ./my-client-project
 ```
 
-Generation uses upstream scaffolding tools for Next.js and Hono, then adds NordixGen's project files. The CLI can also create and push GitHub repositories when the GitHub CLI is installed and authenticated.
-
-The YAML reference and architecture requirements are described in the [project specification](docs/SPECIFICATION.md). The current implementation uses a backend-wide Clean architecture layout; the modular monolith and per-module architecture model describes the intended generated project structure.
+The [approved YAML reference](docs/configuration/YAML_V2.md) defines the target contract. [Validation behavior and evidence](docs/configuration/VALIDATION.md) explains what currently works, how to run checks, diagnostic categories and remaining integration work. The core parsing API can validate configuration independently of generation readiness.
 
 ## Development requirements
 

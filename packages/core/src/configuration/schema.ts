@@ -1,25 +1,32 @@
 import { z } from "zod";
 
-const IdentifierSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/);
-const SlugSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
-const PathSchema = z
+export const IdentifierSchema = z
   .string()
-  .min(1)
-  .refine((value) => !value.includes("\\"), {
-    message: "Use forward slashes in paths.",
+  .regex(
+    /^[A-Za-z][A-Za-z0-9_]*$/,
+    "Use an identifier starting with a letter, followed by letters, digits or underscores.",
+  );
+export const SlugSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]*$/, "Use lowercase letters, digits and hyphens, starting with a letter.");
+const PermissionSchema = z
+  .string()
+  .regex(/^\S+$/, "Use one nonempty permission token without whitespace.");
+const unique = <T extends z.ZodTypeAny>(schema: T) =>
+  z.array(schema).superRefine((values, ctx) => {
+    if (new Set(values).size !== values.length)
+      ctx.addIssue({ code: "custom", message: "Remove duplicate values from this list." });
   });
-
-const CommonFieldProperties = {
+const common = {
   description: z.string().optional(),
   required: z.boolean().default(true),
   unique: z.boolean().default(false),
   default: z.unknown().optional(),
 };
-
 export const FieldSchema = z.discriminatedUnion("type", [
   z
     .object({
-      ...CommonFieldProperties,
+      ...common,
       type: z.literal("string"),
       minLength: z.number().int().nonnegative().optional(),
       maxLength: z.number().int().positive().optional(),
@@ -27,40 +34,31 @@ export const FieldSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
-      ...CommonFieldProperties,
+      ...common,
       type: z.literal("number"),
       format: z.enum(["integer", "float", "decimal"]).optional(),
       precision: z.number().int().positive().optional(),
       scale: z.number().int().nonnegative().optional(),
     })
     .strict(),
-  z.object({ ...CommonFieldProperties, type: z.literal("boolean") }).strict(),
-  z.object({ ...CommonFieldProperties, type: z.literal("date") }).strict(),
-  z.object({ ...CommonFieldProperties, type: z.literal("uuid") }).strict(),
-  z.object({ ...CommonFieldProperties, type: z.literal("json") }).strict(),
-  z
-    .object({
-      ...CommonFieldProperties,
-      type: z.literal("enum"),
-      enumName: IdentifierSchema,
-    })
-    .strict(),
+  z.object({ ...common, type: z.literal("boolean") }).strict(),
+  z.object({ ...common, type: z.literal("date") }).strict(),
+  z.object({ ...common, type: z.literal("uuid") }).strict(),
+  z.object({ ...common, type: z.literal("json") }).strict(),
+  z.object({ ...common, type: z.literal("enum"), enumName: IdentifierSchema }).strict(),
 ]);
-
 export const RelationSchema = z
   .object({
     type: z.enum(["many-to-one", "one-to-many", "one-to-one", "many-to-many"]),
     target: IdentifierSchema,
     foreignKey: IdentifierSchema.optional(),
     joinTable: IdentifierSchema.optional(),
-    onDelete: z.enum(["cascade", "set-null", "restrict", "no-action"]).default("no-action"),
+    onDelete: z.enum(["cascade", "set-null", "restrict", "no-action"]).optional(),
     required: z.boolean().default(false),
     description: z.string().optional(),
   })
   .strict();
-
 export const SoftDeleteSchema = z.union([z.literal(false), z.enum(["boolean", "timestamp"])]);
-
 export const EntitySchema = z
   .object({
     backend: SlugSchema,
@@ -68,215 +66,92 @@ export const EntitySchema = z
     fields: z.record(IdentifierSchema, FieldSchema).default({}),
     relations: z.record(IdentifierSchema, RelationSchema).default({}),
     timestamps: z
-      .object({
-        createdAt: z.boolean().default(false),
-        updatedAt: z.boolean().default(false),
-      })
+      .object({ createdAt: z.boolean().default(false), updatedAt: z.boolean().default(false) })
       .strict()
       .default({}),
     softDelete: SoftDeleteSchema.default(false),
   })
   .strict();
-
-const StateManagementObjectSchema = z
+export const ModuleSchema = z
   .object({
-    client: z.enum(["zustand", "context", "none"]).default("zustand"),
-    server: z.enum(["tanstack-query", "swr", "native-fetch"]).default("tanstack-query"),
-    generateHooks: z.boolean().default(true),
-    optimisticUpdates: z.boolean().default(false),
+    architecture: z.enum(["clean", "hexagonal", "onion"]),
+    entities: unique(IdentifierSchema).refine(
+      (v) => v.length > 0,
+      "Assign at least one entity to this module.",
+    ),
+    exports: unique(z.string().regex(/^[a-z][A-Za-z0-9]*$/)).default([]),
+    imports: z
+      .record(
+        SlugSchema,
+        unique(z.string().regex(/^[a-z][A-Za-z0-9]*$/)).refine(
+          (v) => v.length > 0,
+          "Name at least one exported operation.",
+        ),
+      )
+      .default({}),
   })
   .strict();
-
-export const FrontendSchema = z
-  .object({
-    name: SlugSchema,
-    framework: z.string().min(1),
-    type: z.enum(["web", "mobile", "desktop"]).default("web"),
-    styling: z.string().min(1).default("tailwind"),
-    ui: z.string().min(1).default("native"),
-    stateManagement: z.union([z.string().min(1), StateManagementObjectSchema]).optional(),
-    repository: SlugSchema,
-    connectsTo: z.array(SlugSchema).default([]),
-    authUI: z.boolean().default(false),
-    path: PathSchema,
-  })
-  .strict();
-
-const AuthenticatedAuthSchema = z
-  .object({
-    type: z.enum(["jwt", "pin", "oauth"]),
-    providers: z
-      .array(z.enum(["credentials", "google", "github"]).or(z.string().min(1)))
-      .default([]),
-    twoFactor: z.boolean().default(false),
-    passwordRecovery: z.boolean().default(false),
-    roles: z.array(SlugSchema).default([]),
-    permissions: z.array(z.string().min(1)).default([]),
-  })
-  .strict();
-
-export const AuthSchema = z.discriminatedUnion("type", [
-  AuthenticatedAuthSchema,
-  z.object({ type: z.literal("none") }).strict(),
-]);
-
 export const AuthenticationSchema = z
   .object({
-    plugin: SlugSchema,
-    methods: z.array(z.string().min(1)).min(1).default(["email-password"]),
-    identityProviders: z.array(z.string().min(1)).default([]),
-    features: z.array(z.string().min(1)).default([]),
+    methods: unique(z.enum(["email-password", "username-password"]))
+      .refine((v) => v.length > 0, "Enable at least one credential method.")
+      .default(["email-password"]),
+    identityProviders: unique(z.enum(["google", "github"])).default([]),
+    features: unique(z.enum(["email-verification", "password-recovery", "two-factor"])).default([]),
   })
-  .strict()
-  .superRefine((authentication, context) => {
-    for (const [field, values] of Object.entries({
-      methods: authentication.methods,
-      identityProviders: authentication.identityProviders,
-      features: authentication.features,
-    })) {
-      if (new Set(values).size !== values.length) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [field],
-          message: `${field} must not contain duplicate values.`,
-        });
-      }
-    }
-    const allowedValues: Record<string, readonly string[]> = {
-      methods: ["email-password", "username-password"],
-      identityProviders: ["google", "github"],
-      features: ["email-verification", "password-recovery", "two-factor"],
-    };
-    for (const [field, values] of Object.entries({
-      methods: authentication.methods,
-      identityProviders: authentication.identityProviders,
-      features: authentication.features,
-    })) {
-      values.forEach((value, index) => {
-        if (allowedValues[field]?.includes(value)) return;
-        const description =
-          value === "pin"
-            ? "PIN authentication is unsupported; use a maintained credential flow instead."
-            : `Unsupported ${field} value "${value}" for the Better Auth Golden Path.`;
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [field, index],
-          message: description,
-        });
-      });
-    }
-    if (
-      authentication.methods.includes("username-password") &&
-      !authentication.methods.includes("email-password")
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["methods"],
-        message:
-          "Better Auth username sign-in extends the email/password account flow; enable email-password too.",
-      });
-    }
-  });
-
+  .strict();
 export const AuthorizationSchema = z
   .object({
-    plugin: SlugSchema.default("rbac-pbac"),
-    roles: z.array(SlugSchema).default([]),
-    defaultRole: SlugSchema.optional(),
-    rolePermissions: z.record(SlugSchema, z.array(z.string().min(1))).default({}),
+    roles: unique(SlugSchema).refine((v) => v.length > 0, "Declare at least one role."),
+    defaultRole: SlugSchema,
+    rolePermissions: z.record(SlugSchema, unique(PermissionSchema)).default({}),
   })
-  .strict()
-  .superRefine((authorization, context) => {
-    if (new Set(authorization.roles).size !== authorization.roles.length) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["roles"],
-        message: "Authorization roles must not contain duplicates.",
-      });
-    }
-    if (authorization.roles.length > 0 && !authorization.defaultRole) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["defaultRole"],
-        message: "Declare a least-privilege defaultRole when authorization roles are configured.",
-      });
-    }
-    if (authorization.defaultRole && !authorization.roles.includes(authorization.defaultRole)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["defaultRole"],
-        message: `Default role "${authorization.defaultRole}" must be declared under roles.`,
-      });
-    }
-    for (const role of Object.keys(authorization.rolePermissions)) {
-      if (!authorization.roles.includes(role)) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["rolePermissions", role],
-          message: `Permission grants reference undeclared role "${role}".`,
-        });
-      }
-    }
-  });
-
+  .strict();
 export const BackendSchema = z
   .object({
     name: SlugSchema,
-    framework: z.string().min(1),
-    architecture: z.enum(["clean", "modular"]).default("clean"),
     repository: SlugSchema,
-    path: PathSchema,
-    auth: AuthSchema.default({ type: "none" }),
+    path: z.string().min(1),
+    persistence: z.object({ database: SlugSchema }).strict().optional(),
+    modules: z
+      .record(SlugSchema, ModuleSchema)
+      .refine((v) => Object.keys(v).length > 0, "Declare at least one business module."),
     authentication: AuthenticationSchema.optional(),
-    authorization: AuthorizationSchema.default({}),
-    persistence: z
-      .object({
-        database: SlugSchema,
-        orm: SlugSchema,
-      })
-      .strict()
-      .optional(),
+    authorization: AuthorizationSchema.optional(),
   })
   .strict();
-
-export const DatabaseSchema = z
+export const FrontendAccessSchema = z
   .object({
-    engine: SlugSchema,
-    provider: SlugSchema,
+    mode: z.enum(["public", "authenticated", "mixed"]).default("public"),
+    backend: SlugSchema.optional(),
+    publicRoutes: unique(z.string()).optional(),
   })
   .strict();
-
+export const FrontendSchema = z
+  .object({
+    name: SlugSchema,
+    repository: SlugSchema,
+    path: z.string().min(1),
+    connectsTo: unique(SlugSchema).default([]),
+    access: FrontendAccessSchema.default({}),
+  })
+  .strict();
+export const DatabaseSchema = z.object({}).strict();
 export const EntityFieldReferenceSchema = z
-  .object({
-    entity: IdentifierSchema,
-    field: IdentifierSchema,
-  })
+  .object({ entity: IdentifierSchema, field: IdentifierSchema })
   .strict();
-
-const ParameterShapeSchema = z
-  .object({
-    name: IdentifierSchema,
-    type: z.enum(["string", "number", "boolean", "date", "uuid", "json", "enum"]).optional(),
-    field: EntityFieldReferenceSchema.optional(),
-    required: z.boolean().default(true),
-    enumName: IdentifierSchema.optional(),
-    operator: z.enum(["eq", "ne", "in", "gt", "gte", "lt", "lte", "contains"]).optional(),
-  })
+const parameter = {
+  name: IdentifierSchema,
+  type: z.enum(["string", "number", "boolean", "date", "uuid", "json", "enum"]).optional(),
+  field: EntityFieldReferenceSchema.optional(),
+  required: z.boolean().default(true),
+  enumName: IdentifierSchema.optional(),
+  operator: z.enum(["eq", "ne", "in", "gt", "gte", "lt", "lte", "contains"]).optional(),
+};
+const ParameterSchema = z.object(parameter).strict();
+const PathParameterSchema = z
+  .object({ ...parameter, required: z.literal(true).default(true) })
   .strict();
-
-const ParameterSchema = ParameterShapeSchema.refine(
-  (parameter) => parameter.type !== undefined || parameter.field !== undefined,
-  {
-    message: "A parameter must declare either a type or an entity field reference.",
-  },
-);
-
-const PathParameterSchema = ParameterShapeSchema.extend({
-  required: z.literal(true).default(true),
-}).refine((parameter) => parameter.type !== undefined || parameter.field !== undefined, {
-  message: "A parameter must declare either a type or an entity field reference.",
-});
-
 export const PaginationSchema = z
   .object({
     strategy: z.literal("offset").default("offset"),
@@ -285,34 +160,9 @@ export const PaginationSchema = z
     defaultPageSize: z.number().int().positive().default(25),
     maxPageSize: z.number().int().positive().default(100),
   })
-  .strict()
-  .superRefine((pagination, context) => {
-    if (pagination.defaultPageSize > pagination.maxPageSize) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["defaultPageSize"],
-        message: "defaultPageSize cannot exceed maxPageSize.",
-      });
-    }
-    if (pagination.pageParam === pagination.pageSizeParam) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["pageSizeParam"],
-        message: "Pagination parameter names must be different.",
-      });
-    }
-  });
-
+  .strict();
 export const PaginationProfileReferenceSchema = IdentifierSchema;
-
 const RequestBodySchema = z.union([
-  z.record(
-    IdentifierSchema,
-    z.union([
-      FieldSchema,
-      z.object({ field: EntityFieldReferenceSchema, required: z.boolean().optional() }).strict(),
-    ]),
-  ),
   z
     .object({
       useCase: z
@@ -320,19 +170,32 @@ const RequestBodySchema = z.union([
         .strict(),
     })
     .strict(),
+  z.record(
+    z
+      .string()
+      .regex(
+        /^(?!useCase$)[A-Za-z][A-Za-z0-9_]*$/,
+        "useCase is reserved for the entity/operation body form. Rename this inline body property.",
+      ),
+    z.union([
+      FieldSchema,
+      z.object({ field: EntityFieldReferenceSchema, required: z.boolean().optional() }).strict(),
+    ]),
+  ),
 ]);
-
 export const EndpointSchema = z
   .object({
     backend: SlugSchema,
     path: z.string().startsWith("/"),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
-    operationId: IdentifierSchema.optional(),
+    operationId: z
+      .string()
+      .regex(/^[a-z][A-Za-z0-9]*$/, "Name this operation with a lower-camel-case identifier."),
     summary: z.string().optional(),
     entity: IdentifierSchema,
-    authRequired: z.boolean().default(false),
-    roles: z.array(SlugSchema).default([]),
-    permissions: z.array(z.string().min(1)).default([]),
+    authRequired: z.boolean().optional(),
+    roles: unique(SlugSchema).default([]),
+    permissions: unique(PermissionSchema).default([]),
     queryParams: z.array(ParameterSchema).default([]),
     pathParams: z.array(PathParameterSchema).default([]),
     requestBody: RequestBodySchema.optional(),
@@ -343,131 +206,50 @@ export const EndpointSchema = z
           .object({
             entity: IdentifierSchema,
             type: z.enum(["inner", "left"]),
-            fields: z.array(IdentifierSchema).default([]),
+            fields: unique(IdentifierSchema).default([]),
           })
           .strict(),
       )
       .default([]),
   })
-  .strict()
-  .superRefine((endpoint, context) => {
-    const pathNames = [...endpoint.path.matchAll(/\{([^{}]+)\}/g)].map((match) =>
-      match.slice(1).join(""),
-    );
-    if (/[{}]/.test(endpoint.path.replace(/\{[^{}]+\}/g, ""))) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["path"],
-        message: "Path templates must use balanced `{parameter}` placeholders.",
-      });
-    }
-    const parameterNames = endpoint.pathParams.map((parameter) => parameter.name);
-    for (const name of new Set(pathNames)) {
-      if (!parameterNames.includes(name)) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["pathParams"],
-          message: `Path placeholder "${name}" must have a matching path parameter.`,
-        });
-      }
-    }
-    for (const name of new Set(parameterNames)) {
-      if (!pathNames.includes(name)) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["pathParams"],
-          message: `Path parameter "${name}" must match its corresponding path placeholder.`,
-        });
-      }
-    }
-    if (new Set(pathNames).size !== pathNames.length) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["path"],
-        message: "Path parameter placeholders must be unique.",
-      });
-    }
-  });
-
-const EnumValuesSchema = z
-  .array(z.string().min(1))
-  .min(1)
-  .refine((values) => new Set(values).size === values.length, {
-    message: "Enum values must be unique.",
-  });
-
-export const OrganizationSchema = z
-  .object({
-    name: SlugSchema,
-    provider: z.enum(["github", "gitlab", "bitbucket"]),
-    handle: z.string().min(1),
-  })
   .strict();
-
+export const OrganizationSchema = z
+  .object({ name: SlugSchema, handle: z.string().regex(/^[A-Za-z0-9-]+$/) })
+  .strict();
 export const RepositorySchema = z
   .object({
     name: SlugSchema,
-    path: PathSchema,
+    path: z.string().min(1),
     organization: SlugSchema.optional(),
     initializeGit: z.boolean().default(false),
     createRemote: z.boolean().default(false),
     visibility: z.enum(["private", "public"]).default("private"),
   })
   .strict();
-
 export const NordixConfigSchema = z
   .object({
+    schemaVersion: z.literal(2),
     name: SlugSchema,
     version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
     description: z.string().optional(),
-    pagination: z.record(IdentifierSchema, PaginationSchema).default({}),
     organizations: z.array(OrganizationSchema).default([]),
     repositories: z.array(RepositorySchema).min(1),
-    frontend: FrontendSchema.omit({ name: true }).optional(),
-    frontends: z.array(FrontendSchema).default([]),
-    backend: BackendSchema.omit({ name: true }).optional(),
-    backends: z.array(BackendSchema).default([]),
     databases: z.record(SlugSchema, DatabaseSchema).default({}),
-    docker: z
-      .object({
-        postgres: z.boolean().default(false),
-        mailpit: z.boolean().default(false),
-        minio: z.boolean().default(false),
-        redis: z.boolean().default(false),
-      })
-      .strict()
-      .optional(),
-    llm: z
-      .object({
-        enabled: z.boolean().default(false),
-        exposeUseCases: z.boolean().default(false),
-        endpoint: z.string().startsWith("/").optional(),
-      })
-      .strict()
-      .optional(),
-    deployment: z
-      .object({
-        provider: z.string().min(1),
-        ci: z.string().min(1).optional(),
-        iac: z.string().min(1).optional(),
-      })
-      .strict()
-      .optional(),
-    enums: z.record(IdentifierSchema, EnumValuesSchema).default({}),
-    entities: z.record(IdentifierSchema, EntitySchema).default({}),
+    backends: z.array(BackendSchema).min(1),
+    frontends: z.array(FrontendSchema).default([]),
+    enums: z
+      .record(
+        IdentifierSchema,
+        unique(z.string().min(1)).refine((v) => v.length > 0, "Declare at least one enum value."),
+      )
+      .default({}),
+    entities: z
+      .record(IdentifierSchema, EntitySchema)
+      .refine((v) => Object.keys(v).length > 0, "Declare at least one entity."),
+    pagination: z.record(IdentifierSchema, PaginationSchema).default({}),
     endpoints: z.array(EndpointSchema).default([]),
   })
-  .strict()
-  .superRefine((config, context) => {
-    if (Object.keys(config.entities).length === 0) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["entities"],
-        message: "At least one entity is required.",
-      });
-    }
-  });
-
+  .strict();
 export type FieldDefinition = z.infer<typeof FieldSchema>;
 export type RelationDefinition = z.infer<typeof RelationSchema>;
 export type EntityDefinition = z.infer<typeof EntitySchema>;
@@ -479,42 +261,80 @@ export type EndpointDefinition = z.infer<typeof EndpointSchema>;
 export type OrganizationDefinition = z.infer<typeof OrganizationSchema>;
 export type RepositoryDefinition = z.infer<typeof RepositorySchema>;
 export type NordixConfig = z.infer<typeof NordixConfigSchema>;
-export type NormalizedEndpointDefinition = Omit<EndpointDefinition, "pagination"> & {
-  pagination?: PaginationDefinition;
-};
+export type NormalizedEndpointDefinition = Omit<
+  EndpointDefinition,
+  "pagination" | "authRequired"
+> & { pagination?: PaginationDefinition; authRequired: boolean };
 export type NormalizedNordixConfig = Omit<NordixConfig, "endpoints"> & {
   endpoints: NormalizedEndpointDefinition[];
 };
 
-export function normalizeFrontends(config: NordixConfig): FrontendDefinition[] {
-  const frontends = [...config.frontends];
-  if (config.frontend) {
-    frontends.push({
-      ...config.frontend,
-      name: "frontend",
-      type: config.frontend.type ?? "web",
-      authUI: config.frontend.authUI ?? false,
-      styling: config.frontend.styling ?? "tailwind",
-      ui: config.frontend.ui ?? "native",
-    });
-  }
-  return frontends.sort((left, right) => left.name.localeCompare(right.name));
+// Temporary concrete inputs for the existing renderers. These are NOT accepted YAML
+// selectors. Direct generation/resolved-model work removes these internal views.
+export type FrontendRenderSettings = FrontendDefinition & {
+  framework: string;
+  type: "web";
+  styling: string;
+  ui: string;
+  authUI: boolean;
+  stateManagement?: {
+    client: "zustand" | "context" | "none";
+    server: "tanstack-query" | "swr" | "native-fetch";
+    generateHooks: boolean;
+    optimisticUpdates: boolean;
+  };
+};
+export function frontendRenderSettings(frontend: FrontendDefinition): FrontendRenderSettings {
+  return {
+    ...frontend,
+    framework: "nextjs",
+    type: "web",
+    styling: "tailwind",
+    ui: "native",
+    authUI: frontend.access.backend !== undefined,
+    stateManagement: {
+      client: "zustand",
+      server: "tanstack-query",
+      generateHooks: true,
+      optimisticUpdates: false,
+    },
+  };
 }
-
-export function normalizeBackends(config: NordixConfig): BackendDefinition[] {
-  const backends = [...config.backends];
-  if (config.backend) {
-    backends.push({
-      ...config.backend,
-      name: "backend",
-      architecture: config.backend.architecture ?? "clean",
-      auth: config.backend.auth ?? { type: "none" },
-      authorization: config.backend.authorization ?? {
-        plugin: "rbac-pbac",
-        roles: [],
-        rolePermissions: {},
-      },
-    });
-  }
-  return backends.sort((left, right) => left.name.localeCompare(right.name));
+export function effectiveAuthorization(backend: BackendDefinition) {
+  return (
+    backend.authorization ?? {
+      roles: backend.authentication ? ["user"] : [],
+      defaultRole: backend.authentication ? "user" : undefined,
+      rolePermissions: {} as Record<string, string[]>,
+    }
+  );
+}
+export function normalizeFrontends(config: NordixConfig): FrontendRenderSettings[] {
+  return config.frontends
+    .map((frontend) => {
+      const authorities = config.backends.filter(
+        (b) => frontend.connectsTo.includes(b.name) && b.authentication,
+      );
+      const selected =
+        frontend.access.backend ?? (authorities.length === 1 ? authorities[0]?.name : undefined);
+      return frontendRenderSettings({
+        ...frontend,
+        access: { ...frontend.access, backend: selected },
+      });
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+export function normalizeBackends(config: NordixConfig) {
+  return config.backends
+    .map((b) => ({
+      ...b,
+      framework: "hono" as const,
+      architecture: Object.values(b.modules)[0]?.architecture ?? "clean",
+      persistence: b.persistence ? { ...b.persistence, orm: "drizzle" as const } : undefined,
+      authentication: b.authentication
+        ? { ...b.authentication, plugin: "better-auth" as const }
+        : undefined,
+      authorization: { ...effectiveAuthorization(b), plugin: "rbac-pbac" as const },
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

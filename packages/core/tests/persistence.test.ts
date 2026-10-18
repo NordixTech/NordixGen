@@ -1,203 +1,207 @@
 import { describe, expect, it } from "vitest";
-import { NordixConfigSchema } from "../src/configuration/schema.js";
+import type { NordixConfig } from "../src/configuration/schema.js";
 import { validateNordixConfig } from "../src/configuration/validate.js";
-import { composeBackendPlugins } from "../src/plugins/composer.js";
-import { ARCHITECTURE_FILE_ROLES } from "../src/plugins/contracts.js";
-import type {
-  ArchitectureLayout,
-  FrameworkContext,
-  GeneratorPlugin,
-  PluginDescriptor,
-} from "../src/plugins/contracts.js";
-import { PluginRegistry } from "../src/plugins/registry.js";
-import { createValidConfig } from "./fixtures.js";
+import { targetConfig } from "./fixtures.js";
 
-const honoContext: FrameworkContext = {
-  pluginId: "hono",
-  applicationRoot: "apps/api-core",
-  codeRoot: "apps/api-core/src",
-  language: "typescript",
-  runtime: "cloudflare-workers",
-  moduleSystem: "esm",
-  scaffold: { executable: "pnpm", argumentsBeforeTarget: [], argumentsAfterTarget: [] },
-  entryPoints: { worker: "apps/api-core/src/index.ts" },
-  conventions: { importExtension: ".js" },
-};
-
-function createPluginRegistry(ormRequires: string): PluginRegistry {
-  const registry = new PluginRegistry();
-  const frameworkDescriptor: PluginDescriptor = {
-    id: "hono",
-    version: "1.0.0",
-    role: "framework",
-    provides: ["runtime:cloudflare-workers"],
-  };
-  const framework: GeneratorPlugin = {
-    descriptor: frameworkDescriptor,
-    createFrameworkContext: () => honoContext,
-    contribute: () => [],
-  };
-  const architectureLayout: ArchitectureLayout = {
-    pluginId: "clean",
-    codeRoot: honoContext.codeRoot,
-    directories: Object.fromEntries(
-      ARCHITECTURE_FILE_ROLES.map((role) => [role, role]),
-    ) as ArchitectureLayout["directories"],
-    dependencyRules: [],
-  };
-  const architecture: GeneratorPlugin = {
-    descriptor: {
-      id: "clean",
-      version: "1.0.0",
-      role: "architecture",
-      provides: ["architecture:clean"],
-    },
-    resolveArchitectureLayout: () => architectureLayout,
-    contribute: () => [],
-  };
-  const orm: GeneratorPlugin = {
-    descriptor: {
-      id: "drizzle",
-      version: "1.0.0",
-      role: "orm",
-      provides: ["orm:drizzle"],
-      requires: [{ capability: ormRequires }],
-    },
-    contribute: () => [],
-  };
-  registry.register(framework);
-  registry.register(architecture);
-  registry.register(orm);
-  return registry;
-}
-
-describe("backend persistence configuration", () => {
-  it("allows backends without persistence and multiple databases with separate ORMs", () => {
-    const input = createValidConfig();
-    input.databases["analytics-db"] = { engine: "postgres", provider: "local" };
-    input.backends.push({
-      name: "analytics-api",
-      framework: "hono",
-      repository: "commerce",
-      path: "apps/analytics-api",
-      persistence: { database: "analytics-db", orm: "prisma" },
-    });
-    input.backends.push({
-      name: "stateless-api",
-      framework: "hono",
-      repository: "commerce",
-      path: "apps/stateless-api",
-    });
-
-    expect(validateNordixConfig(input)).toMatchObject({ success: true });
+describe("named fixed-stack resources and safe project placement", () => {
+  const placements: [string, (c: NordixConfig) => void, string][] = [
+    [
+      "enum/table symbol collision",
+      (c) => {
+        c.enums.Customer = ["active"];
+      },
+      "GENERATED_NAME_COLLISION",
+    ],
+    [
+      "normalized enum collision",
+      (c) => {
+        c.enums.OrderStatus = ["active"];
+        c.enums.Order_Status = ["disabled"];
+      },
+      "GENERATED_NAME_COLLISION",
+    ],
+    [
+      "filesystem device module",
+      (c) => {
+        c.backends[0].modules.con = {
+          architecture: "clean",
+          entities: ["Customer"],
+          exports: [],
+          imports: {},
+        };
+      },
+      "PATH_UNSAFE",
+    ],
+    [
+      "reserved enum symbol",
+      (c) => {
+        c.enums.class = ["active"];
+      },
+      "GENERATED_NAME_COLLISION",
+    ],
+    [
+      "reserved entity symbol",
+      (c) => {
+        c.entities.class = structuredClone(c.entities.Customer);
+        c.backends[0].modules.customers.entities.push("class");
+      },
+      "GENERATED_NAME_COLLISION",
+    ],
+    [
+      "duplicate repository",
+      (c) => {
+        c.repositories.push(structuredClone(c.repositories[0]));
+      },
+      "DUPLICATE_NAME",
+    ],
+    [
+      "unknown application repository",
+      (c) => {
+        c.backends[0].repository = "missing";
+      },
+      "UNKNOWN_APP_REPOSITORY",
+    ],
+    [
+      "unsafe repository path",
+      (c) => {
+        c.repositories[0].path = "../outside";
+      },
+      "PATH_UNSAFE",
+    ],
+    [
+      "remote without organization",
+      (c) => {
+        c.repositories[0].createRemote = true;
+      },
+      "REMOTE_REPOSITORY_WITHOUT_ORGANIZATION",
+    ],
+    [
+      "unknown organization",
+      (c) => {
+        c.repositories[0].organization = "missing";
+      },
+      "UNKNOWN_REPOSITORY_ORGANIZATION",
+    ],
+    [
+      "duplicate organization",
+      (c) => {
+        c.organizations = [
+          { name: "team", handle: "Nordix" },
+          { name: "team", handle: "Nordix" },
+        ];
+      },
+      "DUPLICATE_NAME",
+    ],
+    [
+      "root application overlap",
+      (c) => {
+        c.frontends[0].path = ".";
+      },
+      "APP_PATH_OVERLAP",
+    ],
+    [
+      "normalized entity collision",
+      (c) => {
+        c.entities.Customer_Address = structuredClone(c.entities.CustomerAddress);
+        c.backends[0].modules.customers.entities.push("Customer_Address");
+      },
+      "GENERATED_NAME_COLLISION",
+    ],
+    [
+      "authentication table collision",
+      (c) => {
+        c.entities.User = structuredClone(c.entities.Customer);
+        c.backends[0].modules.customers.entities.push("User");
+      },
+      "GENERATED_NAME_COLLISION",
+    ],
+    [
+      "filesystem device entity",
+      (c) => {
+        c.entities.CON = structuredClone(c.entities.Customer);
+        c.backends[0].modules.customers.entities.push("CON");
+      },
+      "PATH_UNSAFE",
+    ],
+  ];
+  it.each(placements)("rejects %s", (_name, mutate, code) => {
+    const config = targetConfig();
+    mutate(config);
+    expect(validateNordixConfig(config).diagnostics).toContainEqual(
+      expect.objectContaining({ code, message: expect.stringMatching(/\w+.*[.!]/) }),
+    );
   });
-
-  it("reports a missing database reference at the backend's persistence path", () => {
-    const input = createValidConfig();
-    const backend = input.backends[0];
-    if (!backend) throw new Error("Fixture is incomplete.");
-    backend.persistence = { database: "missing-db", orm: "drizzle" };
-
-    const result = validateNordixConfig(input);
-    expect(result.success).toBe(false);
-    if (result.success) throw new Error("Expected invalid database reference.");
-    expect(result.diagnostics).toContainEqual(
+  it("permits a named GitHub organization and separate repositories", () => {
+    const config = targetConfig();
+    config.organizations = [{ name: "team", handle: "NordixTech" }];
+    config.repositories[0].organization = "team";
+    config.repositories[0].createRemote = true;
+    config.repositories[0].path = "server";
+    config.repositories.push({
+      name: "client",
+      path: "client",
+      initializeGit: false,
+      createRemote: false,
+      visibility: "private",
+    });
+    config.frontends[0].repository = "client";
+    expect(validateNordixConfig(config)).toMatchObject({ success: true, diagnostics: [] });
+  });
+  it("checks named database references and Better Auth persistence", () => {
+    const config = targetConfig();
+    config.backends[0].persistence.database = "missing";
+    expect(validateNordixConfig(config).diagnostics).toContainEqual(
       expect.objectContaining({
         code: "UNKNOWN_BACKEND_DATABASE",
-        path: "backends.core-api.persistence.database",
+        path: "backends[0].persistence.database",
       }),
     );
-  });
-
-  it("rejects malformed ORM plugin identifiers", () => {
-    const input = createValidConfig();
-    const backend = input.backends[0];
-    if (!backend) throw new Error("Fixture is incomplete.");
-    backend.persistence = { database: "commerce-db", orm: "Drizzle ORM" };
-
-    expect(validateNordixConfig(input)).toMatchObject({ success: false });
-  });
-
-  it("rejects the retired singleton database format", () => {
-    const input = {
-      ...createValidConfig(),
-      database: { engine: "postgres", provider: "neon", orm: "drizzle" },
-    };
-    expect(validateNordixConfig(input)).toMatchObject({ success: false });
-  });
-
-  it("resolves the configured ORM plugin against the selected database engine", () => {
-    const config = NordixConfigSchema.parse(createValidConfig());
-    const result = composeBackendPlugins(
-      config,
-      "core-api",
-      createPluginRegistry("database:postgres"),
-    );
-
-    expect(result.success).toBe(true);
-    if (!result.success) return;
-    expect(result.frameworkContext).toEqual(honoContext);
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  it("rejects a registered ORM plugin that does not support the selected database engine", () => {
-    const config = NordixConfigSchema.parse(createValidConfig());
-    const result = composeBackendPlugins(
-      config,
-      "core-api",
-      createPluginRegistry("database:mysql"),
-    );
-
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "PLUGIN_CAPABILITY_MISSING", path: "plugins.drizzle" }),
+    config.backends[0].persistence = undefined;
+    expect(validateNordixConfig(config).diagnostics).toContainEqual(
+      expect.objectContaining({ code: "AUTHENTICATION_PERSISTENCE_REQUIRED" }),
     );
   });
 
-  it("rejects an ORM identifier that has no registered plugin", () => {
-    const config = createValidConfig();
-    const backend = config.backends[0];
-    if (!backend?.persistence) throw new Error("Fixture persistence is missing.");
-    backend.persistence.orm = "missing-orm";
-    const parsed = NordixConfigSchema.parse(config);
-
-    const result = composeBackendPlugins(
-      parsed,
-      "core-api",
-      createPluginRegistry("database:postgres"),
-    );
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "PLUGIN_NOT_REGISTERED", path: "plugins.missing-orm" }),
+  it.each([
+    "/absolute",
+    "C:/drive",
+    "../escape",
+    "apps//api",
+    "apps/api/",
+    "apps/./api",
+    "apps/CON",
+    "apps/name.",
+    "apps\\api",
+  ])("rejects unsafe application path %s", (path) => {
+    const config = targetConfig();
+    config.backends[0].path = path;
+    expect(validateNordixConfig(config).diagnostics).toContainEqual(
+      expect.objectContaining({ code: "PATH_UNSAFE", path: "backends[0].path" }),
     );
   });
 
-  it("composes a backend without persistence and reports unknown backend targets", () => {
-    const config = NordixConfigSchema.parse(createValidConfig());
-    const backend = config.backends[0];
-    if (!backend) throw new Error("Fixture backend is missing.");
-    config.backends[0] = { ...backend, persistence: undefined };
-
-    expect(
-      composeBackendPlugins(config, "core-api", createPluginRegistry("database:postgres")).success,
-    ).toBe(true);
-    expect(
-      composeBackendPlugins(config, "missing-api", createPluginRegistry("database:postgres")),
-    ).toMatchObject({
-      success: false,
-      diagnostics: [expect.objectContaining({ code: "UNKNOWN_BACKEND_PLUGIN_TARGET" })],
+  it("rejects overlapping applications/repositories and duplicate application names", () => {
+    const config = targetConfig();
+    config.frontends[0].path = "APPS/API/subfolder";
+    config.frontends[0].name = "api";
+    config.repositories.push({
+      name: "nested",
+      path: "repos/nested",
+      initializeGit: false,
+      createRemote: false,
+      visibility: "private",
     });
+    expect(validateNordixConfig(config).diagnostics.map((d) => d.code)).toEqual(
+      expect.arrayContaining(["APP_PATH_OVERLAP", "DUPLICATE_APP_NAME", "REPOSITORY_PATH_OVERLAP"]),
+    );
   });
 
-  it("reports an unknown database when the configuration changes after parsing", () => {
-    const config = NordixConfigSchema.parse({ ...createValidConfig(), databases: {} });
-    expect(
-      composeBackendPlugins(config, "core-api", createPluginRegistry("database:postgres")),
-    ).toMatchObject({
-      success: false,
-      diagnostics: [expect.objectContaining({ code: "UNKNOWN_BACKEND_DATABASE" })],
-    });
+  it("rejects selector/provider keys instead of negotiating unsupported stacks", () => {
+    const config = targetConfig();
+    Object.assign(config.databases.primary, { engine: "mysql", provider: "other" });
+    Object.assign(config.backends[0].persistence, { orm: "prisma" });
+    const errors = validateNordixConfig(config).diagnostics;
+    expect(errors.filter((d) => d.code === "CONFIG_FIELD_REMOVED")).toHaveLength(3);
+    expect(errors.every((d) => !d.code.startsWith("PLUGIN"))).toBe(true);
   });
 });

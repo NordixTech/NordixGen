@@ -14,20 +14,21 @@ function compose(features: string[] = [], methods = ["email-password"], provider
   const parsed = parseNordixYaml(`
 name: auth-test
 version: 1.0.0
+schemaVersion: 2
 repositories:
   - name: workspace
     path: .
 backends:
   - name: api
-    framework: hono
-    architecture: clean
     repository: workspace
     path: apps/api
+    modules:
+      business:
+        architecture: clean
+        entities: [Order]
     persistence:
       database: primary
-      orm: drizzle
     authentication:
-      plugin: better-auth
       methods: [${methods.join(", ")}]
       identityProviders: [${providers.join(", ")}]
       features: [${features.join(", ")}]
@@ -38,9 +39,7 @@ backends:
         admin: ["*"]
         customer: [orders:read]
 databases:
-  primary:
-    engine: postgres
-    provider: neon
+  primary: {}
 entities:
   Order:
     backend: api
@@ -156,20 +155,20 @@ describe("Better Auth plugin composition", () => {
     const parsed = parseNordixYaml(`
 name: pin-test
 version: 1.0.0
+schemaVersion: 2
 repositories: [{ name: workspace, path: . }]
 backends:
   - name: api
-    framework: hono
     repository: workspace
     path: apps/api
-    authentication: { plugin: better-auth, methods: [pin] }
+    authentication: { methods: [pin] }
 entities:
   User: { backend: api, fields: {} }
 `);
     expect(parsed.success).toBe(false);
     if (parsed.success) return;
     expect(parsed.diagnostics.map(({ message }) => message).join(" ")).toContain(
-      "PIN authentication is unsupported",
+      "email-password, username-password",
     );
   });
 

@@ -5,6 +5,7 @@ export interface ConfigDiagnostic {
   severity: DiagnosticSeverity;
   path: string;
   message: string;
+  source?: { file?: string; line: number; column: number };
 }
 
 export function createDiagnostic(
@@ -18,5 +19,8 @@ export function createDiagnostic(
 
 export function formatDiagnostic(diagnostic: ConfigDiagnostic): string {
   const location = diagnostic.path.length > 0 ? ` at ${diagnostic.path}` : "";
-  return `${diagnostic.severity.toUpperCase()} ${diagnostic.code}${location}: ${diagnostic.message}`;
+  const source = diagnostic.source
+    ? ` (${diagnostic.source.file ? `${diagnostic.source.file}:` : "line "}${diagnostic.source.line}:${diagnostic.source.column})`
+    : "";
+  return `${diagnostic.severity.toUpperCase()} ${diagnostic.code}${location}${source}: ${diagnostic.message}`;
 }
