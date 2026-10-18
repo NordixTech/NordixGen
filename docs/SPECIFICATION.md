@@ -36,6 +36,8 @@ Fixed implementation technologies are implicit and are not selectors in project 
 
 The YAML schema must reject unknown values and invalid references with actionable diagnostics. A generated editor schema should be derived from the same canonical configuration definitions so editor assistance agrees with CLI validation.
 
+The detailed target syntax, defaults, ownership, module contracts and access rules are specified in the [YAML v2 design](configuration/YAML_V2.md). That design is under review and is not yet accepted by the current CLI or editor schema.
+
 ## 4. Parsing, validation, and generation requirements
 
 NordixGen parses YAML and reports syntax errors, including duplicate mapping keys. Structural validation checks types, required fields, allowed values, defaults, identifier formats, and unknown keys. Semantic validation checks relationships between declarations, including repository and path references, database references, frontend/backend connections, entity ownership, field and relation references, endpoint ownership, pagination profiles, and access-policy references.

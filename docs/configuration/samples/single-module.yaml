@@ -1,0 +1,41 @@
+# YAML v2 design example; not accepted by the current CLI.
+schemaVersion: 2
+name: notes-project
+version: 1.0.0
+repositories:
+  - name: app
+    path: .
+databases:
+  primary: {}
+backends:
+  - name: api
+    repository: app
+    path: apps/api
+    persistence:
+      database: primary
+    modules:
+      notes:
+        architecture: clean
+        entities: [Note]
+entities:
+  Note:
+    backend: api
+    fields:
+      title: { type: string, minLength: 1, maxLength: 200 }
+      content: { type: string, required: false }
+    timestamps: { createdAt: true, updatedAt: true }
+    softDelete: timestamp
+pagination:
+  standard: { defaultPageSize: 25, maxPageSize: 100 }
+endpoints:
+  - backend: api
+    entity: Note
+    operationId: listNotes
+    method: GET
+    path: /api/notes
+    queryParams:
+      - name: title
+        field: { entity: Note, field: title }
+        required: false
+        operator: contains
+    pagination: standard
