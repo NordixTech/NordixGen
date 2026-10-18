@@ -1,7 +1,12 @@
 import { posix } from "node:path";
 import type { RelationDefinition } from "../../configuration/schema.js";
 import type { ResolvedField } from "../../project/types.js";
-import type { BackendRenderContext, DomainModelContext, GeneratedFile } from "../contracts.js";
+import type {
+  BackendRenderContext,
+  DomainModelContext,
+  GeneratedFile,
+  PersistenceContext,
+} from "../contracts.js";
 
 function importPath(fromFile: string, targetFile: string): string {
   const path = posix.relative(posix.dirname(fromFile), targetFile.replace(/\.ts$/, ".js"));
@@ -220,11 +225,12 @@ export function generateDrizzleAdapterFiles(
 
   const files: GeneratedFile[] = [];
   const dependencyFactoryPath = posix.join(adapterDirectory, "create-route-dependencies.ts");
-  const dependencyImports = [`import { createDrizzleDatabase } from "./drizzle-database.js";`];
-  const dependencyLines = [
-    "export function createRouteDependencies(connectionString: string) {",
-    "  const db = createDrizzleDatabase(connectionString);",
+  const dbClientPath =
+    context.sharedDatabaseFile ?? posix.join(adapterDirectory, "drizzle-database.ts");
+  const dependencyImports = [
+    `import type {DrizzleDatabase} from "${importPath(dependencyFactoryPath, dbClientPath)}";`,
   ];
+  const dependencyLines = ["export function createRouteDependencies(db: DrizzleDatabase) {"];
   const needsSystemClock = model.endpoints.some(
     (endpoint) =>
       endpoint.body.dynamicDefaults.length > 0 || endpoint.body.serverDefaults.length > 0,
@@ -236,30 +242,6 @@ export function generateDrizzleAdapterFiles(
     );
     dependencyLines.push("  const clock = new SystemClock();");
   }
-
-  // Generate database client helper
-  const dbClientPath = posix.join(adapterDirectory, "drizzle-database.ts");
-  files.push({
-    path: dbClientPath,
-    content: [
-      'import { neon, neonConfig } from "@neondatabase/serverless";',
-      'import { drizzle } from "drizzle-orm/neon-http";',
-      `import * as schema from "${importPath(dbClientPath, schemaIndexPath)}";`,
-      "",
-      "export type DrizzleDatabase = ReturnType<typeof createDrizzleDatabase>;",
-      "",
-      "export function createDrizzleDatabase(connectionString: string) {",
-      "  const hostname = new URL(connectionString).hostname;",
-      '  if (hostname.endsWith(".localtest.me")) {',
-      '    neonConfig.fetchEndpoint = "http://127.0.0.1:4444/sql";',
-      "    neonConfig.poolQueryViaFetch = true;",
-      "  }",
-      "  const client = neon(connectionString);",
-      "  return drizzle(client, { schema });",
-      "}",
-      "",
-    ].join("\n"),
-  });
 
   // Generate repository adapters for each entity
   for (const [entityName, entity] of Object.entries(model.entities).sort(([a], [b]) =>
@@ -423,7 +405,7 @@ export function generateDrizzleAdapterFiles(
     );
 
     const decimalFields = (entityName: string) =>
-      Object.entries(model.entities[entityName]?.fields ?? {})
+      Object.entries(model.entities[entityName].fields)
         .filter(([, field]) => field.type === "number" && field.format === "decimal")
         .map(([fieldName]) => fieldName);
     const mainDecimalFields = decimalFields(endpoint.entity);
@@ -507,7 +489,7 @@ export function generateDrizzleAdapterFiles(
         ? ` { ...row, ${mainDecimalFields.map((field) => `${field}: Number(row.${field})`).join(", ")} }`
         : "row";
 
-    const pathConditionLines = (endpoint.pathParams ?? []).flatMap((parameter) => {
+    const pathConditionLines = endpoint.pathParams.flatMap((parameter) => {
       const field = parameter.field;
       if (!field || field.entity !== endpoint.entity) return [];
       return [
@@ -521,10 +503,17 @@ export function generateDrizzleAdapterFiles(
         ? endpoint.body.kind
         : undefined;
     const mutation = requestBodyOperation ?? (endpoint.method === "DELETE" ? "delete" : undefined);
+    const writeValues = `{ ${endpoint.body.writeFields
+      .map((name) => {
+        const field = mainEntity.fields[name];
+        const value = `input.request[${JSON.stringify(name)}]`;
+        return `${JSON.stringify(name)}: ${field.type === "number" && field.format === "decimal" ? `${value} == null ? ${value} : String(${value})` : value}`;
+      })
+      .join(", ")} }`;
     const executeQuery =
       mutation === "create"
         ? [
-            `    const rows = await this.db.insert(schema.${endpoint.entity}Table).values(Object.fromEntries(${JSON.stringify(endpoint.body.writeFields)}.filter(key => Object.hasOwn(input.request, key)).map(key => [key, input.request[key as keyof typeof input.request]]))).returning();`,
+            `    const rows = await this.db.insert(schema.${endpoint.entity}Table).values(${writeValues}).returning();`,
             "    return rows.map((row: any) => ({",
             `      entity: ${mainEntityResult},`,
             "      joins: {},",
@@ -533,7 +522,7 @@ export function generateDrizzleAdapterFiles(
         : mutation === "update"
           ? [
               '    if (conditions.length === 0) throw new Error("Update endpoint requires a path or filter condition.");',
-              `    const rows = await this.db.update(schema.${endpoint.entity}Table).set(Object.fromEntries(${JSON.stringify(endpoint.body.writeFields)}.filter(key => Object.hasOwn(input.request, key)).map(key => [key, input.request[key as keyof typeof input.request]]))).where(and(...conditions)).returning();`,
+              `    const rows = await this.db.update(schema.${endpoint.entity}Table).set(${writeValues}).where(and(...conditions)).returning();`,
               "    return rows.map((row: any) => ({",
               `      entity: ${mainEntityResult},`,
               "      joins: {},",
@@ -725,7 +714,15 @@ export function generateDrizzleSeedFiles(
     const fieldAssignments: string[] = [];
 
     for (const [fieldName, field] of Object.entries(entity.fields)) {
-      if (fieldName === "id") continue;
+      if (
+        fieldName === "id" ||
+        Object.values(entity.relations).some(
+          (relation) =>
+            (relation.type === "many-to-one" || relation.type === "one-to-one") &&
+            relation.foreignKey === fieldName,
+        )
+      )
+        continue;
       if (fieldName === "createdAt" || fieldName === "updatedAt") {
         fieldAssignments.push(`        ${fieldName}: faker.date.recent(),`);
         continue;
@@ -848,4 +845,36 @@ ${fieldAssignments.join("\n")}
   ].join("\n");
 
   return [{ path: seedPath, content: seedContent }];
+}
+
+export function generateDrizzleDatabaseFile(
+  context: BackendRenderContext,
+  persistence: PersistenceContext,
+): GeneratedFile {
+  const dbClientPath = posix.join(persistence.directories.adapter, "drizzle-database.ts");
+  const schemaIndexPath = posix.join(
+    persistence.directories.infrastructure,
+    "database/schema/index.ts",
+  );
+  return {
+    path: dbClientPath,
+    content: [
+      'import { neon, neonConfig } from "@neondatabase/serverless";',
+      'import { drizzle } from "drizzle-orm/neon-http";',
+      `import * as schema from "${importPath(dbClientPath, schemaIndexPath)}";`,
+      "",
+      "export type DrizzleDatabase = ReturnType<typeof createDrizzleDatabase>;",
+      "",
+      "export function createDrizzleDatabase(connectionString: string) {",
+      "  const hostname = new URL(connectionString).hostname;",
+      '  if (hostname.endsWith(".localtest.me")) {',
+      '    neonConfig.fetchEndpoint = "http://127.0.0.1:4444/sql";',
+      "    neonConfig.poolQueryViaFetch = true;",
+      "  }",
+      "  const client = neon(connectionString);",
+      "  return drizzle(client, { schema });",
+      "}",
+      "",
+    ].join("\n"),
+  };
 }

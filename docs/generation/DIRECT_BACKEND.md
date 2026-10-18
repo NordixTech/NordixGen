@@ -2,7 +2,7 @@
 
 The backend registry, plugin descriptors, selections and capability negotiation have been removed. `generateBackend(project, backendName)` consumes the shared resolved project and returns an in-memory VFS, scaffold command and centrally maintained runtime/development dependencies. It never starts commands or writes files.
 
-The integrated scope currently supports one Clean module per backend. Several independent backends may each contain one module. Multi-module Clean assembly is the next module-layout change; Hexagonal/Onion and many-to-many emission remain explicit readiness errors. `validate` and `generate` use that same boundary. This partial scope is not full milestone/database/browser acceptance.
+The integrated scope supports multiple independent Clean modules per backend. See [module layout and boundaries](CLEAN_MODULES.md). Public module communication is integrated separately; declarations requiring it are rejected explicitly until available. Hexagonal/Onion and many-to-many emission remain explicit readiness errors. `validate` and `generate` use that same boundary. This partial scope is not full milestone/database/browser acceptance.
 
 Focused domain, application, Hono, Drizzle, identity and authorization renderers are direct typed functions. One Hono renderer owns route/bootstrap aggregation, and one Drizzle renderer owns the current schema aggregation. The collector rejects unsafe paths, escapes and case-insensitive duplicate normalized paths, even equal content, naming both producers. Different full paths with the same basename are valid. There is no file merging or last-writer-wins.
 

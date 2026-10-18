@@ -39,7 +39,6 @@ afterEach(async () => {
 
 describe("canonical configuration initialization and command preflight", () => {
   it.each([
-    ["multiple", "MODULE_GENERATION_UNAVAILABLE"],
     ["hexagonal", "MODULE_ARCHITECTURE_UNIMPLEMENTED"],
     ["onion", "MODULE_ARCHITECTURE_UNIMPLEMENTED"],
     ["cycle", "RELATION_CYCLE"],
@@ -207,5 +206,63 @@ describe("canonical configuration initialization and command preflight", () => {
     await writeFile(file, createStarterConfiguration("client-app", false));
     await createProgram().parseAsync(["node", "nordixgen", "validate", "-f", file]);
     expect(process.exitCode).toBeUndefined();
+  });
+});
+
+describe("modular generation execution", () => {
+  it("emits two Clean modules into one scaffold and runs the generated boundary check", async () => {
+    const directory = await temporary();
+    const file = join(directory, "modular.yaml");
+    const output = join(directory, "output");
+    const source = await readFile(
+      new URL("../../../docs/configuration/samples/clean-modules.yaml", import.meta.url),
+      "utf8",
+    );
+    const parsed = parseNordixYaml(source);
+    if (!parsed.success) throw new Error("Invalid modular fixture");
+    for (const businessModule of Object.values(parsed.config.backends[0].modules)) {
+      businessModule.exports = [];
+      businessModule.imports = {};
+    }
+    await writeFile(file, stringifyNordixYaml(parsed.config));
+    const runner = vi.fn(async () => "");
+    await runGenerate(file, output, runner);
+    expect(
+      await readFile(
+        join(output, "apps/api/src/modules/customers/domain/entities/Customer.entity.ts"),
+        "utf8",
+      ),
+    ).toContain("interface Customer");
+    expect(
+      await readFile(
+        join(output, "apps/api/src/modules/billing/domain/entities/Invoice.entity.ts"),
+        "utf8",
+      ),
+    ).toContain("interface Invoice");
+    expect(runner.mock.calls.filter((call) => call[1]?.includes("hono@0.19.4"))).toHaveLength(1);
+    expect(runner.mock.calls.some((call) => call[1]?.join(" ") === "run check:boundaries")).toBe(
+      true,
+    );
+  });
+});
+
+describe("pending public module communication", () => {
+  it("rejects exports/imports before generation effects until public wiring is implemented", async () => {
+    const directory = await temporary();
+    const file = join(directory, "communication.yaml");
+    const output = join(directory, "output");
+    await writeFile(
+      file,
+      await readFile(
+        new URL("../../../docs/configuration/samples/clean-modules.yaml", import.meta.url),
+        "utf8",
+      ),
+    );
+    const runner = vi.fn();
+    await expect(runGenerate(file, output, runner)).rejects.toThrow(
+      "MODULE_COMMUNICATION_UNAVAILABLE",
+    );
+    expect(runner).not.toHaveBeenCalled();
+    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

@@ -9,9 +9,11 @@ import { generateAuthorizationFiles } from "../plugins/authorization/rbac-pbac.j
 import type { BackendRenderContext } from "../plugins/contracts.js";
 import { generateHonoFiles } from "../plugins/frameworks/hono-files.js";
 import { backendPaths } from "../plugins/frameworks/hono.js";
+import { generateDrizzleAdapterFiles } from "../plugins/orms/drizzle-files.js";
 import { generateDrizzleFiles } from "../plugins/orms/drizzle.js";
 import type { ResolvedProject } from "../project/types.js";
 import { backendView } from "../project/views.js";
+import { generateBoundaryCheck } from "./boundaries.js";
 import { backendDependencies } from "./dependencies.js";
 import { collectFiles } from "./files.js";
 
@@ -19,13 +21,29 @@ export function backendRenderContext(project: ResolvedProject, name: string): Ba
   const domainModel = backendView(project, name);
   const backend = domainModel.backend;
   const framework = backendPaths(backend.path);
-  const architecture = resolveCleanArchitectureLayout(framework);
+  const clean = resolveCleanArchitectureLayout(framework);
+  const architecture = {
+    ...clean,
+    directories: {
+      ...clean.directories,
+      infrastructure: "platform",
+      adapter: "platform/database",
+      controller: "platform/http/controllers",
+    },
+  };
   return {
     framework,
     architecture,
     domainModel,
     identity: backend.identity,
     projectName: project.project.name,
+    platformRoot: posix.join(framework.codeRoot, "platform"),
+    moduleRoots: Object.fromEntries(
+      domainModel.modules.map((module) => [
+        module.id,
+        posix.join(framework.codeRoot, "modules", module.name),
+      ]),
+    ),
     ...(backend.database
       ? {
           persistence: {
@@ -54,8 +72,41 @@ export function generateBackend(project: ResolvedProject, name: string) {
   if (errors.length) return { success: false as const, diagnostics: errors };
   const context = backendRenderContext(project, name);
   const contributions = [
-    { owner: "clean-domain", files: generateDomainFiles(context) },
-    { owner: "clean-application", files: generateApplicationFiles(context) },
+    ...view.modules.flatMap((module) => {
+      const scoped = moduleRenderContext(project, name, module.id);
+      // Shared readiness has established Clean; future families never reach emission.
+      return [
+        { owner: `${module.id}:domain`, files: generateDomainFiles(scoped) },
+        { owner: `${module.id}:application`, files: generateApplicationFiles(scoped) },
+        ...(scoped.persistence
+          ? [
+              {
+                owner: `${module.id}:persistence`,
+                files: generateDrizzleAdapterFiles(scoped, scoped.persistence),
+              },
+            ]
+          : []),
+        {
+          owner: `${module.id}:entry`,
+          files: [
+            {
+              path: posix.join(scoped.framework.codeRoot, "index.ts"),
+              content:
+                "// Public application surface. Implemented exports are added by public-contract generation.\nexport interface PublicApi {}\n",
+            },
+            ...(scoped.persistence
+              ? [
+                  {
+                    path: posix.join(scoped.framework.codeRoot, "bootstrap.ts"),
+                    content:
+                      'export {createRouteDependencies as createModule} from "./infrastructure/adapters/create-route-dependencies.js";\n',
+                  },
+                ]
+              : []),
+          ],
+        },
+      ];
+    }),
     ...(context.persistence ? [{ owner: "drizzle", files: generateDrizzleFiles(context) }] : []),
     ...(context.identity
       ? [
@@ -64,6 +115,31 @@ export function generateBackend(project: ResolvedProject, name: string) {
         ]
       : []),
     { owner: "hono-assembly", files: generateHonoFiles(context) },
+    { owner: "module-boundary-check", files: [generateBoundaryCheck(context)] },
+    ...(context.persistence
+      ? [
+          {
+            owner: "backend-module-composition",
+            files: [
+              {
+                path: posix.join(context.platformRoot, "database/create-route-dependencies.ts"),
+                content: [
+                  'import {createDrizzleDatabase} from "./drizzle-database.js";',
+                  ...view.modules.map(
+                    (module, index) =>
+                      `import {createModule as module${index}} from "../../modules/${module.name}/bootstrap.js";`,
+                  ),
+                  "export function createRouteDependencies(connectionString:string) {",
+                  "const db=createDrizzleDatabase(connectionString);",
+                  `return {endpoints:{${view.modules.map((module, index) => `...module${index}(db).endpoints`).join(",")}}};`,
+                  "}",
+                  "",
+                ].join("\n"),
+              },
+            ],
+          },
+        ]
+      : []),
     {
       owner: "backend-runtime",
       files: [
@@ -80,5 +156,57 @@ export function generateBackend(project: ResolvedProject, name: string) {
     frameworkContext: context.framework,
     ...backendDependencies(Boolean(context.persistence), Boolean(context.identity)),
     diagnostics: [] as ConfigDiagnostic[],
+  };
+}
+
+export function moduleRenderContext(
+  project: ResolvedProject,
+  name: string,
+  moduleId: string,
+): BackendRenderContext {
+  const parent = backendRenderContext(project, name);
+  const module = project.modules[moduleId];
+  if (!module || module.backend !== name)
+    throw new Error("UNKNOWN_MODULE_TARGET: Select a module owned by this backend.");
+  const codeRoot = parent.moduleRoots[moduleId];
+  const framework = { ...parent.framework, codeRoot };
+  const architecture = resolveCleanArchitectureLayout(framework);
+  const entities = Object.fromEntries(
+    module.entities.map((name) => [name, project.entities[name]]),
+  );
+  const enumNames = new Set(
+    Object.values(entities).flatMap((entity) =>
+      Object.values(entity.fields).flatMap((field) =>
+        field.type === "enum" ? [field.enumName] : [],
+      ),
+    ),
+  );
+  return {
+    ...parent,
+    moduleId,
+    framework,
+    architecture,
+    sharedDatabaseFile: posix.join(parent.platformRoot, "database/drizzle-database.ts"),
+    domainModel: {
+      ...parent.domainModel,
+      entities,
+      enums: Object.fromEntries(
+        Object.entries(project.enums).filter(([name]) => enumNames.has(name)),
+      ),
+      endpoints: module.operations.map((id) => project.operations[id]),
+      entityOrder: parent.domainModel.entityOrder.filter((name) => module.entities.includes(name)),
+      modules: [module],
+    },
+    ...(parent.persistence
+      ? {
+          persistence: {
+            ...parent.persistence,
+            directories: {
+              infrastructure: parent.platformRoot,
+              adapter: posix.join(codeRoot, "infrastructure/adapters"),
+            },
+          },
+        }
+      : {}),
   };
 }

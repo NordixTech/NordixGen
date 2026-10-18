@@ -61,19 +61,19 @@ describe("backend Better Auth generation", () => {
     if (!result.success) return;
 
     const files = result.virtualFileSystem.snapshot();
-    expect(files["apps/api/src/infrastructure/auth/auth.ts"]).toContain("minPasswordLength: 4");
-    expect(files["apps/api/src/infrastructure/database/schema/index.ts"]).toContain(
+    expect(files["apps/api/src/platform/auth/auth.ts"]).toContain("minPasswordLength: 4");
+    expect(files["apps/api/src/platform/database/schema/index.ts"]).toContain(
       'export * from "./auth-schema.js";',
     );
-    expect(files["apps/api/src/presentation/controllers/listOrders.controller.ts"]).toContain(
-      "Authentication is required",
-    );
-    expect(files["apps/api/src/presentation/controllers/listOrders.controller.ts"]).toContain(
-      "A trusted Origin header is required for state-changing requests",
-    );
-    expect(files["apps/api/src/presentation/controllers/listOrders.controller.ts"]).toContain(
-      "isAuthorized(session.user",
-    );
+    expect(
+      files["apps/api/src/modules/business/presentation/controllers/listOrders.controller.ts"],
+    ).toContain("Authentication is required");
+    expect(
+      files["apps/api/src/modules/business/presentation/controllers/listOrders.controller.ts"],
+    ).toContain("A trusted Origin header is required for state-changing requests");
+    expect(
+      files["apps/api/src/modules/business/presentation/controllers/listOrders.controller.ts"],
+    ).toContain("isAuthorized(session.user");
     expect(files["apps/api/src/index.ts"]).toContain('app.all("/api/auth/*"');
   });
 
@@ -86,9 +86,9 @@ describe("backend Better Auth generation", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
 
-    const auth = result.virtualFileSystem.readFile("apps/api/src/infrastructure/auth/auth.ts");
+    const auth = result.virtualFileSystem.readFile("apps/api/src/platform/auth/auth.ts");
     const schema = result.virtualFileSystem.readFile(
-      "apps/api/src/infrastructure/database/schema/auth-schema.ts",
+      "apps/api/src/platform/database/schema/auth-schema.ts",
     );
     expect(auth).toContain('import { username } from "better-auth/plugins";');
     expect(auth).toContain('import { twoFactor } from "better-auth/plugins";');
@@ -108,7 +108,7 @@ describe("backend Better Auth generation", () => {
     if (!result.success) return;
 
     const policySource = result.virtualFileSystem.readFile(
-      "apps/api/src/infrastructure/authorization/policy.ts",
+      "apps/api/src/platform/authorization/policy.ts",
     );
     if (!policySource) throw new Error("Authorization policy was not generated.");
     const javascript = ts.transpileModule(policySource, {

@@ -25,9 +25,10 @@ describe("Clean Architecture domain artifacts", () => {
     if (!result.success) return;
 
     const files = result.virtualFileSystem.snapshot();
-    const user = files["apps/api-core/src/domain/entities/Customer.entity.ts"];
-    const order = files["apps/api-core/src/domain/entities/Order.entity.ts"];
-    const repository = files["apps/api-core/src/application/ports/outbound/Order.repository.ts"];
+    const user = files["apps/api-core/src/modules/commerce/domain/entities/Customer.entity.ts"];
+    const order = files["apps/api-core/src/modules/commerce/domain/entities/Order.entity.ts"];
+    const repository =
+      files["apps/api-core/src/modules/commerce/application/ports/outbound/Order.repository.ts"];
     expect(user).toContain('import type { CustomerRole } from "./CustomerRole.enum.js";');
     expect(user).toContain('"email": string;');
     expect(user).toContain('"enabled": boolean;');
@@ -38,9 +39,9 @@ describe("Clean Architecture domain artifacts", () => {
     expect(user).toContain('"deletedAt": Date | null;');
     expect(user).not.toContain("Metadata");
     expect(order).not.toContain('"customer": {');
-    expect(files["apps/api-core/src/domain/entities/OrderStatus.enum.ts"]).toContain(
-      'export type OrderStatus = "PENDING" | "PAID";',
-    );
+    expect(
+      files["apps/api-core/src/modules/commerce/domain/entities/OrderStatus.enum.ts"],
+    ).toContain('export type OrderStatus = "PENDING" | "PAID";');
     expect(repository).toContain(
       'import type { Order, CreateOrderInput } from "../../../domain/entities/Order.entity.js";',
     );
@@ -66,7 +67,7 @@ describe("Clean Architecture domain artifacts", () => {
 
     expect(first.virtualFileSystem.snapshot()).toEqual(second.virtualFileSystem.snapshot());
     expect(Object.keys(first.virtualFileSystem.snapshot())).not.toContain(
-      "apps/api-core/src/domain/entities/External.entity.ts",
+      "apps/api-core/src/modules/commerce/domain/entities/External.entity.ts",
     );
   });
 

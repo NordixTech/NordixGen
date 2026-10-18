@@ -44,4 +44,8 @@ export interface BackendRenderContext {
   readonly persistence?: PersistenceContext;
   readonly identity?: ResolvedIdentity;
   readonly projectName: string;
+  readonly platformRoot: string;
+  readonly moduleRoots: Readonly<Record<string, string>>;
+  readonly moduleId?: string;
+  readonly sharedDatabaseFile?: string;
 }

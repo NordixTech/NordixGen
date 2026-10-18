@@ -106,7 +106,8 @@ function generatedApplication(
 ) {
   const config = configuration(withEndpoints, createPath);
   customize?.(config);
-  const result = generateBackend(resolvedFixture(config), "api");
+  const project = resolvedFixture(config);
+  const result = generateBackend(project, "api");
   if (!result.success) throw new Error(JSON.stringify(result.diagnostics));
   const files = result.virtualFileSystem.snapshot();
 
@@ -133,11 +134,11 @@ function generatedApplication(
     "hono/http-exception": httpException,
     "@hono/zod-validator": validator,
     zod,
-    [`${root}/infrastructure/auth/auth.ts`]: {
+    [`${root}/platform/auth/auth.ts`]: {
       createAuth: () => ({ api: { getSession }, handler: authHandler }),
       isTrustedAuthOrigin: (value: string) => value === origin,
     },
-    [`${root}/infrastructure/adapters/create-route-dependencies.ts`]: {
+    [`${root}/platform/database/create-route-dependencies.ts`]: {
       createRouteDependencies: () => dependencies,
     },
   };
@@ -166,14 +167,22 @@ function generatedApplication(
   }
   if (withEndpoints) {
     const endpoints: Record<string, unknown> = {};
-    for (const operation of ["CreateSampleItem", "ListSampleItems", "GetSampleItem"]) {
-      const UseCase = load(`${root}/application/use-cases/${operation}.use-case.ts`)[
-        `${operation}UseCase`
-      ] as new (
+    for (const operation of Object.values(project.operations)) {
+      const module = project.modules[operation.moduleId];
+      const UseCase = load(
+        `${root}/modules/${module.name}/application/use-cases/${operation.typeName}.use-case.ts`,
+      )[`${operation.typeName}UseCase`] as new (
         port: unknown,
       ) => unknown;
-      endpoints[operation.charAt(0).toLowerCase() + operation.slice(1)] = {
-        useCase: new UseCase({ execute: operation === "ListSampleItems" ? pageQuery : query }),
+      endpoints[operation.operationId] = {
+        useCase: new UseCase({
+          execute:
+            operation.entity === "PrivateRecord"
+              ? async () => [{ entity: { id: record.id, title: "Audit" }, joins: {} }]
+              : operation.pagination
+                ? pageQuery
+                : query,
+        }),
       };
     }
     dependencies = { endpoints };
@@ -342,11 +351,16 @@ describe("declared business routes in generated Hono applications", () => {
         }
       }
       expect(getSession).not.toHaveBeenCalled();
-      expect(files[`${root}/domain/entities/PrivateRecord.entity.ts`]).toBeDefined();
       expect(
-        files[`${root}/infrastructure/adapters/PrivateRecord.drizzle.repository.ts`],
+        files[`${root}/modules/business/domain/entities/PrivateRecord.entity.ts`],
       ).toBeDefined();
-      const factory = files[`${root}/infrastructure/adapters/create-route-dependencies.ts`];
+      expect(
+        files[
+          `${root}/modules/business/infrastructure/adapters/PrivateRecord.drizzle.repository.ts`
+        ],
+      ).toBeDefined();
+      const factory =
+        files[`${root}/modules/business/infrastructure/adapters/create-route-dependencies.ts`];
       expect(factory).not.toContain("entities:");
       expect(factory).not.toContain("Repository");
       expect(factory).not.toContain("new CreateSampleItemUseCase");
@@ -393,7 +407,7 @@ describe("declared business routes in generated Hono applications", () => {
     expect(await allowed.json()).toEqual([{ entity: record, joins: {} }]);
     expect(query).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledWith(expect.objectContaining({ request: { name: "Sample" } }));
-    const createRoutes = load(`${root}/presentation/controllers/routes.ts`)
+    const createRoutes = load(`${root}/platform/http/controllers/routes.ts`)
       .createRoutes as () => hono.Hono;
     // One registration contains auth, the strict empty query contract, body validation and handler.
     expect(
@@ -476,4 +490,31 @@ describe("declared business routes in generated Hono applications", () => {
       } else expect(screen).toBeUndefined();
     },
   );
+});
+
+describe("multi-module HTTP assembly", () => {
+  it("mounts declared operations from two Clean modules in the same Hono application", async () => {
+    const fixture = generatedApplication(true, "/api/sample-items", (config) => {
+      config.backends[0].modules.business.entities = ["SampleItem"];
+      config.backends[0].modules.audit = {
+        architecture: "clean",
+        entities: ["PrivateRecord"],
+        imports: {},
+        exports: [],
+      };
+      config.endpoints.push({
+        backend: "api",
+        entity: "PrivateRecord",
+        operationId: "listAudit",
+        method: "GET",
+        path: "/audit-records",
+        authRequired: false,
+      });
+    });
+    expect((await fixture.request("/api/sample-items")).status).toBe(200);
+    const audit = await fixture.request("/audit-records");
+    expect(audit.status).toBe(200);
+    expect(await audit.json()).toMatchObject([{ entity: { title: "Audit" } }]);
+    expect((await fixture.request("/private-records")).status).toBe(404);
+  });
 });

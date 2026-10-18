@@ -44,29 +44,33 @@ describe("Drizzle ORM plugin", () => {
     const files = result.virtualFileSystem.snapshot();
     expect(Object.keys(files)).toContain("apps/api-core/drizzle.config.ts");
     expect(files["apps/api-core/drizzle.config.ts"]).toContain(
-      'schema: "./src/infrastructure/database/schema/index.ts"',
+      'schema: "./src/platform/database/schema/index.ts"',
     );
     expect(files["apps/api-core/drizzle.config.ts"]).toContain('dialect: "postgresql"');
     expect(files["apps/api-core/drizzle.config.ts"]).toContain("process.env.DATABASE_URL");
-    expect(files["apps/api-core/src/infrastructure/database/schema/index.ts"]).toContain(
+    expect(files["apps/api-core/src/platform/database/schema/index.ts"]).toContain(
       "export const OrderTable = pgTable(",
     );
-    expect(files["apps/api-core/src/infrastructure/database/schema/index.ts"]).toContain(
+    expect(files["apps/api-core/src/platform/database/schema/index.ts"]).toContain(
       "export const CustomerTable = pgTable(",
     );
-    expect(files["apps/api-core/src/infrastructure/database/schema/index.ts"]).toContain(
+    expect(files["apps/api-core/src/platform/database/schema/index.ts"]).toContain(
       "export const OrderStatusPgEnum = pgEnum(",
     );
     expect(
-      files["apps/api-core/src/infrastructure/adapters/Order.drizzle.repository.ts"],
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/Order.drizzle.repository.ts"
+      ],
     ).toContain("class DrizzleOrderRepository implements OrderRepository");
     expect(
-      files["apps/api-core/src/infrastructure/adapters/Customer.drizzle.repository.ts"],
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/Customer.drizzle.repository.ts"
+      ],
     ).toContain("class DrizzleCustomerRepository implements CustomerRepository");
-    expect(files["apps/api-core/src/infrastructure/adapters/drizzle-database.ts"]).toContain(
+    expect(files["apps/api-core/src/platform/database/drizzle-database.ts"]).toContain(
       "createDrizzleDatabase",
     );
-    expect(files["apps/api-core/src/infrastructure/adapters/drizzle-database.ts"]).toContain(
+    expect(files["apps/api-core/src/platform/database/drizzle-database.ts"]).toContain(
       'neonConfig.fetchEndpoint = "http://127.0.0.1:4444/sql";',
     );
   });
@@ -118,14 +122,16 @@ describe("Drizzle ORM plugin", () => {
     if (!result.success) return;
 
     const files = result.virtualFileSystem.snapshot();
-    const schema = files["apps/api-core/src/infrastructure/database/schema/index.ts"];
+    const schema = files["apps/api-core/src/platform/database/schema/index.ts"];
     expect(schema).toBeDefined();
     expect(schema).toContain("export const OrderTable = pgTable(");
     expect(schema).toContain("export const OrderRelations = relations(");
     expect(schema).toContain("export const OrderStatusPgEnum = pgEnum(");
 
     const orderAdapter =
-      files["apps/api-core/src/infrastructure/adapters/Order.drizzle.repository.ts"];
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/Order.drizzle.repository.ts"
+      ];
     expect(orderAdapter).toContain("class DrizzleOrderRepository implements OrderRepository");
     expect(orderAdapter).toContain("isDeleted");
     expect(orderAdapter).toContain("findPage");
@@ -136,16 +142,22 @@ describe("Drizzle ORM plugin", () => {
     expect(orderAdapter).toContain('"total": Number(row.total)');
     expect(orderAdapter).toContain("items.map((row) => this.toDomain(row))");
     expect(
-      files["apps/api-core/src/infrastructure/adapters/create-route-dependencies.ts"],
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/create-route-dependencies.ts"
+      ],
     ).not.toContain("CreateOrderUseCase");
 
     const userAdapter =
-      files["apps/api-core/src/infrastructure/adapters/Customer.drizzle.repository.ts"];
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/Customer.drizzle.repository.ts"
+      ];
     expect(userAdapter).toContain("class DrizzleCustomerRepository implements CustomerRepository");
     expect(userAdapter).toContain("deletedAt");
 
     const orderItemAdapter =
-      files["apps/api-core/src/infrastructure/adapters/OrderItem.drizzle.repository.ts"];
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/OrderItem.drizzle.repository.ts"
+      ];
     expect(orderItemAdapter).toContain(
       "class DrizzleOrderItemRepository implements OrderItemRepository",
     );
@@ -153,9 +165,13 @@ describe("Drizzle ORM plugin", () => {
     expect(orderItemAdapter).not.toContain("isDeleted");
 
     const queryAdapter =
-      files["apps/api-core/src/infrastructure/adapters/GetOrderSummary.drizzle.query.adapter.ts"];
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/GetOrderSummary.drizzle.query.adapter.ts"
+      ];
     expect(
-      files["apps/api-core/src/application/use-cases/dtos/endpoints/GetOrderSummary.dto.ts"],
+      files[
+        "apps/api-core/src/modules/commerce/application/use-cases/dtos/endpoints/GetOrderSummary.dto.ts"
+      ],
     ).toContain('"quantity": z.preprocess');
     expect(queryAdapter).toBeDefined();
     expect(queryAdapter).toContain(
@@ -177,7 +193,9 @@ describe("Drizzle ORM plugin", () => {
       "from(schema.OrderTable).where(conditions.length > 0 ? and(...conditions) : undefined)",
     );
     expect(
-      files["apps/api-core/src/infrastructure/adapters/create-route-dependencies.ts"],
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/create-route-dependencies.ts"
+      ],
     ).toContain("new CreateOrderWithDateEndpointUseCase(createOrderWithDateQueryAdapter, clock)");
   });
 
@@ -214,7 +232,7 @@ describe("Drizzle ORM plugin", () => {
     if (!result.success) return;
 
     const files = result.virtualFileSystem.snapshot();
-    const schema = files["apps/api-core/src/infrastructure/database/schema/index.ts"];
+    const schema = files["apps/api-core/src/platform/database/schema/index.ts"];
     expect(schema).toContain('varchar("bio", { length: 200 })');
     expect(schema).toContain('integer("age").notNull().default(18)');
     expect(schema).toContain('numeric("rating", { precision: 5, scale: 2 }).notNull()');
@@ -225,7 +243,9 @@ describe("Drizzle ORM plugin", () => {
     expect(schema).toContain("::timestamptz");
 
     const detailsAdapter =
-      files["apps/api-core/src/infrastructure/adapters/GetOrderDetails.drizzle.query.adapter.ts"];
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/GetOrderDetails.drizzle.query.adapter.ts"
+      ];
     expect(detailsAdapter).toBeDefined();
     expect(detailsAdapter).toContain(
       "class DrizzleGetOrderDetailsQueryAdapter implements GetOrderDetailsQueryPort",
@@ -297,46 +317,48 @@ describe("Drizzle ORM plugin", () => {
 
     const files = result.virtualFileSystem.snapshot();
     const dependencies =
-      files["apps/api-core/src/infrastructure/adapters/create-route-dependencies.ts"];
+      files[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/create-route-dependencies.ts"
+      ];
     expect(dependencies).toContain('"listOrdersPublicly": listOrdersPubliclyEndpoint');
     expect(dependencies).toContain('"createOrderEndpoint": createOrderEndpointEndpoint');
     expect(dependencies).toContain('"updateOrderEndpoint": updateOrderEndpointEndpoint');
     expect(dependencies).toContain('"deleteOrderEndpoint": deleteOrderEndpointEndpoint');
     expect(
       files[
-        "apps/api-core/src/infrastructure/adapters/ListOrdersPublicly.drizzle.query.adapter.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/ListOrdersPublicly.drizzle.query.adapter.ts"
       ],
     ).toContain("offset: pagination.offset");
     expect(
       files[
-        "apps/api-core/src/infrastructure/adapters/ListOrdersPublicly.drizzle.query.adapter.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/ListOrdersPublicly.drizzle.query.adapter.ts"
       ],
     ).toContain(
       'case "contains": conditions.push(ilike(column, `%${String(filter.value)}%`)); break;',
     );
     expect(
       files[
-        "apps/api-core/src/infrastructure/adapters/CreateOrderEndpoint.drizzle.query.adapter.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/CreateOrderEndpoint.drizzle.query.adapter.ts"
       ],
     ).toContain("this.db.insert(schema.OrderTable)");
     expect(
       files[
-        "apps/api-core/src/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
       ],
     ).toContain("this.db.update(schema.OrderTable)");
     expect(
       files[
-        "apps/api-core/src/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
       ],
     ).toContain('input.request["orderId"]');
     expect(
       files[
-        "apps/api-core/src/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
       ],
     ).toContain('eq(schema.OrderTable.customer_id, input.request["customerId"])');
     expect(
       files[
-        "apps/api-core/src/infrastructure/adapters/DeleteOrderEndpoint.drizzle.query.adapter.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/DeleteOrderEndpoint.drizzle.query.adapter.ts"
       ],
     ).toContain("this.db.delete(schema.OrderTable)");
   });
@@ -371,7 +393,7 @@ describe("Drizzle ORM plugin", () => {
     const userSummaryFiles = userSummaryResult.virtualFileSystem.snapshot();
     expect(
       userSummaryFiles[
-        "apps/api-core/src/infrastructure/adapters/GetCustomerSummary.drizzle.query.adapter.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/GetCustomerSummary.drizzle.query.adapter.ts"
       ],
     ).toContain("deletedAt");
 
@@ -401,7 +423,7 @@ describe("Drizzle ORM plugin", () => {
     const falseDeleteFiles = falseDeleteResult.virtualFileSystem.snapshot();
     expect(
       falseDeleteFiles[
-        "apps/api-core/src/infrastructure/adapters/GetApiOrdersAuto.drizzle.query.adapter.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/GetApiOrdersAuto.drizzle.query.adapter.ts"
       ],
     ).toBeDefined();
   });
@@ -442,7 +464,9 @@ describe("Drizzle ORM plugin", () => {
     if (!resultWithOne.success) return;
     const pageFiles = resultWithOne.virtualFileSystem.snapshot();
     expect(
-      pageFiles["apps/api-core/src/infrastructure/adapters/OrderItem.drizzle.repository.ts"],
+      pageFiles[
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/OrderItem.drizzle.repository.ts"
+      ],
     ).toContain("findPage");
 
     config.enums = {};
@@ -456,7 +480,7 @@ describe("Drizzle ORM plugin", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     const files = result.virtualFileSystem.snapshot();
-    const schema = files["apps/api-core/src/infrastructure/database/schema/index.ts"];
+    const schema = files["apps/api-core/src/platform/database/schema/index.ts"];
     expect(schema).toBeDefined();
     expect(schema).not.toContain("relations(");
   });
@@ -505,9 +529,9 @@ describe("Drizzle ORM plugin", () => {
     if (!result.success) return;
 
     const files = result.virtualFileSystem.snapshot();
-    const migrateFile = files["apps/api-core/src/infrastructure/database/migrate.ts"];
-    const readmeFile = files["apps/api-core/src/infrastructure/database/README.md"];
-    const seedFile = files["apps/api-core/src/infrastructure/database/seed.ts"];
+    const migrateFile = files["apps/api-core/src/platform/database/migrate.ts"];
+    const readmeFile = files["apps/api-core/src/platform/database/README.md"];
+    const seedFile = files["apps/api-core/src/platform/database/seed.ts"];
 
     expect(migrateFile).toBeDefined();
     expect(migrateFile).toContain("runMigrations");

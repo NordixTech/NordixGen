@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import type { BackendRenderContext } from "../contracts.js";
 import {
-  generateDrizzleAdapterFiles,
+  generateDrizzleDatabaseFile,
   generateDrizzleMigrationFiles,
   generateDrizzleSchemaFiles,
   generateDrizzleSeedFiles,
@@ -34,11 +34,11 @@ export function generateDrizzleFiles(context: BackendRenderContext) {
   };
 
   const schemaFiles = generateDrizzleSchemaFiles(context, persistence);
-  const adapterFiles = generateDrizzleAdapterFiles(context, persistence);
+  const databaseFile = generateDrizzleDatabaseFile(context, persistence);
   const migrationFiles = generateDrizzleMigrationFiles(context, persistence);
   const seedFiles = generateDrizzleSeedFiles(context, persistence);
 
-  return [configFile, ...schemaFiles, ...adapterFiles, ...migrationFiles, ...seedFiles];
+  return [configFile, ...schemaFiles, databaseFile, ...migrationFiles, ...seedFiles];
 }
 function schemaFilePath(infrastructure: string): string {
   return posix.join(infrastructure, "database/schema/index.ts");

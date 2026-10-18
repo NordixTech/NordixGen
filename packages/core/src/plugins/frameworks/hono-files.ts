@@ -34,7 +34,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
 
   const model = context.domainModel;
 
-  const problemDetailsPath = posix.join(framework.codeRoot, "presentation/problem-details.ts");
+  const problemDetailsPath = posix.join(context.platformRoot, "http/problem-details.ts");
   const files: GeneratedFile[] = [];
 
   // 1. RFC 7807 Problem Details utility
@@ -106,12 +106,22 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
   // 3. Declared business endpoint controllers
   for (const endpoint of model.endpoints) {
     const operationName = endpointTypeName(endpoint);
+    const moduleRoot = context.moduleRoots[endpoint.moduleId];
     const controllerPath = posix.join(
-      controllerDirectory,
+      moduleRoot,
+      "presentation/controllers",
       `${lowerFirst(operationName)}.controller.ts`,
     );
-    const endpointDtoPath = posix.join(dtoDirectory, "endpoints", `${operationName}.dto.ts`);
-    const endpointUseCasePath = posix.join(useCaseDirectory, `${operationName}.use-case.ts`);
+    const endpointDtoPath = posix.join(
+      moduleRoot,
+      "application/use-cases/dtos/endpoints",
+      `${operationName}.dto.ts`,
+    );
+    const endpointUseCasePath = posix.join(
+      moduleRoot,
+      "application/use-cases",
+      `${operationName}.use-case.ts`,
+    );
 
     const problemImport = relativeImport(controllerPath, problemDetailsPath);
     const dtoImport = relativeImport(controllerPath, endpointDtoPath);
