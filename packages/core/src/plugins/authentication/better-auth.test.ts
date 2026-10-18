@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resolvedFixture } from "../../../tests/fixtures.js";
 import { parseNordixYaml } from "../../configuration/validate.js";
 import { generateBackend } from "../../generation/backend.js";
+import { ACCOUNT_POLICY } from "../../project/account-policy.js";
 import type { BackendRenderContext } from "../contracts.js";
 
 function compose(features: string[] = [], methods = ["email-password"], providers: string[] = []) {
@@ -61,19 +62,21 @@ describe("backend Better Auth generation", () => {
     if (!result.success) return;
 
     const files = result.virtualFileSystem.snapshot();
-    expect(files["apps/api/src/platform/auth/auth.ts"]).toContain("minPasswordLength: 4");
+    expect(files["apps/api/src/platform/auth/auth.ts"]).toContain(
+      `minPasswordLength: ${ACCOUNT_POLICY.minPasswordLength}`,
+    );
     expect(files["apps/api/src/platform/database/schema/index.ts"]).toContain(
       'export * from "./auth-schema.js";',
     );
     expect(
       files["apps/api/src/modules/business/presentation/controllers/listOrders.controller.ts"],
-    ).toContain("Authentication is required");
+    ).toContain("await deps.authorize()");
     expect(
       files["apps/api/src/modules/business/presentation/controllers/listOrders.controller.ts"],
     ).toContain("A trusted Origin header is required for state-changing requests");
     expect(
       files["apps/api/src/modules/business/presentation/controllers/listOrders.controller.ts"],
-    ).toContain("isAuthorized(session.user");
+    ).not.toContain("getSession");
     expect(files["apps/api/src/index.ts"]).toContain('app.all("/api/auth/*"');
   });
 

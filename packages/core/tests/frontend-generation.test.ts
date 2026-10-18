@@ -223,6 +223,8 @@ describe("fixed UI assembly and declared features", () => {
     const result = generateFrontend(resolvedFixture(config), "store-web");
     const files = result.virtualFileSystem.snapshot();
     expect(Object.values(files).join("\n")).toContain("twoFactorClient");
+    expect(Object.values(files).join("\n")).toContain("Password (at least 12 characters)");
+    expect(Object.values(files).join("\n")).toContain("minLength={12}");
     expect(() =>
       generateFrontendAuthFiles(frontendRenderContext(resolvedFixture(), "store-web")),
     ).toThrow(/identity/);

@@ -43,7 +43,7 @@ export function generateAuthorizationFiles(
         "Authorization is enforced by backend code using the verified Better Auth session. Frontend state never grants access.",
         "A route's declared roles and permissions are both required when both are present. Every permission must be granted to the user's server-owned role.",
         "",
-        "Role assignments are server-owned. The Better Auth `user.role` field rejects sign-up input; assign roles through a trusted administrative workflow or controlled database migration.",
+        "Role assignments are server-owned. Better Auth does not accept `user.role` as sign-up input; assign roles through a trusted administrative workflow or controlled database migration.",
         "",
       ].join("\n"),
     },

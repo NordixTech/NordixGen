@@ -40,7 +40,7 @@ export function generateModuleComposition(
       ...context.domainModel.endpoints.map((operation) => {
         const name = project.modules[operation.moduleId].name;
         const type = `Parameters<(typeof modules)[${JSON.stringify(name)}]["operations"][${JSON.stringify(operation.operationId)}]>[0]`;
-        return `${JSON.stringify(operation.operationId)}:{useCase:{execute:(input:unknown)=>boundary.run(headers,async context=>{const result=await modules[${JSON.stringify(name)}].operations[${JSON.stringify(operation.operationId)}](input as ${type},context);if(!result.ok)throw new ApplicationFailure(result.error);return result.value;})}},`;
+        return `${JSON.stringify(operation.operationId)}:{authorize:()=>boundary.run(headers,async context=>{const denied=modules[${JSON.stringify(name)}].checkAccess(${JSON.stringify(operation.operationId)},context);if(denied)throw new ApplicationFailure(denied);}),useCase:{execute:(input:unknown)=>boundary.run(headers,async context=>{const result=await modules[${JSON.stringify(name)}].operations[${JSON.stringify(operation.operationId)}](input as ${type},context);if(!result.ok)throw new ApplicationFailure(result.error);return result.value;})}},`;
       }),
       "}};",
       "}",

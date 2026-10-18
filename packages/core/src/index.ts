@@ -35,7 +35,7 @@ export * from "./plugins/architecture/clean.js";
 export * from "./plugins/architecture/domain-files.js";
 export * from "./plugins/architecture/application-files.js";
 export * from "./plugins/authentication/better-auth.js";
-export * from "./plugins/authorization/rbac-pbac.js";
+export * from "./plugins/authorization/roles-permissions.js";
 export * from "./plugins/frameworks/hono.js";
 export * from "./plugins/frameworks/hono-files.js";
 export * from "./plugins/frontends/better-auth-client.js";
