@@ -473,6 +473,16 @@ describe
         await (await authRequest("/api/auth/get-session", undefined, cookie)).json(),
       ).toBeNull();
     }, 30_000);
+    it("applies a decimal database default when an insert omits the numeric column", async () => {
+      const [row] = await sql("INSERT INTO invoice (customer_id) VALUES ($1) RETURNING id, total", [
+        "11111111-1111-4111-8111-111111111111",
+      ]);
+      try {
+        expect(Number(row.total)).toBe(12.5);
+      } finally {
+        await sql("DELETE FROM invoice WHERE id=$1", [row.id]);
+      }
+    });
     it("also migrates and seeds the intentionally unauthenticated schema", async () => {
       if (directory) await rm(directory, { recursive: true, force: true });
       directory = "";

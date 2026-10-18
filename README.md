@@ -8,7 +8,11 @@ A generated backend is a modular monolith: business modules run together in one 
 
 The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
 
-**Independent Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Hexagonal/Onion remain unsupported. Focused persistence, identity, browser access, forms and cache-isolation checks pass. Full milestone acceptance remains separate work.
+**Independent Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Hexagonal/Onion remain unsupported. Focused persistence, identity, browser access, forms and cache-isolation checks pass. A maintained fresh full-stack acceptance check now exercises the connected product; final repository cleanup remains separate work.
+
+## Verify a freshly generated application
+
+Run `pnpm exec playwright install chromium` once, then `pnpm acceptance` with Docker Engine available. The maintained [acceptance scenario and walkthrough](acceptance/README.md) generate and build a new two-module application, migrate/seed an isolated database and exercise real HTTP/browser sessions, policies, contracts and mutations. Missing prerequisites and failed stages fail the command. `pnpm acceptance --keep` retains a successful local demo; its report includes the URLs and cleanup command. The [canonical YAML](acceptance/project.yaml) is the configuration used by CI and local review.
 
 ## Target generated project
 

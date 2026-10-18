@@ -1,0 +1,336 @@
+import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { expect as baseExpect, chromium, request } from "@playwright/test";
+
+const expect = baseExpect.configure({ timeout: 15_000 });
+const password = "acceptance-local-password-2026";
+const missing = "00000000-0000-4000-8000-000000000000";
+export async function verifyApplication(state, directory, expireAccountant) {
+  const api = `http://localhost:${state.apiPort}`;
+  const web = `http://localhost:${state.webPort}`;
+  const persistence = JSON.parse(
+    await readFile(join(state.output, "apps/api/acceptance-persistence.json"), "utf8"),
+  );
+  const contexts = [];
+  const behaviors = [];
+  let browser;
+  let page;
+  const passed = async (name) => {
+    behaviors.push(name);
+    console.log(`  Verified: ${name}`);
+    await writeFile(join(directory, "behaviors.json"), JSON.stringify(behaviors, null, 2));
+  };
+  const session = async (role) => {
+    const client = await request.newContext({ baseURL: api, extraHTTPHeaders: { origin: web } });
+    contexts.push(client);
+    const login = await client.post("/api/auth/sign-in/email", {
+      data: { email: `${role}@acceptance.example.test`, password },
+    });
+    expect(login.status(), `Sign in ${role}`).toBe(200);
+    const cookies = (await client.storageState()).cookies;
+    expect(cookies.some((cookie) => cookie.name.includes("session_token") && cookie.httpOnly)).toBe(
+      true,
+    );
+    return client;
+  };
+  try {
+    const anonymous = await request.newContext({ baseURL: api });
+    contexts.push(anonymous);
+    const admin = await session("admin");
+    const viewer = await session("viewer");
+    const accountant = await session("accountant");
+    const outsider = await session("outsider");
+    await passed("Real credential sessions use HttpOnly cookies for all configured roles");
+    const publicResponse = await anonymous.get("/api/customers");
+    expect(publicResponse.status()).toBe(200);
+    const publicPage = await publicResponse.json();
+    expect(publicPage.total).toBe(5);
+    expect(publicPage.items.some((row) => row.joins.CustomerAddress.length > 0)).toBe(true);
+    expect((await anonymous.get("/api/invoices")).status()).toBe(401);
+    expect((await outsider.get("/api/invoices")).status()).toBe(403);
+    expect((await viewer.get("/api/invoices")).status()).toBe(200);
+    expect(
+      (
+        await viewer.post("/api/customers", {
+          data: { name: "Denied", email: "denied@example.test" },
+        })
+      ).status(),
+    ).toBe(403);
+    expect(
+      (
+        await admin.post("/api/customers", {
+          headers: { origin: "https://untrusted.example.test" },
+          data: { name: "Denied", email: "denied@example.test" },
+        })
+      ).status(),
+    ).toBe(403);
+    await passed(
+      "Public exception, missing identity 401, insufficient permissions 403 and trusted-origin enforcement",
+    );
+
+    for (const client of [anonymous, admin]) {
+      expect((await client.get("/api/customer-addresses")).status()).toBe(404);
+      expect((await client.get("/api/CustomerAddress")).status()).toBe(404);
+      expect((await client.delete(`/api/invoices/${missing}`)).status()).toBe(404);
+    }
+    await passed(
+      "Undeclared entity routes and Invoice delete are absent even for authenticated callers",
+    );
+    expect(
+      (
+        await admin.post("/api/customers", { data: { name: "", email: "bad@example.test" } })
+      ).status(),
+    ).toBe(400);
+    expect((await admin.get("/api/customers/not-a-uuid")).status()).toBe(400);
+    expect((await admin.get("/api/customers?invented=true")).status()).toBe(400);
+    expect((await admin.get("/api/invoices?pageSize=999")).status()).toBe(400);
+    const created = await admin.post("/api/customers", {
+      data: { name: "API acceptance customer", email: `api-${state.id}@example.test` },
+    });
+    expect(created.status()).toBe(200);
+    const customer = (await created.json())[0].entity;
+    expect(customer.state).toBe("active");
+    expect(customer.deletedAt).toBeNull();
+    expect(customer.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const updated = await admin.patch(`/api/customers/${customer.id}`, {
+      data: { name: "Updated API customer" },
+    });
+    expect(updated.status()).toBe(200);
+    expect((await updated.json())[0].entity.name).toBe("Updated API customer");
+    const filtered = await admin.get("/api/customers?search=Updated%20API&page=1&pageSize=1");
+    const filteredPage = await filtered.json();
+    expect(filteredPage.total).toBe(1);
+    expect(filteredPage.items[0].entity.id).toBe(customer.id);
+    expect(filteredPage.pageSize).toBe(1);
+    const nextPage = await admin.get("/api/customers?search=Updated%20API&page=2&pageSize=1");
+    expect((await nextPage.json()).items).toHaveLength(0);
+    await passed(
+      "Declared customer create/update and paginated filtering honor validation, defaults and ISO transport dates",
+    );
+
+    const preview = `/__acceptance/preview-customer?customerId=${customer.id}`;
+    expect((await anonymous.get(preview)).status()).toBe(401);
+    expect((await outsider.get(preview)).status()).toBe(403);
+    expect((await accountant.get(preview)).status()).toBe(403);
+    const called = await viewer.get(preview);
+    expect(called.status()).toBe(200);
+    expect(await called.json()).toEqual({ ok: true, value: { customer: "Updated API customer" } });
+    expect(
+      (await viewer.get(`/__acceptance/preview-customer?customerId=${missing}`)).status(),
+    ).toBe(404);
+    expect((await viewer.get("/__acceptance/preview-customer?customerId=invalid")).status()).toBe(
+      400,
+    );
+    const probes = await (
+      await admin.get(`/__acceptance/context-probes?customerId=${customer.id}`)
+    ).json();
+    expect(probes.forged.error.code).toBe("unauthorized");
+    expect(probes.revoked.error.code).toBe("unauthorized");
+    await passed(
+      "Authored billing workflow uses generated public wiring; callee denial, not_found, validation and forged/revoked contexts propagate",
+    );
+    expect((await admin.delete(`/api/customers/${customer.id}`)).status()).toBe(200);
+    expect(await (await admin.get(`/api/customers/${customer.id}`)).json()).toEqual([]);
+    expect((await (await admin.get("/api/customers?search=Updated%20API")).json()).total).toBe(0);
+    await passed(
+      "Declared customer delete applies the supported soft-delete policy and hides archived records",
+    );
+
+    const invoiceCreated = await admin.post("/api/invoices", {
+      data: { customerId: persistence.customerId },
+    });
+    expect(invoiceCreated.status()).toBe(200);
+    const invoice = (await invoiceCreated.json())[0].entity;
+    expect(invoice).toMatchObject({
+      total: 12.5,
+      note: null,
+      discount: null,
+      payload: { currency: "USD" },
+      enabled: true,
+    });
+    expect(invoice.issuedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(
+      (
+        await admin.patch(`/api/invoices/${invoice.id}`, {
+          data: { total: 3.25, payload: "scalar JSON", discount: null },
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (await admin.patch(`/api/invoices/${invoice.id}`, { data: { payload: null } })).status(),
+    ).toBe(400);
+    const invoices = await (await admin.get("/api/invoices?minimum=3&pageSize=20")).json();
+    const changed = invoices.items.find((row) => row.entity.id === invoice.id).entity;
+    expect(changed.total).toBe(3.25);
+    expect(changed.payload).toBe("scalar JSON");
+    expect(changed.discount).toBeNull();
+    expect(changed.issuedAt).toBe(invoice.issuedAt);
+    await passed(
+      "Real invoice persistence preserves decimals, JSON scalars, nullability, clock defaults and untouched update fields",
+    );
+
+    browser = await chromium.launch();
+    const browserContext = await browser.newContext({
+      viewport: { width: 1400, height: 1000 },
+      timezoneId: "America/Lima",
+    });
+    page = await browserContext.newPage();
+    page.setDefaultTimeout(15_000);
+    const browserErrors = [];
+    page.on("pageerror", (error) => browserErrors.push(error.message));
+    await page.goto(`${web}/invoice`);
+    await expect(page).toHaveURL(`${web}/sign-in`);
+    await page.goto(`${web}/customer`);
+    await expect(page).toHaveURL(`${web}/customer`);
+    await expect(page.getByRole("table")).toBeVisible();
+    await expect(page.getByRole("button", { name: "+ New Customer", exact: true })).toHaveCount(0);
+    const sessionCookie = (await admin.storageState()).cookies.find((cookie) =>
+      cookie.name.includes("session_token"),
+    );
+    assert.ok(sessionCookie);
+    await browserContext.addCookies([{ ...sessionCookie, value: "fabricated-session.signature" }]);
+    await page.goto(`${web}/invoice`);
+    await expect(page).toHaveURL(`${web}/sign-in`);
+    await browserContext.clearCookies();
+    await passed(
+      "Direct private pages reject absent/forged cookies without redirect loops; public pages remain public",
+    );
+
+    const signIn = async (role) => {
+      await page.goto(`${web}/sign-in`);
+      await page.getByLabel("Email", { exact: true }).fill(`${role}@acceptance.example.test`);
+      await page.getByLabel("Password", { exact: true }).fill(password);
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await expect(page).toHaveURL(`${web}/`);
+      await expect(page.getByRole("status", { name: new RegExp(`role ${role}`) })).toBeVisible();
+    };
+    await signIn("admin");
+    await page.goto(`${web}/invoice`);
+    await expect(page.getByRole("heading", { name: "Invoice Management" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "+ New Invoice", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
+    const note = `Browser acceptance ${state.id}`;
+    await page.locator('input[id="filter-search"]').fill(note);
+    const filteredResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/invoices" &&
+        new URL(response.url()).searchParams.get("search") === note &&
+        response.request().method() === "GET",
+    );
+    await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+    const emptyResult = await filteredResponse;
+    expect(emptyResult.status()).toBe(200);
+    expect((await emptyResult.json()).total).toBe(0);
+    await expect(page.getByText("No records found.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("table")).toHaveCount(0);
+    await page.getByRole("button", { name: "+ New Invoice", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.locator("#customerId").fill(persistence.customerId);
+    await dialog.locator("#total").fill("19.75");
+    await dialog.getByRole("checkbox", { name: "Set note to null", exact: true }).uncheck();
+    await dialog.locator("#note").fill(note);
+    await dialog.locator("#issuedAt").fill("2026-10-18T10:20");
+    await dialog.locator("#payload").fill('{"currency":"EUR","source":"browser"}');
+    const createResponse = page.waitForResponse(
+      (response) =>
+        response.url() === `${api}/api/invoices` && response.request().method() === "POST",
+    );
+    await dialog.getByRole("button", { name: "Create", exact: true }).click();
+    const createdFromBrowser = await createResponse;
+    expect(createdFromBrowser.status()).toBe(200);
+    const browserInvoice = (await createdFromBrowser.json())[0].entity;
+    expect(browserInvoice).toMatchObject({
+      total: 19.75,
+      note,
+      discount: null,
+      payload: { currency: "EUR", source: "browser" },
+      enabled: true,
+      issuedAt: "2026-10-18T15:20:00.000Z",
+    });
+    await expect(dialog).not.toBeVisible();
+    const row = page.getByRole("row").filter({ hasText: browserInvoice.id });
+    await expect(row).toBeVisible();
+    await row.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.locator("#total").fill("3.25");
+    await dialog.locator("#payload").fill('"browser scalar"');
+    const updateResponse = page.waitForResponse(
+      (response) =>
+        response.url() === `${api}/api/invoices/${browserInvoice.id}` &&
+        response.request().method() === "PATCH",
+    );
+    await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+    expect((await updateResponse).status()).toBe(200);
+    await expect(dialog).not.toBeVisible();
+    await expect(row).toBeVisible();
+    const persisted = await (
+      await admin.get(`/api/invoices?search=${encodeURIComponent(note)}`)
+    ).json();
+    expect(persisted.total).toBe(1);
+    expect(persisted.items[0].entity).toMatchObject({
+      id: browserInvoice.id,
+      total: 3.25,
+      payload: "browser scalar",
+      issuedAt: "2026-10-18T15:20:00.000Z",
+    });
+    await page.screenshot({ path: join(directory, "verified-invoice.png"), fullPage: true });
+    await passed(
+      "Browser login, generated typed forms, decimal/JSON/null/date transport, mutation refetch and absent delete action",
+    );
+
+    await page.getByRole("button", { name: "Sign out", exact: true }).click();
+    await expect(page).toHaveURL(`${web}/sign-in`);
+    await signIn("outsider");
+    await page.goto(`${web}/invoice`);
+    await expect(
+      page.getByText("A permitted session is required to read these records.", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("table")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "+ New Invoice", exact: true })).toHaveCount(0);
+    await expect(page.getByText(browserInvoice.id, { exact: true })).toHaveCount(0);
+    await page.screenshot({
+      path: join(directory, "verified-account-isolation.png"),
+      fullPage: true,
+    });
+    await passed(
+      "Logout and a new denied account cannot display previous private records or mutation actions",
+    );
+
+    const expiredContext = await browser.newContext({
+      storageState: await accountant.storageState(),
+    });
+    const expiredPage = await expiredContext.newPage();
+    await expiredPage.goto(`${web}/invoice`);
+    await expect(expiredPage).toHaveURL(`${web}/invoice`);
+    await expireAccountant();
+    await expiredPage.goto(`${web}/invoice`);
+    await expect(expiredPage).toHaveURL(`${web}/sign-in`);
+    expect((await accountant.get("/api/invoices")).status()).toBe(401);
+    const old = await viewer.storageState();
+    expect((await viewer.post("/api/auth/sign-out", { data: {} })).status()).toBe(200);
+    const replay = await request.newContext({ baseURL: api, storageState: old });
+    contexts.push(replay);
+    expect((await replay.get("/api/invoices")).status()).toBe(401);
+    const replayContext = await browser.newContext({ storageState: old });
+    const replayPage = await replayContext.newPage();
+    await replayPage.goto(`${web}/invoice`);
+    await expect(replayPage).toHaveURL(`${web}/sign-in`);
+    await passed(
+      "Expired sessions and replayed signed cookies after logout fail at both page/API boundaries",
+    );
+    expect(browserErrors).toEqual([]);
+    await passed("The connected browser journey completes without uncaught application errors");
+    return behaviors;
+  } catch (error) {
+    if (page)
+      await page
+        .screenshot({ path: join(directory, "failure.png"), fullPage: true })
+        .catch(() => {});
+    throw error;
+  } finally {
+    await browser?.close();
+    for (const context of contexts) await context.dispose();
+  }
+}

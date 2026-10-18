@@ -1,0 +1,167 @@
+# Maintained YAML v2 acceptance scenario. Remote creation is deliberately disabled.
+schemaVersion: 2
+name: nordix-commerce-acceptance
+version: 1.0.0
+repositories:
+  - name: app
+    path: .
+    initializeGit: false
+    createRemote: false
+databases:
+  primary: {}
+backends:
+  - name: api
+    repository: app
+    path: apps/api
+    persistence: { database: primary }
+    modules:
+      customers:
+        architecture: clean
+        entities: [Customer, CustomerAddress]
+        exports: [getCustomer]
+      billing:
+        architecture: clean
+        entities: [Invoice]
+        imports:
+          customers: [getCustomer]
+    authentication: {}
+    authorization:
+      roles: [admin, viewer, accountant, outsider]
+      defaultRole: viewer
+      rolePermissions:
+        admin: [customers:read, customers:write, invoices:read, invoices:write]
+        viewer: [customers:read, invoices:read]
+        accountant: [invoices:read, invoices:write]
+        outsider: []
+frontends:
+  - name: web
+    repository: app
+    path: apps/web
+    connectsTo: [api]
+    access:
+      mode: mixed
+      backend: api
+      publicRoutes: ["/", /customer]
+enums:
+  CustomerState: [active, archived]
+entities:
+  Customer:
+    backend: api
+    fields:
+      name: { type: string, minLength: 1, maxLength: 120 }
+      email: { type: string, unique: true }
+      state: { type: enum, enumName: CustomerState, default: active }
+    relations:
+      addresses: { type: one-to-many, target: CustomerAddress, foreignKey: customerId }
+    timestamps: { createdAt: true, updatedAt: true }
+    softDelete: timestamp
+  CustomerAddress:
+    backend: api
+    fields:
+      street: { type: string }
+    relations:
+      customer:
+        type: many-to-one
+        target: Customer
+        foreignKey: customerId
+        required: true
+        onDelete: cascade
+  Invoice:
+    backend: api
+    fields:
+      customerId: { type: uuid }
+      total: { type: number, format: decimal, precision: 8, scale: 2, default: 12.5 }
+      note: { type: string, required: false, default: null }
+      discount: { type: number, format: decimal, precision: 5, scale: 2, required: false, default: null }
+      issuedAt: { type: date, default: { kind: now } }
+      payload: { type: json, default: { currency: USD } }
+      enabled: { type: boolean, default: true }
+    timestamps: { createdAt: true, updatedAt: true }
+pagination:
+  standard: { defaultPageSize: 5, maxPageSize: 20 }
+endpoints:
+  - backend: api
+    entity: Customer
+    operationId: listCustomers
+    method: GET
+    path: /api/customers
+    authRequired: false
+    queryParams:
+      - name: search
+        field: { entity: Customer, field: name }
+        required: false
+        operator: contains
+    joins:
+      - entity: CustomerAddress
+        type: left
+        fields: [id, street]
+    pagination: standard
+  - backend: api
+    entity: Customer
+    operationId: getCustomer
+    method: GET
+    path: /api/customers/{customerId}
+    permissions: [customers:read]
+    pathParams:
+      - name: customerId
+        field: { entity: Customer, field: id }
+  - backend: api
+    entity: Customer
+    operationId: createCustomer
+    method: POST
+    path: /api/customers
+    permissions: [customers:write]
+    requestBody: { useCase: { entity: Customer, operation: create } }
+  - backend: api
+    entity: Customer
+    operationId: updateCustomer
+    method: PATCH
+    path: /api/customers/{customerId}
+    permissions: [customers:write]
+    pathParams:
+      - name: customerId
+        field: { entity: Customer, field: id }
+    requestBody: { useCase: { entity: Customer, operation: update } }
+  - backend: api
+    entity: Customer
+    operationId: deleteCustomer
+    method: DELETE
+    path: /api/customers/{customerId}
+    permissions: [customers:write]
+    pathParams:
+      - name: customerId
+        field: { entity: Customer, field: id }
+  - backend: api
+    entity: Invoice
+    operationId: listInvoices
+    method: GET
+    path: /api/invoices
+    permissions: [invoices:read]
+    queryParams:
+      - name: search
+        field: { entity: Invoice, field: note }
+        required: false
+        operator: contains
+      - name: minimum
+        field: { entity: Invoice, field: total }
+        required: false
+        operator: gte
+    pagination: standard
+  - backend: api
+    entity: Invoice
+    operationId: createInvoice
+    method: POST
+    path: /api/invoices
+    permissions: [invoices:write]
+    requestBody: { useCase: { entity: Invoice, operation: create } }
+  - backend: api
+    entity: Invoice
+    operationId: updateInvoice
+    method: PATCH
+    path: /api/invoices/{invoiceKey}
+    permissions: [invoices:write]
+    pathParams:
+      - name: invoiceKey
+        field: { entity: Invoice, field: id }
+    requestBody: { useCase: { entity: Invoice, operation: update } }
+# No Invoice delete and no CustomerAddress HTTP operations are declared.

@@ -83,8 +83,10 @@ function drizzleColumnBuilder(fieldName: string, field: ResolvedField): string {
         const instant = new Date(field.default as string).toISOString();
         builder += `.default(sql.raw(${JSON.stringify(`'${instant}'::timestamptz`)}))`;
       }
-    } else if (field.type === "boolean" || field.type === "number") {
-      builder += `.default(${JSON.stringify(field.default)})`;
+    } else if (field.type === "number" && field.format === "decimal") {
+      // Drizzle numeric columns use string values at the persistence boundary.
+      // Application/HTTP defaults remain numbers in the resolved model and DTOs.
+      builder += `.default(${JSON.stringify(String(field.default))})`;
     } else {
       builder += `.default(${JSON.stringify(field.default)})`;
     }

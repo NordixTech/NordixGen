@@ -8,6 +8,7 @@
   },
   "packageManager": "pnpm@10.5.2",
   "scripts": {
+    "acceptance": "node acceptance/run.mjs",
     "build": "pnpm --filter \"./packages/*\" build",
     "test": "pnpm --filter \"./packages/*\" test",
     "generate:schema": "pnpm --filter @nordixgen/core generate:schema",
@@ -17,6 +18,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@hono/node-server": "2.1.5",
+    "@playwright/test": "1.64.1",
     "typescript": "^5.8.2"
   },
   "keywords": [
