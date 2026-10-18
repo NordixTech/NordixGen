@@ -298,6 +298,72 @@ export async function verifyApplication(state, directory, expireAccountant) {
       "Logout and a new denied account cannot display previous private records or mutation actions",
     );
 
+    let releaseSession;
+    const sessionGate = new Promise((resolve) => {
+      releaseSession = resolve;
+    });
+    const delayedSession = async (route) => {
+      await sessionGate;
+      await route.continue();
+    };
+    const privateRequests = [];
+    const trackPrivate = (outgoing) => {
+      if (new URL(outgoing.url()).pathname === "/api/invoices")
+        privateRequests.push(outgoing.url());
+    };
+    page.on("request", trackPrivate);
+    await page.route(`${api}/api/auth/get-session**`, delayedSession);
+    try {
+      await Promise.all([
+        page.goto(`${web}/api-explorer`),
+        page.waitForRequest(
+          (outgoing) => outgoing.url().startsWith(`${api}/api/auth/get-session`),
+          { timeout: 15_000 },
+        ),
+      ]);
+      const operation = page.getByRole("combobox", { name: "Select API operation" });
+      const send = page.getByRole("button", { name: "Send request", exact: true });
+      await operation.selectOption("listInvoices");
+      await expect(
+        page.getByText("Checking your session before enabling this request.", { exact: true }),
+      ).toBeVisible();
+      await expect(send).toBeDisabled();
+      releaseSession();
+      await expect(page.getByRole("status", { name: /role outsider/ })).toBeVisible();
+      await operation.selectOption("listInvoices");
+      const deniedMessage = page.getByText(
+        "Your account does not have the roles or permissions required to send this request.",
+        { exact: true },
+      );
+      await expect(deniedMessage).toBeVisible();
+      await expect(send).toBeDisabled();
+      await expect(send).toHaveAttribute("aria-describedby", "api-operation-access");
+      await send.evaluate((button) => button.click());
+      await page.screenshot({
+        path: join(directory, "verified-explorer-permissions.png"),
+        fullPage: true,
+      });
+      await operation.selectOption("listCustomers");
+      await expect(deniedMessage).toHaveCount(0);
+      await expect(send).toBeEnabled();
+      const publicResponse = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/api/customers" &&
+          response.request().method() === "GET",
+      );
+      await send.click();
+      expect((await publicResponse).status()).toBe(200);
+      await expect(page.getByRole("heading", { name: "Response", exact: true })).toBeVisible();
+      expect(privateRequests).toHaveLength(0);
+    } finally {
+      releaseSession();
+      await page.unroute(`${api}/api/auth/get-session**`, delayedSession);
+      page.off("request", trackPrivate);
+    }
+    await passed(
+      "Explorer explains pending/denied requests without sending them, while a public operation remains executable",
+    );
+
     const expiredContext = await browser.newContext({
       storageState: await accountant.storageState(),
     });
