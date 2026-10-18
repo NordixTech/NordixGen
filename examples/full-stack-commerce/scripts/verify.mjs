@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect as baseExpect, chromium, request } from "@playwright/test";
+import { verifyTheme } from "./theme.mjs";
 
 const expect = baseExpect.configure({ timeout: 15_000 });
 const password = "acceptance-local-password-2026";
@@ -179,11 +180,19 @@ export async function verifyApplication(state, directory, expireAccountant) {
     page.setDefaultTimeout(15_000);
     const browserErrors = [];
     page.on("pageerror", (error) => browserErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error" && /hydrat|did not match/i.test(message.text()))
+        browserErrors.push(message.text());
+    });
     const noPageOverflow = async () =>
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       ).toBe(true);
     await page.goto(web);
+    await verifyTheme(browser, page, web, directory, await admin.storageState());
+    await passed(
+      "Light/dark/system themes, keyboard selection, persistence, live system changes, cross-tab sync, blocked storage and pre-hydration dark initialization",
+    );
     const directoryLinks = page.getByRole("navigation", { name: "Application pages" });
     await expect(directoryLinks.getByRole("link")).toHaveCount(2);
     await expect(directoryLinks.getByRole("link", { name: /Customer/ })).toHaveAttribute(

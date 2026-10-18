@@ -286,6 +286,7 @@ export interface TransportOperation {
   };
 }
 export interface ResolvedFrontend {
+  readonly theme: import("./theme.js").ResolvedTheme;
   readonly name: string;
   readonly repository: Readonly<NordixConfig["repositories"][number]>;
   readonly path: string;

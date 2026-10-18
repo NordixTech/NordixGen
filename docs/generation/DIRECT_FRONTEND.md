@@ -6,7 +6,15 @@ The frontend registry, composer, descriptor/capability protocol, configurable li
 
 Only declared operations feed clients, explorer and screen actions. There is no inferred CRUD route. Query loading/errors, filtering, pagination, form schemas and mutation invalidation remain in the fixed flow. Screens without a list operation have an explicit empty presentation state. Domain dates remain strings at the client boundary, with required nullable response properties.
 
-Better Auth is the single reactive session source. Zustand contains UI notifications/modal state only; the session mirror and synchronization component have been removed. [Server page access](FRONTEND_ACCESS.md) uses the resolved public/authenticated/mixed inventory. [API clients, caches and forms](API_SCREENS.md) use resolved module operations, independent backend destinations, scoped invalidation and account isolation.
+Better Auth is the single reactive session source. Zustand contains notifications, modal and theme UI state; the session mirror and synchronization component have been removed. [Server page access](FRONTEND_ACCESS.md) uses the resolved public/authenticated/mixed inventory. [API clients, caches and forms](API_SCREENS.md) use resolved module operations, independent backend destinations, scoped invalidation and account isolation.
+
+## Design tokens and theme state
+
+The optional [frontend theme configuration](../configuration/YAML_V2.md#frontend-design-tokens-and-theme) is validated before generation and resolved once per frontend. Each light/dark main palette is either completely specified or completely defaulted; status overrides are independent and individually defaulted. Runtime and editor schema both publish the all-or-none main palette rule.
+
+The styling renderer owns `src/styles/theme.css` and `app/globals.css`. Theme CSS defines light baseline tokens, explicit dark overrides and system dark media rules; `data-theme="light"` always overrides the OS. Source variables use `--ng-*`; public `--color-*` tokens and Tailwind v4 `@theme inline` aliases consume those values. Tokens cover brand and contrasting button text, surfaces, text, borders, error/success/warning/info with derived tints and foregrounds, focus, overlays and shadows. Native components, forms, Explorer and IAM administration share these tokens.
+
+The sole root layout owns a shared topbar and a small synchronous inline head script that validates stored preference and sets `html.dataset.theme` before body rendering. HTML alone uses `suppressHydrationWarning` for this intentional pre-hydration attribute change. The theme store exposes `useTheme` with `theme`, `resolvedTheme` and `setTheme`. Shell initialization installs and cleans up media/storage listeners, follows OS changes only in System mode, synchronizes tabs and tolerates unavailable storage. It lives outside account-scoped Query providers. The generated UI remains server-renderable; client preference reconciliation does not change server/client initial markup.
 
 ## Evidence
 

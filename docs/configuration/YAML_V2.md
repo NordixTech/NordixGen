@@ -326,6 +326,55 @@ Supported local verification topology: frontend and backend both use `localhost`
 
 Use Better Auth's reactive session state through a thin presentation hook; no Zustand session mirror or localStorage tokens. Zustand stores shared UI only. Queries/private cache must be scoped/cleared across identity changes and protected queries must not run while identity is unresolved. Frontend role/permission helpers are presentation only; server/API checks still apply.
 
+### Frontend design tokens and theme
+
+Each frontend accepts an optional `theme` block. `default` is `system` unless set to `light` or `dark`. Light and dark palettes are independent:
+
+- Omit a mode, or omit all seven main colors in that mode, to use the complete Nordix main palette.
+- To customize a main palette, supply **all seven** colors: `primary`, `secondary`, `background`, `surface`, `foreground`, `muted`, `border`. A partial main palette is invalid; it is never mixed with default main colors.
+- `error`, `success`, `warning` and `info` are individually optional. Missing status colors always use that mode's defaults, including when the main palette is customized. A mode can contain only status overrides.
+- Colors are literal hexadecimal (3/4/6/8 digits), `rgb()/rgba()` or `hsl()/hsla()` strings. RGB supports numeric or percentage channels; HSL hue uses degrees (bare or `deg`), with percentage saturation/lightness. Comma syntax and space/slash syntax, including alpha, are supported. Channels must be in range. Named colors, CSS variables and arbitrary CSS expressions are rejected. Quote hex values in YAML.
+
+```yaml
+frontends:
+  - name: web
+    repository: app
+    path: apps/web
+    connectsTo: [api]
+    theme:
+      default: system
+      light:
+        primary: "#155eef"
+        secondary: "#475467"
+        background: "#f8fafc"
+        surface: "#ffffff"
+        foreground: "#101828"
+        muted: "#667085"
+        border: "#e4e7ec"
+        # All status colors omitted: use light defaults.
+      dark:
+        # All main colors omitted: use the complete dark default palette.
+        success: "#75e0a7"
+```
+
+Default palettes:
+
+| Token | Light | Dark |
+| --- | --- | --- |
+| primary | #155eef | #84adff |
+| secondary | #475467 | #98a2b3 |
+| background | #f8fafc | #0b0f19 |
+| surface | #ffffff | #111827 |
+| foreground | #101828 | #f9fafb |
+| muted | #667085 | #9ca3af |
+| border | #e4e7ec | #344054 |
+| error | #b42318 | #fda29b |
+| success | #067647 | #75e0a7 |
+| warning | #93370d | #fec84b |
+| info | #175cd3 | #84caff |
+
+The topbar exposes accessible Light/Dark/System buttons. The user's preference is saved as `nordix-theme` in localStorage; an explicit stored preference wins over the configured default. System follows live OS changes. Missing, invalid or unavailable storage falls back to the configured default. Theme preferences are UI state, independent of identity or private query caches. Tokens are fixed at generation time; arbitrary runtime color editing is outside scope. Custom palettes should be checked for text/surface contrast, particularly transparent colors; the generator selects contrasting black/white brand button text and derives status tints, but cannot guarantee arbitrary custom color combinations are accessible.
+
 ## 10. Resolved model and diagnostics
 
 One resolver, after syntax/structure validation, produces these concrete views. The names below are illustrative; the information and one-time resolution are normative.

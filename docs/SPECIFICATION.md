@@ -100,6 +100,8 @@ The generated frontend uses Next.js App Router and Tailwind CSS. It follows a fe
 
 Generated frontend API types and operations must correspond to the declared backend routes. Forms and entity screens should be produced only when the necessary operations exist. Pagination, search/filter input, empty/loading/error states, and access-aware UI should reflect the backend contract. Frontend access checks improve the user experience but never replace server-side endpoint authorization.
 
+Generated frontends support a per-frontend semantic theme with Light, Dark and System modes. For each mode independently, main colors (primary through border) are all-or-none; omitted main palettes use Nordix defaults. Status colors are independently optional and default individually. Palette configuration is validated with actionable diagnostics and included in the shared resolved model and editor schema. CSS variables and Tailwind v4 tokens drive all generated UI, including IAM administration. A synchronous head initializer applies persisted preferences before body rendering; accessible global controls, a Zustand theme hook, live system changes and cross-tab synchronization provide runtime mode selection. Storage failure falls back to configuration without preventing theme changes. Arbitrary runtime palette editing is outside scope.
+
 ## 10. CLI and generated project behavior
 
 The CLI should provide commands to initialize a configuration, validate it, and generate a project. Initialization should produce a valid starter configuration for the fixed stack and let the project author describe application paths, databases, modules, entities, endpoints, and access rules without asking for fixed technology selections.

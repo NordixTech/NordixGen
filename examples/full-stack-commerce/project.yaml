@@ -38,6 +38,21 @@ frontends:
     repository: app
     path: apps/web
     connectsTo: [api]
+    # Each mode's seven main colors are all-or-none; omitted status colors use defaults.
+    theme:
+      default: system
+      light:
+        primary: "#087f8c"
+        secondary: "#475467"
+        background: "#f8fafc"
+        surface: "#ffffff"
+        foreground: "#101828"
+        muted: "#667085"
+        border: "#e4e7ec"
+        info: "#175cd3"
+      # Main dark palette omitted: use the complete Nordix default palette.
+      dark:
+        success: "#75e0a7"
     access:
       mode: mixed
       backend: api

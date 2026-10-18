@@ -8,6 +8,7 @@ import { generateUiFiles } from "../plugins/frontends/native-ui.js";
 import { frontendPaths } from "../plugins/frontends/nextjs.js";
 import { generateFrontendShell } from "../plugins/frontends/root-shell.js";
 import { generateQueryFiles } from "../plugins/frontends/server-state.js";
+import { generateThemeFiles } from "../plugins/frontends/theme.js";
 import { generateApiClientFiles } from "../plugins/frontends/typed-api-client.js";
 import { generateTailwindFiles } from "../plugins/styling/tailwind.js";
 import type { ResolvedProject } from "../project/types.js";
@@ -50,6 +51,7 @@ export function generateFrontend(project: ResolvedProject, name: string) {
   const context = frontendRenderContext(project, name);
   const contributions = [
     { owner: "shell", files: generateFrontendShell(context) },
+    { owner: "theme", files: generateThemeFiles(context) },
     { owner: "runtime-environment", files: [frontendEnvironmentFile(context)] },
     { owner: "ui", files: generateUiFiles(context) },
     { owner: "tailwind", files: generateTailwindFiles(context) },

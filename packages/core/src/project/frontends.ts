@@ -2,6 +2,7 @@ import type { FrontendDefinition, NordixConfig } from "../configuration/schema.j
 import { scopedOperationName } from "../configuration/validation/shared.js";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
 import { dictionary, sortedRecord } from "./fields.js";
+import { resolveTheme } from "./theme.js";
 import type {
   ConfigurationOrigin,
   ResolvedBackend,
@@ -223,6 +224,7 @@ export function resolveFrontend(
       ));
   return {
     name: frontend.name,
+    theme: resolveTheme(frontend.theme),
     repository: config.repositories.find(
       (r) => r.name === frontend.repository,
     ) as NordixConfig["repositories"][number],
