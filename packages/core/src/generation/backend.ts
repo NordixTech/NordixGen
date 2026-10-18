@@ -13,9 +13,12 @@ import { generateDrizzleAdapterFiles } from "../plugins/orms/drizzle-files.js";
 import { generateDrizzleFiles } from "../plugins/orms/drizzle.js";
 import type { ResolvedProject } from "../project/types.js";
 import { backendView } from "../project/views.js";
+import { generateApplicationRuntime } from "./application-runtime.js";
 import { generateBoundaryCheck } from "./boundaries.js";
 import { backendDependencies } from "./dependencies.js";
 import { collectFiles } from "./files.js";
+import { generateModuleComposition } from "./module-composition.js";
+import { generateModulePublicFiles } from "./module-public.js";
 
 export function backendRenderContext(project: ResolvedProject, name: string): BackendRenderContext {
   const domainModel = backendView(project, name);
@@ -87,23 +90,8 @@ export function generateBackend(project: ResolvedProject, name: string) {
             ]
           : []),
         {
-          owner: `${module.id}:entry`,
-          files: [
-            {
-              path: posix.join(scoped.framework.codeRoot, "index.ts"),
-              content:
-                "// Public application surface. Implemented exports are added by public-contract generation.\nexport interface PublicApi {}\n",
-            },
-            ...(scoped.persistence
-              ? [
-                  {
-                    path: posix.join(scoped.framework.codeRoot, "bootstrap.ts"),
-                    content:
-                      'export {createRouteDependencies as createModule} from "./infrastructure/adapters/create-route-dependencies.js";\n',
-                  },
-                ]
-              : []),
-          ],
+          owner: `${module.id}:public-application`,
+          files: generateModulePublicFiles(project, scoped),
         },
       ];
     }),
@@ -116,27 +104,12 @@ export function generateBackend(project: ResolvedProject, name: string) {
       : []),
     { owner: "hono-assembly", files: generateHonoFiles(context) },
     { owner: "module-boundary-check", files: [generateBoundaryCheck(context)] },
+    { owner: "application-runtime", files: generateApplicationRuntime(context) },
     ...(context.persistence
       ? [
           {
             owner: "backend-module-composition",
-            files: [
-              {
-                path: posix.join(context.platformRoot, "database/create-route-dependencies.ts"),
-                content: [
-                  'import {createDrizzleDatabase} from "./drizzle-database.js";',
-                  ...view.modules.map(
-                    (module, index) =>
-                      `import {createModule as module${index}} from "../../modules/${module.name}/bootstrap.js";`,
-                  ),
-                  "export function createRouteDependencies(connectionString:string) {",
-                  "const db=createDrizzleDatabase(connectionString);",
-                  `return {endpoints:{${view.modules.map((module, index) => `...module${index}(db).endpoints`).join(",")}}};`,
-                  "}",
-                  "",
-                ].join("\n"),
-              },
-            ],
+            files: [generateModuleComposition(project, context)],
           },
         ]
       : []),

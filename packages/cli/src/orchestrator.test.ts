@@ -220,10 +220,6 @@ describe("modular generation execution", () => {
     );
     const parsed = parseNordixYaml(source);
     if (!parsed.success) throw new Error("Invalid modular fixture");
-    for (const businessModule of Object.values(parsed.config.backends[0].modules)) {
-      businessModule.exports = [];
-      businessModule.imports = {};
-    }
     await writeFile(file, stringifyNordixYaml(parsed.config));
     const runner = vi.fn(async () => "");
     await runGenerate(file, output, runner);
@@ -243,26 +239,5 @@ describe("modular generation execution", () => {
     expect(runner.mock.calls.some((call) => call[1]?.join(" ") === "run check:boundaries")).toBe(
       true,
     );
-  });
-});
-
-describe("pending public module communication", () => {
-  it("rejects exports/imports before generation effects until public wiring is implemented", async () => {
-    const directory = await temporary();
-    const file = join(directory, "communication.yaml");
-    const output = join(directory, "output");
-    await writeFile(
-      file,
-      await readFile(
-        new URL("../../../docs/configuration/samples/clean-modules.yaml", import.meta.url),
-        "utf8",
-      ),
-    );
-    const runner = vi.fn();
-    await expect(runGenerate(file, output, runner)).rejects.toThrow(
-      "MODULE_COMMUNICATION_UNAVAILABLE",
-    );
-    expect(runner).not.toHaveBeenCalled();
-    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

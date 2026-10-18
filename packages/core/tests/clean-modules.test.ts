@@ -47,8 +47,8 @@ describe("Clean business modules in one backend", () => {
     expect(Object.keys(files).filter((path) => path.endsWith("/auth-schema.ts"))).toHaveLength(1);
     const composition = files["apps/api/src/platform/database/create-route-dependencies.ts"];
     expect(composition.split("createDrizzleDatabase(connectionString)")).toHaveLength(2);
-    expect(composition).toContain("module0(db)");
-    expect(composition).toContain("module1(db)");
+    expect(composition).toContain("module0(db,");
+    expect(composition).toContain("module1(db,");
     const routes = files["apps/api/src/platform/http/controllers/routes.ts"];
     expect(routes).toContain("/modules/customers/");
     expect(routes).toContain("/modules/billing/");

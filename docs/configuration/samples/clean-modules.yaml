@@ -1,4 +1,4 @@
-# Accepted YAML v2 configuration; modular generation is not integrated yet.
+# Accepted YAML v2 configuration for Clean modular generation.
 schemaVersion: 2
 name: clean-commerce
 version: 1.0.0

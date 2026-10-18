@@ -97,6 +97,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
     'import { HTTPException } from "hono/http-exception";',
     `import healthController from "${relativeImport(routesPath, healthControllerPath)}";`,
     `import { problemResponse } from "${relativeImport(routesPath, problemDetailsPath)}";`,
+    `import {applicationProblem} from "${relativeImport(routesPath, posix.join(context.platformRoot, "http/application-error.ts"))}";`,
   ];
   const routesRegistrations: string[] = ['  routes.route("/health", healthController);'];
 
@@ -199,7 +200,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       `import { ${operationName}UseCase } from "${useCaseImport}";`,
       "",
       `export interface ${operationName}ControllerDependencies {`,
-      `  useCase?: ${operationName}UseCase;`,
+      `  useCase?: Pick<${operationName}UseCase,"execute">;`,
       "}",
       "",
       `export function create${operationName}EndpointController(deps?: ${operationName}ControllerDependencies): Hono {`,
@@ -257,7 +258,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       "",
       "export function createRoutes(deps?: RoutesDependencies): Hono {",
       "  const routes = new Hono();",
-      '  routes.onError((error, c) => error instanceof HTTPException && error.status === 400 ? problemResponse(c, 400, "Validation Failed", "Malformed request data") : problemResponse(c, 500, "Internal Server Error", "An unexpected error occurred"));',
+      '  routes.onError((error, c) => applicationProblem(c,error) ?? (error instanceof HTTPException && error.status === 400 ? problemResponse(c, 400, "Validation Failed", "Malformed request data") : problemResponse(c, 500, "Internal Server Error", "An unexpected error occurred")));',
       ...routesRegistrations,
       '  routes.notFound((c) => problemResponse(c, 404, "Not Found", `Route not found: ${c.req.path}`));',
       "  return routes;",
@@ -290,6 +291,12 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
           ]
         : []),
       `import { problemResponse } from "${problemImportInIndex}";`,
+      `import {applicationProblem} from "${relativeImport(entryPoint, posix.join(context.platformRoot, "http/application-error.ts"))}";`,
+      ...(hasDrizzle
+        ? [
+            `import {createOperationBoundary} from "${relativeImport(entryPoint, posix.join(context.platformRoot, "application/access.ts"))}";`,
+          ]
+        : []),
       ...(hasDrizzle
         ? [
             `import { createRoutes } from "${routesImport}";`,
@@ -305,6 +312,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       "",
       "// Global RFC 7807 error handler",
       "app.onError((error, c) => {",
+      "  const applicationError=applicationProblem(c,error);if(applicationError)return applicationError;",
       '  if (error instanceof HTTPException && error.status === 400) return problemResponse(c, 400, "Validation Failed", "Malformed request data");',
       '  return problemResponse(c, 500, "Internal Server Error", "An unexpected error occurred");',
       "});",
@@ -334,7 +342,10 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       ...(hasDrizzle
         ? [
             'app.all("*", (c) => {',
-            "  const routes = createRoutes(createRouteDependencies(c.env.DATABASE_URL));",
+            hasAuthentication
+              ? '  const boundary=createOperationBoundary(async headers=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers});return session?{id:session.user.id,role:session.user.role??""}:null;});'
+              : "  const boundary=createOperationBoundary(async()=>null);",
+            "  const routes = createRoutes(createRouteDependencies(c.env.DATABASE_URL,boundary,c.req.raw.headers));",
             "  return routes.fetch(c.req.raw, c.env, c.executionCtx);",
             "});",
           ]

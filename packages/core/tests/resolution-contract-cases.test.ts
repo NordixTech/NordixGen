@@ -43,7 +43,7 @@ describe("resolved scopes, defaults and configuration failures", () => {
       success: false,
       diagnostics: [expect.objectContaining({ code: "MODULE_ARCHITECTURE_UNIMPLEMENTED" })],
     });
-    expect(generateBackend(resolvedFixture(targetConfig()), "api").success).toBe(false);
+    expect(generateBackend(resolvedFixture(targetConfig()), "api").success).toBe(true);
     config.backends[0].modules.notes.architecture = "clean";
     config.entities.Note.relations.tags = {
       type: "many-to-many",
