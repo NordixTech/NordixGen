@@ -8,6 +8,11 @@ function importPath(fromFile: string, targetFile: string): string {
   return path.startsWith(".") ? path : `./${path}`;
 }
 
+const JSON_SCHEMA = [
+  "type JsonValue=string|number|boolean|null|JsonValue[]|{[key:string]:JsonValue};",
+  "const JsonValueSchema:z.ZodType<JsonValue>=z.lazy(()=>z.union([z.string(),z.number().finite(),z.boolean(),z.null(),z.array(JsonValueSchema),z.record(JsonValueSchema)]));",
+];
+
 function fieldSchema(
   field: ResolvedField,
   model: DomainModelContext,
@@ -34,7 +39,9 @@ function fieldSchema(
       schema = "z.string().uuid()";
       break;
     case "json":
-      schema = "z.unknown()";
+      // Unlike z.unknown(), this schema excludes undefined in both runtime validation
+      // and inference, so required JSON properties stay required with Zod 3.
+      schema = "JsonValueSchema";
       break;
     case "enum": {
       const values = field.value.enumValues as readonly string[];
@@ -114,6 +121,7 @@ function entityDtoFile(
     );
   return [
     'import { z } from "zod";',
+    ...JSON_SCHEMA,
     "",
     `export const Create${name}Schema = z.object({`,
     ...createFields,
@@ -283,6 +291,7 @@ function endpointDtoFiles(
   });
   const dtoContent = [
     'import { z } from "zod";',
+    ...JSON_SCHEMA,
     `import { ${endpoint.entity}ResponseSchema } from "../${endpoint.entity}.dto.js";`,
     ...joinImports,
     "",

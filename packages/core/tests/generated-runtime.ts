@@ -14,9 +14,11 @@ export function generatedRuntime(
     if (source === undefined) throw new Error(`Missing generated runtime module: ${path}`);
     const module = { exports: {} as Record<string, unknown> };
     cache.set(path, module.exports);
-    const compiled = ts.transpileModule(source, {
-      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-    }).outputText;
+    const compiled = ts
+      .transpileModule(source, {
+        compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+      })
+      .outputText.replaceAll("import.meta.url", JSON.stringify(`file:///${path}`));
     new Function("module", "exports", "require", compiled)(
       module,
       module.exports,

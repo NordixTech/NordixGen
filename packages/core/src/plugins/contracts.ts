@@ -34,7 +34,11 @@ export interface PersistenceContext {
     readonly engine: "postgres";
     readonly provider: "neon";
   };
-  readonly directories: { readonly infrastructure: string; readonly adapter: string };
+  readonly directories: {
+    readonly infrastructure: string;
+    readonly adapter: string;
+    readonly schema: string;
+  };
   readonly connectionStringEnvironmentVariable: "DATABASE_URL";
 }
 export interface BackendRenderContext {

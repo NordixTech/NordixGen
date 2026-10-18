@@ -62,11 +62,13 @@ describe("direct backend generation and file ownership", () => {
     const files = result.virtualFileSystem.snapshot();
     const index = files["apps/api-core/src/platform/database/schema/index.ts"];
     for (const name of ["Customer", "Order", "OrderItem"])
-      expect(index.split(`export const ${name}Table = pgTable`).length - 1).toBe(1);
+      expect(
+        Object.values(files).join("\n").split(`export const ${name}Table = pgTable`).length - 1,
+      ).toBe(1);
     expect(index).toContain("auth-schema.js");
     expect(
       Object.keys(files).filter(
-        (path) => path.endsWith("/index.ts") && path.includes("database/schema"),
+        (path) => path.endsWith("/index.ts") && path.includes("/platform/database/schema"),
       ),
     ).toHaveLength(1);
     expect(result.runtimeDependencies).toHaveProperty("better-auth");
