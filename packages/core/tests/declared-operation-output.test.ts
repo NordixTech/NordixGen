@@ -13,6 +13,11 @@ describe("operation-driven backend output", () => {
         businessModule.imports = {};
       }
       config.endpoints = mode === "none" ? [] : config.endpoints.filter((e) => e.method === "GET");
+      const known = new Set(config.endpoints.flatMap((endpoint) => endpoint.permissions));
+      for (const [role, grants] of Object.entries(config.backends[0].authorization.rolePermissions))
+        config.backends[0].authorization.rolePermissions[role] = grants.filter(
+          (permission) => permission === "*" || known.has(permission),
+        );
       if (mode === "named-mutations") {
         config.endpoints.push(
           {

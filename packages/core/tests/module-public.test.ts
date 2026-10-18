@@ -100,7 +100,13 @@ function fixture() {
   };
   const verifySession = vi.fn(async (headers: Headers) => {
     const role = headers.get("x-fixture-verified-role");
-    return role ? { id: "server-user", role } : null;
+    return role
+      ? {
+          id: "server-user",
+          role,
+          permissions: config.backends[0].authorization.rolePermissions[role] ?? [],
+        }
+      : null;
   });
   const boundary = createOperationBoundary(verifySession);
   const { composeModules, createRouteDependencies } = load(

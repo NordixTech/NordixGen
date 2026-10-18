@@ -207,6 +207,7 @@ export function resolveFrontend(
   if (visible.length) inventory.add("/api-explorer");
   for (const operation of visible) inventory.add(entities[operation.entity].page);
   if (identity) {
+    inventory.add("/admin/roles");
     inventory.add("/sign-in");
     inventory.add("/sign-up");
   }
@@ -229,7 +230,9 @@ export function resolveFrontend(
     connections: [...frontend.connectsTo].sort(),
     ...(identity ? { identity } : {}),
     access: { ...frontend.access, ...(identity ? { backend: identity.backend } : {}) },
-    pages: [...inventory].sort().map((path) => ({ path, authenticated: !publicPage(path) })),
+    pages: [...inventory]
+      .sort()
+      .map((path) => ({ path, authenticated: path === "/admin/roles" || !publicPage(path) })),
     operations: visible.map((operation) => operation.id),
     operationNames: names,
     endpoints,

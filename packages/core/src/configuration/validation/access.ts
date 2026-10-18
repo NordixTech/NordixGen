@@ -1,4 +1,5 @@
 import { type ConfigDiagnostic, createDiagnostic } from "../../diagnostics.js";
+import { IAM_PERMISSIONS, backendPermissions } from "../../project/permissions.js";
 import type { NordixConfig } from "../schema.js";
 import { entitySlug, routePath, scopedOperationName } from "./shared.js";
 
@@ -25,6 +26,27 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
       );
     if (backend.authorization) {
       const policy = backend.authorization;
+      const known = new Set(backendPermissions(config, backend.name));
+      if (
+        policy.defaultRole === "admin" ||
+        (policy.rolePermissions[policy.defaultRole] ?? []).some(
+          (permission) =>
+            permission === "*" || IAM_PERMISSIONS.some((system) => system === permission),
+        )
+      )
+        add(
+          "DEFAULT_ROLE_PRIVILEGED",
+          `${path}.authorization.defaultRole`,
+          "The signup default role must not be admin or grant IAM administration capabilities.",
+        );
+      for (const [role, grants] of Object.entries(policy.rolePermissions))
+        for (const permission of grants)
+          if (permission !== "*" && !permission.includes("*") && !known.has(permission))
+            add(
+              "PERMISSION_UNKNOWN",
+              `${path}.authorization.rolePermissions.${role}`,
+              `Permission "${permission}" is not an application capability. Declare it on a backend operation or use a built-in IAM permission.`,
+            );
       if (!policy.roles.includes(policy.defaultRole))
         add(
           "DEFAULT_ROLE_UNKNOWN",
@@ -93,6 +115,17 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
             `${path}.connectsTo`,
             `Backend "${backend.name}" has secured operations under a different authority. Use public operations only or a separate frontend.`,
           );
+    if (
+      selected &&
+      frontend.access.publicRoutes?.some(
+        (pattern) => pattern === "/admin/roles" || pattern === "/admin/**",
+      )
+    )
+      add(
+        "FRONTEND_ACCESS_ROUTE_INVALID",
+        `${path}.access.publicRoutes`,
+        "IAM administration is always protected and cannot be a public route.",
+      );
     const inventory = new Set(["/"]);
     const visible = config.endpoints.filter((e) => frontend.connectsTo.includes(e.backend));
     const operations = new Map<string, string>();

@@ -11,6 +11,7 @@ import { canonicalValue, resolveEntities, sortedRecord } from "./fields.js";
 import { resolveFrontend } from "./frontends.js";
 import { dependencyOrder } from "./graphs.js";
 import { compareHttpOperations, resolveOperation } from "./operations.js";
+import { backendPermissions } from "./permissions.js";
 import type {
   ConfigurationOrigin,
   ResolvedBackend,
@@ -75,6 +76,7 @@ function resolveValidated(
           ...(backend.authentication
             ? {
                 identity: {
+                  permissions: backendPermissions(config, backend.name),
                   backend: backend.name,
                   ...backend.authentication,
                   roles: policy.roles,

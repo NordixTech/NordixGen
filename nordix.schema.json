@@ -743,7 +743,8 @@
               "type": "string",
               "pattern": "^[a-z][a-z0-9-]*$"
             },
-            "default": []
+            "default": [],
+            "description": "Deprecated for business endpoints: only an empty list is accepted. Declare required permissions instead."
           },
           "permissions": {
             "type": "array",

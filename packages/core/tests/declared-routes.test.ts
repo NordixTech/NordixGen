@@ -32,9 +32,9 @@ backends:
       roles: [editor, viewer, outsider]
       defaultRole: viewer
       rolePermissions:
-        editor: [sample-items:create, sample-items:read]
-        viewer: [sample-items:read]
-        outsider: [sample-items:create]
+        editor: ${withEndpoints ? "[sample-items:create]" : "[]"}
+        viewer: []
+        outsider: ${withEndpoints ? "[sample-items:create]" : "[]"}
 frontends:
   - name: web
     repository: app
@@ -57,7 +57,7 @@ ${
     method: POST
     path: ${createPath}
     entity: SampleItem
-    roles: [editor, viewer]
+
     permissions: [sample-items:create]
     requestBody: { useCase: { entity: SampleItem, operation: create } }
   - backend: api
@@ -118,13 +118,27 @@ function generatedApplication(
   }));
   const executions: Record<string, Record<string, unknown>> = {};
   const authHandler = vi.fn(() => new Response("auth handler", { status: 200 }));
+  let currentRole: string | undefined;
   const getSession = vi.fn(async ({ headers }: { headers: Headers }) => {
     const cookie = headers.get("cookie");
     const role = cookie?.match(/^verified=(editor|viewer|outsider)$/)?.[1];
+    currentRole = role;
     return role ? { user: { id: "test-user", role } } : null;
   });
   const modules = new Map<string, Record<string, unknown>>();
   const external: Record<string, unknown> = {
+    [`${root}/platform/authorization/repository.ts`]: {
+      createIamRepository: () => ({
+        principal: async () =>
+          currentRole
+            ? {
+                id: "test-user",
+                role: currentRole,
+                permissions: config.backends[0].authorization.rolePermissions[currentRole] ?? [],
+              }
+            : undefined,
+      }),
+    },
     hono,
     "hono/cors": cors,
     "hono/http-exception": httpException,
@@ -422,7 +436,7 @@ describe("declared business routes in generated Hono applications", () => {
         401,
       );
     }
-    for (const role of ["viewer", "outsider"]) {
+    for (const role of ["viewer"]) {
       const response = await request("/api/sample-items", "POST", `verified=${role}`, {
         name: "Sample",
       });
@@ -471,7 +485,6 @@ describe("declared business routes in generated Hono applications", () => {
       config.backends[0].authorization.rolePermissions.editor.push("sample-items:approve");
       config.endpoints[0].permissions.push("sample-items:approve");
       config.backends[0].authorization.rolePermissions.outsider.push("sample-items:approve");
-      config.endpoints[0].roles.push("outsider");
     });
     expect(
       (

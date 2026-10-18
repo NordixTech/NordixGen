@@ -148,6 +148,11 @@ describe("fixed-stack CLI preparation and execution", () => {
   });
   it("emits independent split workspaces and installs only after all application preparation", async () => {
     const f = await setup(true);
+    f.config.backends[0].authentication = {
+      methods: ["email-password"],
+      identityProviders: [],
+      features: [],
+    };
     f.config.repositories = [
       {
         name: "backend",
@@ -194,6 +199,9 @@ describe("fixed-stack CLI preparation and execution", () => {
     expect(manifest.dependencies).toHaveProperty("drizzle-orm");
     expect(manifest.devDependencies).toHaveProperty("drizzle-kit");
     expect(manifest.scripts["db:migrate"]).toContain("src/platform/database");
+    expect(manifest.scripts["auth:create-admin"]).toBe(
+      "tsx src/platform/authorization/create-admin.ts",
+    );
     await expect(readdir(join(backend, "node_modules"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(await readFile(join(f.output, "backend", "pnpm-workspace.yaml"), "utf8")).toContain(
       '"apps/api"',

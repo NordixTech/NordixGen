@@ -131,7 +131,9 @@ export function generateDrizzleSchemaFiles(
               `export * from "${importPath(indexPath, posix.join(context.moduleRoots[module.id], "infrastructure/database/schema/index.ts"))}";`,
           ),
           'export * from "./enums.js";',
-          ...(context.identity ? ['export * from "./auth-schema.js";'] : []),
+          ...(context.identity
+            ? ['export * from "./auth-schema.js";', 'export * from "./iam-schema.js";']
+            : []),
           "",
         ].join("\n"),
       },
@@ -516,6 +518,7 @@ export function generateDrizzleAdapterFiles(
 
 export function generateDrizzleMigrationFiles(
   persistence: NonNullable<BackendRenderContext["persistence"]>,
+  identity = false,
 ): readonly GeneratedFile[] {
   const infrastructureDir = persistence.directories.infrastructure;
   const dbDir = posix.join(infrastructureDir, "database");
@@ -528,6 +531,7 @@ export function generateDrizzleMigrationFiles(
     'import { pathToFileURL,fileURLToPath } from "node:url";',
     'import { migrate } from "drizzle-orm/neon-http/migrator";',
     `import { createDrizzleDatabase } from "${importPath(migratePath, dbClientPath)}";`,
+    ...(identity ? ['import {seedAuthorization} from "../authorization/seed.js";'] : []),
     "",
     "export async function runMigrations(options?:{directory?:string}): Promise<void> {",
     `  const connectionString = process.env.${persistence.connectionStringEnvironmentVariable};`,
@@ -537,6 +541,7 @@ export function generateDrizzleMigrationFiles(
     "  const db = createDrizzleDatabase(connectionString);",
     '  console.log("Applying pending Drizzle migrations...");',
     '  await migrate(db, { migrationsFolder: options?.directory ?? fileURLToPath(new URL("../../../drizzle/",import.meta.url)) });',
+    ...(identity ? ["  await seedAuthorization(db);"] : []),
     '  console.log("Migrations applied successfully.");',
     "}",
     "",
@@ -751,6 +756,7 @@ ${fieldAssignments.join("\n")}
     'import { faker } from "@faker-js/faker";',
     `import { createDrizzleDatabase } from "${importPath(seedPath, dbClientPath)}";`,
     `import * as schema from "${importPath(seedPath, schemaIndexPath)}";`,
+    ...(context.identity ? ['import {seedAuthorization} from "../authorization/seed.js";'] : []),
     "",
     "export async function seedDatabase(options?: { seed?: number }): Promise<Record<string, any[]>> {",
     `  const connectionString = process.env.${persistence.connectionStringEnvironmentVariable};`,
@@ -761,6 +767,7 @@ ${fieldAssignments.join("\n")}
     "  faker.seed(seedValue);",
     '  faker.setDefaultRefDate("2025-01-01T00:00:00.000Z");',
     "  const db = createDrizzleDatabase(connectionString);",
+    ...(context.identity ? ["  await seedAuthorization(db);"] : []),
     "  const seeded: Record<string, any[]> = {};",
     "",
     ...entitySeeders,

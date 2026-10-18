@@ -56,7 +56,10 @@ function fixture() {
 function runtime() {
   const project = fixture();
   const files = generateFrontend(project, "web").virtualFileSystem.snapshot();
-  let current: { user: { id: string; role: string } | null; isPending: boolean } = {
+  let current: {
+    user: { id: string; role: string; permissions?: readonly string[] } | null;
+    isPending: boolean;
+  } = {
     user: null,
     isPending: true,
   };
@@ -117,7 +120,12 @@ function runtime() {
     client,
     hook,
     setSession: (user: typeof current.user, isPending = false) => {
-      current = { user, isPending };
+      current = {
+        user: user
+          ? { ...user, permissions: project.backends.api.identity.rolePermissions[user.role] ?? [] }
+          : null,
+        isPending,
+      };
     },
   };
 }

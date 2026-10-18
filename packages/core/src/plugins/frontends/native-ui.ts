@@ -13,7 +13,7 @@ function pageSource(context: FrontendRenderContext): string {
   const title = JSON.stringify(`${context.projectName} | NordixGen`);
   const projectName = escapeText(context.projectName);
   const pages = context.frontend.pages.filter(
-    (page) => !["/", "/api-explorer", "/sign-in", "/sign-up"].includes(page.path),
+    (page) => !["/", "/api-explorer", "/sign-in", "/sign-up", "/admin/roles"].includes(page.path),
   );
   const apiExplorerLink = context.api.endpoints.length > 0;
   return source([
@@ -193,7 +193,10 @@ function componentFiles(context: FrontendRenderContext) {
         "  useEffect(() => {",
         "    const dialog = dialogRef.current;",
         "    if (!dialog) return;",
-        "    if (open && !dialog.open) dialog.showModal();",
+        "    if (open && !dialog.open) {",
+        "      dialog.showModal();",
+        '      dialog.querySelector<HTMLElement>("[data-initial-focus]")?.focus();',
+        "    }",
         "    if (!open && dialog.open) dialog.close();",
         "  }, [open]);",
         "",

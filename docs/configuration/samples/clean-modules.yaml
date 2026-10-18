@@ -99,7 +99,6 @@ endpoints:
     operationId: createCustomer
     method: POST
     path: /api/customers
-    roles: [admin]
     permissions: [customers:write]
     requestBody: { useCase: { entity: Customer, operation: create } }
   - backend: api

@@ -25,7 +25,7 @@ function authSchemaContent(
     '  image: text("image"),',
     '  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),',
     '  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),',
-    `  role: text("role").notNull().default(${JSON.stringify(defaultRole)}),`,
+    `  role: text("role").notNull().default(${JSON.stringify(defaultRole)}).references(() => authRoles.id, {onDelete:"restrict"}),`,
   ];
   if (methods.includes("username-password")) {
     userColumns.push('  username: text("username").unique(),');
@@ -93,6 +93,7 @@ function authSchemaContent(
   }
   return [
     'import { boolean, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";',
+    'import {authRoles} from "./iam-schema.js";',
     "",
     ...tables.flatMap((table) => [table, ""]),
   ].join("\n");

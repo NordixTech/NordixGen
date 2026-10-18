@@ -17,12 +17,12 @@ describe("backend identity policies and frontend access validation", () => {
       (c) => {
         c.endpoints[1].roles = ["ghost"];
       },
-      "ROLE_UNKNOWN",
+      "ENDPOINT_ROLES_REMOVED",
     ],
     [
-      "unknown endpoint permission",
+      "wildcard endpoint permission",
       (c) => {
-        c.endpoints[1].permissions = ["customers:missing"];
+        c.endpoints[1].permissions = ["customers:*"];
       },
       "PERMISSION_UNKNOWN",
     ],

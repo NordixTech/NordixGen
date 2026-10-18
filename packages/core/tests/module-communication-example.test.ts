@@ -13,7 +13,12 @@ function fixture() {
       ["valid-viewer-session", "viewer"],
       ["valid-accountant-session", "accountant"],
     ]).get(cookie ?? "");
-    return role ? { id: "verified-user", role } : null;
+    const permissions: Record<string, string[]> = {
+      admin: ["*"],
+      viewer: ["customers:read"],
+      accountant: ["invoices:read"],
+    };
+    return role ? { id: "verified-user", role, permissions: permissions[role] } : null;
   });
   return { ...composeExampleBackend(verifySession, { findById }), findById, verifySession };
 }

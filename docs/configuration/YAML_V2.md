@@ -76,7 +76,7 @@ Paths MUST use relative POSIX syntax, with no drive/UNC prefix, backslash, NUL, 
 | `persistence` | Optional | Strict `{ database: <existing database slug> }`; exactly one resource per backend |
 | `modules` | Required, nonempty map | Explicit module declarations below |
 | `authentication` | Omitted = disabled | Better Auth settings, section 8; `{}` enables defaults |
-| `authorization` | Omitted = contextual defaults | Static role/permission configuration, section 8 |
+| `authorization` | Omitted = contextual defaults | Initial database roles/grants, section 8 |
 
 Persistence is optional for deliberately nonpersisted scaffolds. Generation readiness MUST reject a configured database operation that has no persistence implementation, rather than generate a permanently unconfigured HTTP handler. Entities without operations may still have domain artifacts without persistence. Better Auth requires backend persistence. Multiple backends may explicitly reference the same database resource, but readiness MUST reject colliding normalized business/auth SQL objects; separate resources are the supported default when independent identity schemas would collide. No connection per module or cross-database operation is implied.
 
@@ -183,7 +183,8 @@ Relations, join targets, parameter field references and body field references MU
 | `backend`, `entity`, `operationId`, `method`, `path` | Required | Existing backend/owned entity, scoped operation ID, `GET`/`POST`/`PUT`/`PATCH`/`DELETE`, absolute route template |
 | `summary` | Optional string | Human-readable operation metadata |
 | `authRequired` | Omitted = backend inheritance | Boolean override, section 8 |
-| `roles`, `permissions` | `[]` each, unique | Backend-local access references |
+| `permissions` | `[]`, unique | Static backend-local capability requirements; declarations build the permission registry |
+| `roles` | Deprecated; only `[]` accepted | Replace direct business role restrictions with required `permissions` |
 | `pathParams`, `queryParams` | `[]` each | Parameters below |
 | `requestBody` | Optional | One of the two forms below |
 | `pagination` | Optional | Existing project profile name, never an inline second profile syntax |
@@ -278,7 +279,9 @@ Credential registration retains the current open-registration behavior; it canno
 | `defaultRole` | Required when the object is supplied | A declared role, deliberately least privilege |
 | `rolePermissions` | `{}` | Declared role -> unique list of permission tokens; omitted role grants nothing |
 
-With authentication enabled and authorization omitted, use `roles: [user]`, `defaultRole: user`, empty grants. With authentication disabled, authorization must be omitted and effective roles/grants are empty. Concrete permission references must occur in at least one concrete role grant; `*` grants all known permissions but is not a declaration of arbitrary permission spellings. To introduce `customers:write` when only an administrator uses it, include that concrete token in the administrator's grants alongside `*` or by itself. Wildcards such as `customers:*` are unsupported. Endpoint `permissions` cannot contain `*`.
+With authentication enabled and authorization omitted, use `roles: [user]`, `defaultRole: user`, empty grants. With authentication disabled, authorization must be omitted and effective roles/grants are empty. Concrete operation `permissions` define static capabilities, whether or not any initial role has them. Two built-in capabilities are always registered: `iam:roles:manage` and `iam:users:manage-roles`. Initial role grants must refer to those known capabilities; partial wildcards such as `customers:*` are unsupported. Endpoint `permissions` cannot contain `*`.
+
+`authorization.roles` and `authorization.rolePermissions` initialize PostgreSQL records, not an immutable dictionary. The generator additionally seeds system `admin` with `*`. The configured default role is protected from deletion and must never be `admin` or grant `*`/IAM management capabilities. Migrations initialize roles atomically: grants are inserted only for a newly inserted role. Existing metadata and grants remain untouched, including permissions removed through administration. Future newly declared roles can be initialized without resetting existing ones. Runtime role IDs need not appear in the original YAML. Use `pnpm auth:create-admin existing@example.com` in the generated backend to promote the first existing account after migrations. See [IAM endpoints and administration](../generation/IDENTITY_ACCESS.md).
 
 | Authentication enabled? | `authRequired` | Roles/permissions | Effective result |
 | --- | --- | --- | --- |
@@ -290,7 +293,7 @@ With authentication enabled and authorization omitted, use `roles: [user]`, `def
 | Yes | false | empty | Intentionally public |
 | Yes | false | nonempty | Contradictory access declaration; error, never a public bypass |
 
-This changes the previous omission default (`authRequired` previously defaulted false). Existing public operations must become explicit when a backend enables authentication. Any listed role satisfies the role condition; every listed permission must be granted; when both lists exist both conditions must pass. Single server-owned user role, no arbitrary PBAC/ABAC/multi-role engine. Missing/invalid identity -> 401, insufficient grants -> 403. Secured mutations also require a trusted Origin; origin rejection must not substitute for testing permission checks. Internal calls do not fabricate Origin headers.
+This changes the previous omission default (`authRequired` previously defaulted false). Existing public operations must become explicit when a backend enables authentication. Every listed permission must be granted by the account's current database role; business endpoints cannot restrict role names. A single server-owned user role is supported; no arbitrary PBAC/ABAC/multi-role engine. Missing/invalid identity -> 401, insufficient grants -> 403. Secured mutations also require a trusted Origin; origin rejection must not substitute for testing permission checks. Internal calls do not fabricate Origin headers. Platform `/api/auth/*` and `/api/iam/*` are mounted automatically and cannot be business endpoint paths. `/admin/roles` remains protected regardless of the frontend's general page access mode.
 
 The same resolved policy governs HTTP, internal operations, frontend metadata and presentation helpers. Backend application enforcement remains authoritative even when a client hides a button.
 

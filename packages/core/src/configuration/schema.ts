@@ -194,7 +194,11 @@ export const EndpointSchema = z
     summary: z.string().optional(),
     entity: IdentifierSchema,
     authRequired: z.boolean().optional(),
-    roles: unique(SlugSchema).default([]),
+    roles: unique(SlugSchema)
+      .default([])
+      .describe(
+        "Deprecated for business endpoints: only an empty list is accepted. Declare required permissions instead.",
+      ),
     permissions: unique(PermissionSchema).default([]),
     queryParams: z.array(ParameterSchema).default([]),
     pathParams: z.array(PathParameterSchema).default([]),

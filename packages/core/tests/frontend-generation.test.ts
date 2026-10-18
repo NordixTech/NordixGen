@@ -332,7 +332,7 @@ describe("frontend contract edge cases", () => {
           operationId: "createCustomer",
           method: "POST",
           path: "/customers",
-          roles: ["admin"],
+          roles: [],
           permissions: [],
           requestBody: { useCase: { entity: "Customer", operation: "create" } },
         },
@@ -350,29 +350,26 @@ describe("frontend contract edge cases", () => {
 });
 
 describe("presentation access requirements", () => {
-  it.each([{ roles: [] }, { roles: ["admin"] }])(
-    "requires configured permissions with roles %j",
-    ({ roles }) => {
-      const config = createSecuredConfig();
-      config.endpoints = [
-        {
-          backend: "core-api",
-          entity: "Customer",
-          operationId: "createCustomer",
-          method: "POST",
-          path: "/customers",
-          roles,
-          permissions: ["orders:create"],
-          requestBody: { useCase: { entity: "Customer", operation: "create" } },
-        },
-      ];
-      const files = generateFrontend(
-        resolvedFixture(config),
-        "store-web",
-      ).virtualFileSystem.snapshot();
-      expect(files["apps/store-web/src/components/features/customer-screen.tsx"]).toContain(
-        "canAccess(",
-      );
-    },
-  );
+  it.each([{ roles: [] }])("requires configured permissions with roles %j", ({ roles }) => {
+    const config = createSecuredConfig();
+    config.endpoints = [
+      {
+        backend: "core-api",
+        entity: "Customer",
+        operationId: "createCustomer",
+        method: "POST",
+        path: "/customers",
+        roles,
+        permissions: ["orders:create"],
+        requestBody: { useCase: { entity: "Customer", operation: "create" } },
+      },
+    ];
+    const files = generateFrontend(
+      resolvedFixture(config),
+      "store-web",
+    ).virtualFileSystem.snapshot();
+    expect(files["apps/store-web/src/components/features/customer-screen.tsx"]).toContain(
+      "canAccess(",
+    );
+  });
 });

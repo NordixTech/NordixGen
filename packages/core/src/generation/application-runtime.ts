@@ -6,7 +6,7 @@ export function generateApplicationRuntime(
     {
       path: `${context.platformRoot}/application/contracts.ts`,
       content: `declare const trustedContext: unique symbol;
-export interface Principal { readonly id:string; readonly role:string; }
+export interface Principal { readonly id:string; readonly role:string; readonly permissions?:readonly string[]; }
 export interface OperationContext { readonly principal:Principal|null; readonly [trustedContext]:true; }
 export type ApplicationErrorCode="validation"|"unauthorized"|"forbidden"|"not_found"|"conflict"|"unexpected";
 export interface ApplicationError { readonly code:ApplicationErrorCode; readonly message:string; }
@@ -18,7 +18,8 @@ export class ApplicationFailure extends Error { constructor(readonly error:Appli
     {
       path: `${context.platformRoot}/application/access.ts`,
       content: `import type {ApplicationError,OperationContext,Principal} from "./contracts.js";
-export interface AccessPolicy {readonly authority?:string;readonly authenticated:boolean;readonly roles:readonly string[];readonly permissions:readonly string[];}
+${context.identity ? 'import type {Permission} from "../authorization/policy.js";' : "type Permission=string;"}
+export interface AccessPolicy {readonly authority?:string;readonly authenticated:boolean;readonly roles:readonly string[];readonly permissions:readonly Permission[];}
 export type AccessGuard=(context:OperationContext,policy:AccessPolicy)=>ApplicationError|undefined;
 export interface OperationBoundary {readonly authorize:AccessGuard;run<T>(headers:Headers,operation:(context:OperationContext)=>Promise<T>):Promise<T>;}
 ${context.identity ? 'import {isAuthorized} from "../authorization/policy.js";' : "const isAuthorized=(_principal:unknown,policy:AccessPolicy)=>policy.roles.length===0&&policy.permissions.length===0;"}
@@ -33,7 +34,7 @@ export function createOperationBoundary(verifySession:(headers:Headers)=>Promise
  };
  return {authorize,async run(headers,operation){
   const principal=await verifySession(headers);
-  const context=Object.freeze({principal:principal?Object.freeze({id:principal.id,role:principal.role}):null}) as OperationContext;
+  const context=Object.freeze({principal:principal?Object.freeze({id:principal.id,role:principal.role,permissions:Object.freeze([...(principal.permissions??[])])}):null}) as OperationContext;
   issued.add(context);
   try{return await operation(context);}finally{issued.delete(context);}
  }};
