@@ -22,16 +22,6 @@ export function resolveGenerationReadiness(
         ),
         ...(module.architectureOrigin.source ? { source: module.architectureOrigin.source } : {}),
       })),
-    ...modules
-      .filter((module) => module.exports.length > 0 || module.imports.length > 0)
-      .map((module) => ({
-        ...createDiagnostic(
-          "MODULE_COMMUNICATION_UNAVAILABLE",
-          module.origin.path,
-          "Public module contracts and dependency wiring are not integrated yet. Generate independent Clean modules without exports/imports until that integration is available; no files or commands were emitted.",
-        ),
-        ...(module.origin.source ? { source: module.origin.source } : {}),
-      })),
     ...Object.values(entities).flatMap((entity) =>
       Object.values(entity.relations)
         .filter((relation) => relation.type === "many-to-many")

@@ -145,7 +145,9 @@ describe("resolved application contracts and concrete DTO rendering", () => {
         .filter(
           ([path]) =>
             path.endsWith(".ts") &&
-            (path.includes("/application/") || path.includes("/domain/entities/")),
+            (path.includes("/application/") ||
+              path.includes("/domain/entities/") ||
+              path.includes("/platform/authorization/")),
         )
         .map(([path, source]) => [path.split("/src/")[1], source]),
     );

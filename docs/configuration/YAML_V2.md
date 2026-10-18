@@ -1,6 +1,6 @@
 # YAML v2: fixed-stack modular project contract
 
-Status: approved contract from [#64](https://github.com/NordixTech/NordixGen/issues/64), implemented for configuration parsing and validation in [#67](https://github.com/NordixTech/NordixGen/issues/67). The runtime and generated editor schema accept YAML v2 only. **Modular project generation is deliberately unavailable** for configurations requiring multi-module Clean integration or unimplemented architecture families. The [shared resolved model](RESOLVED_MODEL.md) is implemented by the core resolution API. See [validation behavior and evidence](VALIDATION.md).
+Status: approved contract from [#64](https://github.com/NordixTech/NordixGen/issues/64), implemented for configuration parsing and validation in [#67](https://github.com/NordixTech/NordixGen/issues/67). The runtime and generated editor schema accept YAML v2 only. **Clean modular generation and public application calls are implemented.** Unimplemented architecture families remain explicit readiness failures; live database/browser acceptance is pending. The [shared resolved model](RESOLVED_MODEL.md) is implemented by the core resolution API. See [validation behavior and evidence](VALIDATION.md).
 
 The product requirements remain in [the specification](../SPECIFICATION.md). This contract makes configuration decisions concrete. MUST, MUST NOT and REQUIRED describe normative behavior after implementation. Paths, TypeScript symbol names and directory names explicitly marked illustrative may change without changing that behavior.
 
