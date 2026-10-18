@@ -1,31 +1,21 @@
+import type { GeneratedFile } from "../contracts.js";
 import type {
   FrontendAuthenticationContract,
-  FrontendGeneratorPlugin,
-  FrontendPluginContributionContext,
+  FrontendRenderContext,
 } from "../frontend-contracts.js";
-import { frontendRootShellFiles } from "./root-shell.js";
-
 function source(lines: readonly string[]): string {
   return `${lines.join("\n")}\n`;
 }
-
-function authentication(
-  context: FrontendPluginContributionContext,
-): FrontendAuthenticationContract {
+function authentication(context: FrontendRenderContext): FrontendAuthenticationContract {
   const contract = context.api.authentication;
   if (!contract) {
-    throw new Error(
-      "Better Auth frontend integration requires a connected backend authentication plugin.",
-    );
+    throw new Error("Better Auth frontend integration requires a selected backend identity.");
   }
   return contract;
 }
-
-function authClientContent(context: FrontendPluginContributionContext): string {
+function authClientContent(context: FrontendRenderContext): string {
   const config = authentication(context);
-  const apiBaseUrl =
-    context.framework.conventions.publicApiBaseUrlExpression ??
-    '(globalThis as typeof globalThis & { __NORDIX_API_BASE_URL__?: string }).__NORDIX_API_BASE_URL__ ?? ""';
+  const apiBaseUrl = 'process.env.NEXT_PUBLIC_API_BASE_URL ?? ""';
   const pluginImports: string[] = [];
   const pluginInits: string[] = [];
   if (config.methods.includes("username-password")) {
@@ -57,7 +47,6 @@ function authClientContent(context: FrontendPluginContributionContext): string {
     "}",
   ]);
 }
-
 function permissionsContent(config: FrontendAuthenticationContract): string {
   const grants = Object.fromEntries(
     Object.entries(config.rolePermissions).sort(([left], [right]) => left.localeCompare(right)),
@@ -91,7 +80,6 @@ function permissionsContent(config: FrontendAuthenticationContract): string {
     "}",
   ]);
 }
-
 function sessionViewContent(): string {
   return source([
     '"use client";',
@@ -116,7 +104,6 @@ function sessionViewContent(): string {
     "}",
   ]);
 }
-
 function sessionSyncContent(): string {
   return source([
     '"use client";',
@@ -135,7 +122,6 @@ function sessionSyncContent(): string {
     "}",
   ]);
 }
-
 function signOutButtonContent(): string {
   return source([
     '"use client";',
@@ -166,7 +152,6 @@ function signOutButtonContent(): string {
     "}",
   ]);
 }
-
 function authControlsContent(): string {
   return source([
     '"use client";',
@@ -188,7 +173,6 @@ function authControlsContent(): string {
     "}",
   ]);
 }
-
 function signInFormContent(config: FrontendAuthenticationContract): string {
   const username = config.methods.includes("username-password");
   const providers = config.identityProviders;
@@ -270,7 +254,6 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
     "}",
   ]);
 }
-
 function signUpFormContent(): string {
   return source([
     '"use client";',
@@ -319,7 +302,6 @@ function signUpFormContent(): string {
     "}",
   ]);
 }
-
 function signInPageContent(): string {
   return source([
     'import { SignInForm } from "@/components/auth/sign-in-form";',
@@ -342,7 +324,6 @@ function signInPageContent(): string {
     "}",
   ]);
 }
-
 function signUpPageContent(): string {
   return source([
     'import { SignUpForm } from "@/components/auth/sign-up-form";',
@@ -365,12 +346,11 @@ function signUpPageContent(): string {
     "}",
   ]);
 }
-
 function authReadme(config: FrontendAuthenticationContract): string {
   return source([
     "# Frontend authentication",
     "",
-    `This frontend uses the ${config.plugin} session from backend \`${config.backend}\`.`,
+    `This frontend uses the Better Auth session from backend \`${config.backend}\`.`,
     "",
     "- Sign-in, sign-out, and session refresh call the backend authentication HTTP API.",
     "- New accounts receive the backend's default role; role assignment is server-controlled.",
@@ -380,51 +360,30 @@ function authReadme(config: FrontendAuthenticationContract): string {
     "- `hasPermission` / `hasRole` are presentation helpers. Backend policies remain authoritative.",
   ]);
 }
-
-export const betterAuthFrontendPlugin: FrontendGeneratorPlugin = {
-  descriptor: {
-    id: "better-auth",
-    version: "1.0.0",
-    role: "authentication",
-    provides: [
-      "authentication:better-auth",
-      "authentication:session",
-      "authentication:permission-view",
-    ],
-    requires: [
-      {
-        capability: "framework:react",
-        description: "The Better Auth browser client currently generates React hooks.",
-      },
-    ],
-    dependencies: { "better-auth": "^1.7.7" },
-  },
-  contribute(context) {
-    const config = authentication(context);
-    const root = context.framework.codeRoot;
-    const files = [
-      { path: `${root}/lib/auth/client.ts`, content: authClientContent(context) },
-      { path: `${root}/lib/auth/permissions.ts`, content: permissionsContent(config) },
-      { path: `${root}/lib/auth/use-session-view.ts`, content: sessionViewContent() },
-      { path: `${root}/lib/auth/README.md`, content: authReadme(config) },
-      { path: `${root}/components/auth/sign-out-button.tsx`, content: signOutButtonContent() },
-      ...frontendRootShellFiles(context, "authentication"),
-    ];
-    if (context.availableCapabilities.has("client-state:zustand")) {
-      files.push({
-        path: `${root}/components/auth/session-view-sync.tsx`,
-        content: sessionSyncContent(),
-      });
-    }
-    if (context.frontend.authUI) {
-      files.push(
-        { path: `${root}/components/auth/auth-controls.tsx`, content: authControlsContent() },
-        { path: `${root}/components/auth/sign-in-form.tsx`, content: signInFormContent(config) },
-        { path: `${root}/components/auth/sign-up-form.tsx`, content: signUpFormContent() },
-        { path: `${root}/app/sign-in/page.tsx`, content: signInPageContent() },
-        { path: `${root}/app/sign-up/page.tsx`, content: signUpPageContent() },
-      );
-    }
-    return files;
-  },
-};
+export function generateFrontendAuthFiles(
+  context: FrontendRenderContext,
+): readonly GeneratedFile[] {
+  const config = authentication(context);
+  const root = context.framework.codeRoot;
+  const files = [
+    { path: `${root}/lib/auth/client.ts`, content: authClientContent(context) },
+    { path: `${root}/lib/auth/permissions.ts`, content: permissionsContent(config) },
+    { path: `${root}/lib/auth/use-session-view.ts`, content: sessionViewContent() },
+    { path: `${root}/lib/auth/README.md`, content: authReadme(config) },
+    { path: `${root}/components/auth/sign-out-button.tsx`, content: signOutButtonContent() },
+  ];
+  files.push({
+    path: `${root}/components/auth/session-view-sync.tsx`,
+    content: sessionSyncContent(),
+  });
+  if (context.api.authentication) {
+    files.push(
+      { path: `${root}/components/auth/auth-controls.tsx`, content: authControlsContent() },
+      { path: `${root}/components/auth/sign-in-form.tsx`, content: signInFormContent(config) },
+      { path: `${root}/components/auth/sign-up-form.tsx`, content: signUpFormContent() },
+      { path: `${root}/app/sign-in/page.tsx`, content: signInPageContent() },
+      { path: `${root}/app/sign-up/page.tsx`, content: signUpPageContent() },
+    );
+  }
+  return files;
+}

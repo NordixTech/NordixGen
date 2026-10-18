@@ -2,6 +2,7 @@ import { access, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/prom
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import {
   BACKEND_SCAFFOLD_OVERLAYS,
+  FRONTEND_SCAFFOLD_OVERLAYS,
   formatDiagnostic,
   generateBackend,
   generateFrontend,
@@ -97,12 +98,7 @@ export async function executeGeneration(
         (await exists(destination)) &&
         !(app.backend
           ? BACKEND_SCAFFOLD_OVERLAYS.some((path) => path === appRelative)
-          : [
-              "src/app/layout.tsx",
-              "src/app/page.tsx",
-              "src/app/globals.css",
-              "postcss.config.mjs",
-            ].includes(appRelative))
+          : FRONTEND_SCAFFOLD_OVERLAYS.some((path) => path === appRelative))
       )
         throw new Error(
           `Unexpected scaffold file collision at ${appRelative}. Fix the scaffold integration before overwriting this file.`,

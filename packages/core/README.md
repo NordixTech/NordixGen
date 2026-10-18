@@ -39,6 +39,6 @@ pnpm test
 pnpm generate:schema
 ```
 
-The editor schema comes from the authoritative Zod definitions; a test checks exact equality. Concrete renderer tests execute generated Hono handlers and compile generated application/client contracts. They do not establish database or browser acceptance. Temporary fixed renderer adapters read the resolved model: backend/plugin composition is scheduled for RF-07, frontend adapters for RF-08 and the old backend layout for RF-09. None is a supported alternative CLI generation pipeline.
+The editor schema comes from the authoritative Zod definitions; a test checks exact equality. Concrete renderer tests execute generated Hono handlers and compile generated application/client contracts. They do not establish database or browser acceptance. Backend and frontend generation use direct typed functions over resolved views. See [backend](../../docs/generation/DIRECT_BACKEND.md) and [frontend](../../docs/generation/DIRECT_FRONTEND.md) scope, ownership and verification; multiple-module Clean assembly remains the next integration.
 
 See the [contract](../../docs/configuration/YAML_V2.md) and [validation/evidence guide](../../docs/configuration/VALIDATION.md). Keep credentials in environment configuration, never YAML.

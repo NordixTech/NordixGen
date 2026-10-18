@@ -30,8 +30,6 @@ export * from "./generation/dependencies.js";
 export * from "./plugins/contracts.js";
 export * from "./plugins/frontend-contracts.js";
 export * from "./plugins/frontend-api-contract.js";
-export * from "./plugins/frontend-composer.js";
-export * from "./plugins/frontend-registry.js";
 
 export * from "./plugins/architecture/clean.js";
 export * from "./plugins/architecture/domain-files.js";
@@ -50,7 +48,6 @@ export * from "./plugins/frontends/server-state.js";
 export * from "./plugins/frontends/typed-api-client.js";
 export * from "./plugins/orms/drizzle.js";
 export * from "./plugins/orms/drizzle-files.js";
-export * from "./plugins/styling/plain-css.js";
 export * from "./plugins/styling/tailwind.js";
 export * from "./configuration/schema.js";
 export * from "./configuration/validate.js";

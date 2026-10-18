@@ -54,7 +54,7 @@ endpoints:
   return generateBackend(resolvedFixture(parsed.config), "api");
 }
 
-describe("Better Auth plugin composition", () => {
+describe("backend Better Auth generation", () => {
   it("generates the default credential flow and protects declared business routes", () => {
     const result = compose();
     expect(result.success).toBe(true);
@@ -140,7 +140,7 @@ describe("Better Auth plugin composition", () => {
       );
   });
 
-  it("rejects unsupported PIN authentication before plugin composition", () => {
+  it("rejects unsupported PIN authentication before generation", () => {
     const parsed = parseNordixYaml(`
 name: pin-test
 version: 1.0.0
