@@ -6,6 +6,27 @@ import { targetConfig } from "./fixtures.js";
 describe("backend identity policies and frontend access validation", () => {
   const cases: [string, (c: NordixConfig) => void, string][] = [
     [
+      "undeclared administrator role",
+      (c) => {
+        c.backends[0].authorization.adminRole = "missing-admin";
+      },
+      "ADMIN_ROLE_UNKNOWN",
+    ],
+    [
+      "administrator role cannot be configured with grants",
+      (c) => {
+        c.backends[0].authorization.rolePermissions.admin = ["customers:read"];
+      },
+      "ADMIN_ROLE_PERMISSIONS_RESERVED",
+    ],
+    [
+      "administrator and default role must differ",
+      (c) => {
+        c.backends[0].authorization.defaultRole = "admin";
+      },
+      "DEFAULT_ROLE_PRIVILEGED",
+    ],
+    [
       "public operation with grants",
       (c) => {
         c.endpoints[1].authRequired = false;

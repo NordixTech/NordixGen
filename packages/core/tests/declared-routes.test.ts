@@ -29,7 +29,8 @@ backends:
     persistence: { database: primary }
     authentication: { methods: [email-password] }
     authorization:
-      roles: [editor, viewer, outsider]
+      roles: [admin, editor, viewer, outsider]
+      adminRole: admin
       defaultRole: viewer
       rolePermissions:
         editor: ${withEndpoints ? "[sample-items:create]" : "[]"}

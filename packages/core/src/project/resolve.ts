@@ -80,6 +80,7 @@ function resolveValidated(
                   backend: backend.name,
                   ...backend.authentication,
                   roles: policy.roles,
+                  adminRole: policy.adminRole as string,
                   defaultRole: policy.defaultRole as string,
                   rolePermissions: sortedRecord(Object.entries(policy.rolePermissions)),
                 },

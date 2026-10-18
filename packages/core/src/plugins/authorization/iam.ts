@@ -11,6 +11,7 @@ export function generateIamFiles(context: BackendRenderContext): readonly Genera
 import {sql} from "drizzle-orm";
 import type {DrizzleDatabase} from "../database/drizzle-database.js";
 const defaultRole=${JSON.stringify(context.identity?.defaultRole)};
+const adminRole=${JSON.stringify(context.identity?.adminRole)};
 export interface Role {id:string;name:string;description:string|null;isSystem:boolean;permissions:string[];}
 export interface IamUser {id:string;name:string;email:string;role:string;}
 export function createIamRepository(db:DrizzleDatabase){
@@ -20,7 +21,7 @@ export function createIamRepository(db:DrizzleDatabase){
    FROM auth_user u JOIN auth_roles r ON r.id=u.role LEFT JOIN auth_role_permissions p ON p.role_id=r.id WHERE u.id=\${id} GROUP BY u.id,u.role\`);
   return result.rows[0] as unknown as {id:string;role:string;permissions:string[]}|undefined;
  },
- async roles():Promise<Role[]>{const result=await db.execute(sql\`SELECT r.id,r.name,r.description,(r.is_system OR r.id IN ('admin',\${defaultRole})) AS "isSystem",COALESCE(json_agg(p.permission ORDER BY p.permission) FILTER (WHERE p.permission IS NOT NULL),'[]') AS permissions FROM auth_roles r LEFT JOIN auth_role_permissions p ON p.role_id=r.id GROUP BY r.id ORDER BY r.id\`);return result.rows as unknown as Role[];},
+ async roles():Promise<Role[]>{const result=await db.execute(sql\`SELECT r.id,r.name,r.description,(r.is_system OR r.id IN (\${adminRole},\${defaultRole})) AS "isSystem",COALESCE(json_agg(p.permission ORDER BY p.permission) FILTER (WHERE p.permission IS NOT NULL),'[]') AS permissions FROM auth_roles r LEFT JOIN auth_role_permissions p ON p.role_id=r.id GROUP BY r.id ORDER BY r.id\`);return result.rows as unknown as Role[];},
  async users(limit:number,offset:number):Promise<{items:IamUser[];total:number}>{
   const result=await db.execute(sql\`SELECT id,name,email,role FROM auth_user ORDER BY id LIMIT \${limit} OFFSET \${offset}\`);
   const count=await db.execute(sql\`SELECT count(*)::int AS total FROM auth_user\`);
@@ -32,10 +33,10 @@ export function createIamRepository(db:DrizzleDatabase){
    audit AS (INSERT INTO auth_iam_audit(actor_id,action,target_id,after) SELECT \${actor},'role.created',id,\${JSON.stringify(role)}::jsonb FROM inserted RETURNING id)
    SELECT id FROM inserted\`);return result.rows.length>0;
  },
- async change(change:AccessChange){return changeAccess(db,change,defaultRole);},
+ async change(change:AccessChange){return changeAccess(db,change,defaultRole,adminRole);},
  async audit(){const result=await db.execute(sql\`SELECT id,actor_id AS "actorId",action,target_id AS "targetId",before,after,created_at AS "createdAt" FROM auth_iam_audit ORDER BY created_at DESC,id DESC LIMIT 50\`);return result.rows;},
  async delete(id:string,actor:string):Promise<boolean>{
-  const result=await db.execute(sql\`WITH removed AS (DELETE FROM auth_roles WHERE id=\${id} AND id NOT IN ('admin',\${defaultRole}) AND is_system=false AND NOT EXISTS(SELECT 1 FROM auth_user WHERE role=\${id}) RETURNING id,name,description), audit AS (INSERT INTO auth_iam_audit(actor_id,action,target_id,before) SELECT \${actor},'role.deleted',id,to_jsonb(removed) FROM removed RETURNING id) SELECT id FROM removed\`);return result.rows.length>0;
+  const result=await db.execute(sql\`WITH removed AS (DELETE FROM auth_roles WHERE id=\${id} AND id NOT IN (\${adminRole},\${defaultRole}) AND is_system=false AND NOT EXISTS(SELECT 1 FROM auth_user WHERE role=\${id}) RETURNING id,name,description), audit AS (INSERT INTO auth_iam_audit(actor_id,action,target_id,before) SELECT \${actor},'role.deleted',id,to_jsonb(removed) FROM removed RETURNING id) SELECT id FROM removed\`);return result.rows.length>0;
  },
 
  };
@@ -52,6 +53,7 @@ import type {IamRepository} from "./repository.js";
 import {problemResponse} from "../http/problem-details.js";
 import {isTrustedAuthOrigin,type AuthEnvironment} from "../auth/auth.js";
 const defaultRole=${JSON.stringify(context.identity?.defaultRole)};
+const adminRole=${JSON.stringify(context.identity?.adminRole)};
 const slug=z.string().regex(/^[a-z][a-z0-9-]*$/).max(100);
 const grants=z.array(z.string()).max(500).refine(values=>new Set(values).size===values.length&&values.every(value=>value==="*"||permissions.includes(value as (typeof permissions)[number])),"Unknown or duplicate permission.");
 const body=z.object({name:z.string().trim().min(1).max(200),description:z.string().max(2000).nullable().optional(),permissions:grants}).strict();
@@ -93,7 +95,7 @@ export function createIamRoutes(repository:IamRepository,verify:(headers:Headers
  };
  const safeGrants=(id:string,values:string[])=>{
   if(id===defaultRole&&values.some(value=>value==="*"||value==="iam:roles:manage"||value==="iam:users:manage-roles"))return false;
-  if(id==="admin"&&!values.includes("*")&&!(values.includes("iam:roles:manage")&&values.includes("iam:users:manage-roles")))return false;
+  if(id===adminRole&&!values.includes("*"))return false;
   return true;
  };
  app.post("/roles",async c=>{
@@ -109,7 +111,7 @@ export function createIamRoutes(repository:IamRepository,verify:(headers:Headers
   const existing=(await repository.roles()).find(role=>role.id===id);
   if(!existing)return problemResponse(c,404,"Not Found","Role does not exist.");
   const update={name:existing.name,description:existing.description,permissions:existing.permissions,...parsed.data};
-  if(!safeGrants(id,update.permissions)||(id!=="admin"&&update.permissions.includes("*")&&!existing.permissions.includes("*")))return problemResponse(c,400,"Validation Failed","Invalid permissions or protected system role.");
+  if(!safeGrants(id,update.permissions)||(id!==adminRole&&update.permissions.includes("*")&&!existing.permissions.includes("*")))return problemResponse(c,400,"Validation Failed","Invalid permissions or protected system role.");
   return changeResponse(c,await repository.change({kind:"role",id,actor:c.get("principal").id,...parsed.data}));
  });
  app.delete("/roles/:id",async c=>{

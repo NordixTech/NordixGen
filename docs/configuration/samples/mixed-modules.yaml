@@ -29,9 +29,9 @@ backends:
       methods: [email-password]
     authorization:
       roles: [admin, viewer, accountant]
+      adminRole: admin
       defaultRole: viewer
       rolePermissions:
-        admin: ["*", customers:read, invoices:read]
         viewer: [customers:read]
         accountant: [invoices:read]
 frontends:

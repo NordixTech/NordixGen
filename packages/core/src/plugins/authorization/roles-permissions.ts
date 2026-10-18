@@ -7,11 +7,11 @@ export function generateAuthorizationFiles(
   const identity = context.identity;
   if (!identity) throw new Error("A resolved identity is required for authorization.");
   const root = `${context.platformRoot}/authorization`;
-  const seeds = [...new Set(["admin", ...identity.roles])].sort().map((id) => ({
+  const seeds = [...new Set([identity.adminRole, ...identity.roles])].sort().map((id) => ({
     id,
-    name: id === "admin" ? "Administrator" : id,
-    isSystem: id === "admin" || id === identity.defaultRole,
-    permissions: id === "admin" ? ["*"] : [...(identity.rolePermissions[id] ?? [])],
+    name: id === identity.adminRole ? "Administrator" : id,
+    isSystem: id === identity.adminRole || id === identity.defaultRole,
+    permissions: id === identity.adminRole ? ["*"] : [...(identity.rolePermissions[id] ?? [])],
   }));
   return [
     {
@@ -50,7 +50,7 @@ export const authRolePermissions=pgTable("auth_role_permissions",{
       content: `import {sql} from "drizzle-orm";
 import type {DrizzleDatabase} from "../database/drizzle-database.js";
 const initialRoles=${JSON.stringify(seeds)};
-/** Atomic per role: existing roles and grants are never reconciled with YAML. */
+/** Atomic per role; existing role metadata/grants stay intact, except the admin wildcard invariant. */
 export async function seedAuthorization(db:DrizzleDatabase):Promise<void> {
  for(const role of initialRoles){
   await db.execute(sql\`WITH inserted AS (
@@ -60,6 +60,9 @@ export async function seedAuthorization(db:DrizzleDatabase):Promise<void> {
     SELECT inserted.id,g.value FROM inserted CROSS JOIN jsonb_array_elements_text(\${JSON.stringify(role.permissions)}::jsonb) AS g(value)
     ON CONFLICT (role_id,permission) DO NOTHING\`);
  }
+ // The configured administrator's wildcard is a system invariant, even when its ID
+ // already existed as an ordinary role before it was selected in YAML.
+ await db.execute(sql\`INSERT INTO auth_role_permissions (role_id,permission) VALUES (\${${JSON.stringify(identity.adminRole)}},'*') ON CONFLICT (role_id,permission) DO NOTHING\`);
  const unsafe=await db.execute(sql\`SELECT permission FROM auth_role_permissions WHERE role_id=\${${JSON.stringify(identity.defaultRole)}} AND permission IN ('*','iam:roles:manage','iam:users:manage-roles')\`);
  if(unsafe.rows.length)throw new Error("The configured signup default role has IAM privileges. Choose a least-privilege default before starting the application.");
 }
@@ -77,7 +80,7 @@ export async function createAdmin(email:string):Promise<void>{
  if(!email?.trim()||!process.env.DATABASE_URL)throw new Error("Provide an existing user email and DATABASE_URL.");
  const db=createDrizzleDatabase(process.env.DATABASE_URL);
  await seedAuthorization(db);
- const result=await db.execute(sql\`UPDATE auth_user SET role='admin',updated_at=now() WHERE email=\${email} RETURNING id\`);
+ const result=await db.execute(sql\`UPDATE auth_user SET role=\${${JSON.stringify(identity.adminRole)}},updated_at=now() WHERE email=\${email} RETURNING id\`);
  if(result.rows.length!==1)throw new Error("User not found. Register the account before promoting it.");
  console.log("Administrator role assigned.");
 }

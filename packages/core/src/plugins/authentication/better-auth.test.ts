@@ -30,9 +30,9 @@ backends:
       features: [${features.join(", ")}]
     authorization:
       roles: [admin, customer]
+      adminRole: admin
       defaultRole: customer
       rolePermissions:
-        admin: ["*"]
         customer: [orders:read]
 databases:
   primary: {}

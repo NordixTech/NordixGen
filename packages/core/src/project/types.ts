@@ -220,6 +220,7 @@ export interface ResolvedIdentity {
   readonly identityProviders: readonly string[];
   readonly features: readonly string[];
   readonly roles: readonly string[];
+  readonly adminRole: string;
   readonly defaultRole: string;
   readonly rolePermissions: Readonly<Record<string, readonly string[]>>;
 }

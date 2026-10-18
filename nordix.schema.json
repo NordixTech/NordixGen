@@ -229,6 +229,10 @@
                   "pattern": "^[a-z][a-z0-9-]*$"
                 }
               },
+              "adminRole": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
               "defaultRole": {
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]*$"
@@ -250,6 +254,7 @@
             },
             "required": [
               "roles",
+              "adminRole",
               "defaultRole"
             ],
             "additionalProperties": false

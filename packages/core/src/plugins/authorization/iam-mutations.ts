@@ -3,7 +3,7 @@ export const iamMutations = `import {sql} from "drizzle-orm";
 import type {DrizzleDatabase} from "../database/drizzle-database.js";
 export interface AccessChange {kind:"role"|"user";id:string;actor:string;confirmation?:string;role?:string;name?:string;description?:string|null;permissions?:string[];}
 export interface AccessResult {code:"ok"|"not_found"|"forbidden"|"protected"|"last_admin"|"confirmation_required";token:string;selfLoss:string[];lost:string[];affected:number;}
-export async function changeAccess(db:DrizzleDatabase,change:AccessChange,defaultRole:string):Promise<AccessResult>{
+export async function changeAccess(db:DrizzleDatabase,change:AccessChange,defaultRole:string,adminRole:string):Promise<AccessResult>{
  const input=JSON.stringify(change);
  const state=sql\`current_setting('nordix.iam_change')::jsonb\`;
  const ok=sql\`(\${state}->>'code')='ok'\`;
@@ -28,7 +28,7 @@ export async function changeAccess(db:DrizzleDatabase,change:AccessChange,defaul
    decision AS (SELECT jsonb_build_object('code',CASE
     WHEN id IS NULL OR (v->>'kind'='user' AND NOT EXISTS(SELECT 1 FROM roles WHERE roles.id=v->>'role')) THEN 'not_found'
     WHEN NOT COALESCE(authorized,false) THEN 'forbidden'
-    WHEN v->>'kind'='role' AND ((id=\${defaultRole} AND next && ARRAY['*','iam:roles:manage','iam:users:manage-roles']::text[]) OR (id='admin' AND NOT ('*'=ANY(next) OR ARRAY['iam:roles:manage','iam:users:manage-roles']::text[] <@ next)) OR ('*'=ANY(next) AND NOT '*'=ANY(grants))) THEN 'protected'
+    WHEN v->>'kind'='role' AND ((id=\${defaultRole} AND next && ARRAY['*','iam:roles:manage','iam:users:manage-roles']::text[]) OR (id=\${adminRole} AND NOT '*'=ANY(next)) OR ('*'=ANY(next) AND NOT '*'=ANY(grants))) THEN 'protected'
     WHEN NOT has_admin THEN 'last_admin'
     WHEN cardinality(lost)>0 AND affected>0 AND (v->>'confirmation') IS DISTINCT FROM token THEN 'confirmation_required'
     ELSE 'ok' END,'token',token,'selfLoss',self_loss,'lost',COALESCE(lost,ARRAY[]::text[]),'affected',COALESCE(affected,0),

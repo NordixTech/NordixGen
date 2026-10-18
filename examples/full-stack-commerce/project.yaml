@@ -27,9 +27,9 @@ backends:
     authentication: {}
     authorization:
       roles: [admin, viewer, accountant, outsider]
+      adminRole: admin
       defaultRole: viewer
       rolePermissions:
-        admin: [customers:read, customers:write, invoices:read, invoices:write]
         viewer: [customers:read, invoices:read]
         accountant: [invoices:read, invoices:write]
         outsider: []

@@ -25,9 +25,9 @@ backends:
     authentication: {}
     authorization:
       roles: [admin, viewer]
+      adminRole: admin
       defaultRole: viewer
       rolePermissions:
-        admin: ["*", customers:write, customers:read, invoices:read]
         viewer: [customers:read, invoices:read]
 frontends:
   - name: web

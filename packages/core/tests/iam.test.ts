@@ -140,6 +140,36 @@ describe("generated dynamic IAM", () => {
       'hasPermission("iam:roles:manage")||hasPermission("iam:users:manage-roles")',
     );
   });
+  it("uses the configured administrator role throughout seed, CLI, and IAM protections", () => {
+    const config = targetConfig();
+    Object.assign(config.backends[0].authorization, {
+      roles: ["root-chief", "viewer"],
+      adminRole: "root-chief",
+      defaultRole: "viewer",
+      rolePermissions: { viewer: ["customers:read"] },
+    });
+    const project = resolvedFixture(config);
+    const generated = generateBackend(project, "api");
+    expect(generated.success).toBe(true);
+    if (!generated.success) return;
+    const files = generated.virtualFileSystem.snapshot();
+    const seed = files[`${root}/platform/authorization/seed.ts`];
+    const provisioning = files[`${root}/platform/authorization/create-admin.ts`];
+    const repository = files[`${root}/platform/authorization/repository.ts`];
+    const routes = files[`${root}/platform/authorization/routes.ts`];
+    const mutations = files[`${root}/platform/authorization/mutations.ts`];
+    expect(seed).toContain(
+      '{"id":"root-chief","name":"Administrator","isSystem":true,"permissions":["*"]}',
+    );
+    expect(seed).toContain('VALUES (${"root-chief"},');
+    expect(seed).toContain("ON CONFLICT (role_id,permission) DO NOTHING");
+    expect(seed).not.toContain('"root-chief":["*"]');
+    expect(provisioning).toContain('role=${"root-chief"}');
+    expect(repository).toContain('const adminRole="root-chief";');
+    expect(repository).toContain("id NOT IN (${adminRole},${defaultRole})");
+    expect(routes).toContain('if(id===adminRole&&!values.includes("*"))return false;');
+    expect(mutations).toContain("id=${adminRole} AND NOT '*'=ANY(next)");
+  });
   it("creates roles, rejects unknown grants, updates metadata/grants and protects defaults and admin", async () => {
     const f = fixture();
     expect(

@@ -58,7 +58,6 @@ export function persistenceFixture(auth = true) {
     softDelete: "timestamp",
   };
   config.backends[0].modules.billing.entities.push("InvoiceLine");
-  config.backends[0].authorization.rolePermissions.admin.push("invoices:write");
   const list = config.endpoints.find((operation) => operation.operationId === "listInvoices");
   if (!list) throw Error("Missing invoice query");
   list.queryParams = [

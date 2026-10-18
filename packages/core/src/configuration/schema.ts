@@ -103,6 +103,7 @@ export const AuthenticationSchema = z
 export const AuthorizationSchema = z
   .object({
     roles: unique(SlugSchema).refine((v) => v.length > 0, "Declare at least one role."),
+    adminRole: SlugSchema,
     defaultRole: SlugSchema,
     rolePermissions: z.record(SlugSchema, unique(PermissionSchema)).default({}),
   })
@@ -268,7 +269,8 @@ export type NordixConfig = z.infer<typeof NordixConfigSchema>;
 export function effectiveAuthorization(backend: BackendDefinition) {
   return (
     backend.authorization ?? {
-      roles: backend.authentication ? ["user"] : [],
+      roles: backend.authentication ? ["admin", "user"] : [],
+      adminRole: backend.authentication ? "admin" : undefined,
       defaultRole: backend.authentication ? "user" : undefined,
       rolePermissions: {} as Record<string, string[]>,
     }

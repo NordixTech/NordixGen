@@ -28,7 +28,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
       const policy = backend.authorization;
       const known = new Set(backendPermissions(config, backend.name));
       if (
-        policy.defaultRole === "admin" ||
+        policy.defaultRole === policy.adminRole ||
         (policy.rolePermissions[policy.defaultRole] ?? []).some(
           (permission) =>
             permission === "*" || IAM_PERMISSIONS.some((system) => system === permission),
@@ -37,7 +37,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
         add(
           "DEFAULT_ROLE_PRIVILEGED",
           `${path}.authorization.defaultRole`,
-          "The signup default role must not be admin or grant IAM administration capabilities.",
+          "The signup default role must differ from the configured administrator role and must not grant IAM administration capabilities.",
         );
       for (const [role, grants] of Object.entries(policy.rolePermissions))
         for (const permission of grants)
@@ -52,6 +52,18 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
           "DEFAULT_ROLE_UNKNOWN",
           `${path}.authorization.defaultRole`,
           `Default role "${policy.defaultRole}" must occur in roles. Choose a declared least-privilege role.`,
+        );
+      if (!policy.roles.includes(policy.adminRole))
+        add(
+          "ADMIN_ROLE_UNKNOWN",
+          `${path}.authorization.adminRole`,
+          `Administrator role "${policy.adminRole}" must occur in roles.`,
+        );
+      if (Object.hasOwn(policy.rolePermissions, policy.adminRole))
+        add(
+          "ADMIN_ROLE_PERMISSIONS_RESERVED",
+          `${path}.authorization.rolePermissions.${policy.adminRole}`,
+          "The administrator role receives all permissions automatically; omit it from rolePermissions.",
         );
       for (const [role, grants] of Object.entries(policy.rolePermissions)) {
         if (!policy.roles.includes(role))

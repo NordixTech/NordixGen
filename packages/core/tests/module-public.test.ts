@@ -60,7 +60,6 @@ function fixture() {
   Object.assign(config.backends[0].authorization, {
     roles: ["admin", "viewer", "auditor", "accountant"],
     rolePermissions: {
-      admin: ["*", "customers:write"],
       viewer: ["customers:read", "invoices:read"],
       auditor: ["customers:read"],
       accountant: ["invoices:read"],
@@ -104,7 +103,10 @@ function fixture() {
       ? {
           id: "server-user",
           role,
-          permissions: config.backends[0].authorization.rolePermissions[role] ?? [],
+          permissions:
+            role === config.backends[0].authorization.adminRole
+              ? ["*"]
+              : (config.backends[0].authorization.rolePermissions[role] ?? []),
         }
       : null;
   });
