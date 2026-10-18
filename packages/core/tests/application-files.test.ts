@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanArchitecturePlugin } from "../src/plugins/architecture/clean.js";
-import { betterAuthPlugin } from "../src/plugins/authentication/better-auth.js";
-import { rbacPbacPlugin } from "../src/plugins/authorization/rbac-pbac.js";
-import { composeBackendPlugins } from "../src/plugins/composer.js";
-import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
-import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
-import { PluginRegistry } from "../src/plugins/registry.js";
+import { generateBackend } from "../src/generation/backend.js";
 import { createSecuredConfig, resolvedFixture } from "./fixtures.js";
 import { generatedTypeErrors } from "./generated-types.js";
 
@@ -61,16 +55,7 @@ function composeFixture() {
     },
   );
   const project = resolvedFixture(config);
-  const registry = new PluginRegistry();
-  for (const plugin of [
-    cleanArchitecturePlugin,
-    honoFrameworkPlugin,
-    drizzleOrmPlugin,
-    betterAuthPlugin,
-    rbacPbacPlugin,
-  ])
-    registry.register(plugin);
-  const result = composeBackendPlugins(project, "core-api", registry);
+  const result = generateBackend(project, "core-api");
   if (!result.success) throw new Error(JSON.stringify(result.diagnostics));
   return { project, ...result };
 }

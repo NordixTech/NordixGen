@@ -39,7 +39,7 @@ afterEach(async () => {
 
 describe("canonical configuration initialization and command preflight", () => {
   it.each([
-    ["clean", "MODULE_GENERATION_UNAVAILABLE"],
+    ["multiple", "MODULE_GENERATION_UNAVAILABLE"],
     ["hexagonal", "MODULE_ARCHITECTURE_UNIMPLEMENTED"],
     ["onion", "MODULE_ARCHITECTURE_UNIMPLEMENTED"],
     ["cycle", "RELATION_CYCLE"],
@@ -49,7 +49,15 @@ describe("canonical configuration initialization and command preflight", () => {
     async (kind, code) => {
       const parsed = parseNordixYaml(createStarterConfiguration("client-app", false));
       if (!parsed.success) throw new Error("Invalid initialization fixture");
-      if (kind === "cycle" || kind === "association")
+      if (kind === "multiple") {
+        parsed.config.entities.Second = { ...structuredClone(parsed.config.entities.Example) };
+        parsed.config.backends[0].modules.second = {
+          architecture: "clean",
+          entities: ["Second"],
+          exports: [],
+          imports: {},
+        };
+      } else if (kind === "cycle" || kind === "association")
         parsed.config.entities.Example.relations.related = {
           type: kind === "cycle" ? "many-to-one" : "many-to-many",
           target: "Example",
@@ -143,19 +151,24 @@ describe("canonical configuration initialization and command preflight", () => {
     await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("blocks unintegrated modular generation without invoking the old global renderer", async () => {
+  it("generates a supported backend through the injected runner and preserves the config", async () => {
     const directory = await temporary();
     const file = join(directory, "valid.yaml");
     const output = join(directory, "output");
     const source = createStarterConfiguration("client-app", true);
     await writeFile(file, source);
-    const runner = vi.fn();
-    await expect(runGenerate(file, output, runner)).rejects.toThrow(
-      /MODULE_GENERATION_UNAVAILABLE.*no files or external commands/i,
+    const runner = vi.fn(async () => "");
+    await runGenerate(file, output, runner);
+    expect(runner.mock.calls.some((call) => call[0] === "pnpm")).toBe(true);
+    expect(await readFile(join(output, "apps/api/src/index.ts"), "utf8")).toContain("new Hono");
+    expect(await readFile(join(output, "apps/web/src/app/providers.tsx"), "utf8")).toContain(
+      "QueryClientProvider",
     );
-    expect(runner).not.toHaveBeenCalled();
-    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
+    const pkg = JSON.parse(await readFile(join(output, "apps/api/package.json"), "utf8"));
+    expect(pkg.dependencies).toHaveProperty("hono");
+    expect(pkg.devDependencies).toHaveProperty("typescript");
     expect(await readFile(file, "utf8")).toBe(source);
+    await expect(runGenerate(file, output, runner)).rejects.toThrow(/new or empty/);
   });
 
   it("presents invalid configuration paths/corrections and nonzero command status", async () => {
@@ -188,13 +201,11 @@ describe("canonical configuration initialization and command preflight", () => {
     await expect(access(join(directory, "out"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("distinguishes structurally valid configuration from unavailable generation in validate", async () => {
+  it("accepts implemented single Clean generation in validate", async () => {
     const directory = await temporary();
     const file = join(directory, "valid.yaml");
     await writeFile(file, createStarterConfiguration("client-app", false));
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     await createProgram().parseAsync(["node", "nordixgen", "validate", "-f", file]);
-    expect(process.exitCode).toBe(1);
-    expect(error.mock.calls.flat().join("\n")).toContain("MODULE_GENERATION_UNAVAILABLE");
+    expect(process.exitCode).toBeUndefined();
   });
 });

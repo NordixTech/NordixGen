@@ -12,25 +12,31 @@ export function resolveGenerationReadiness(
   entities: Readonly<Record<string, ResolvedEntity>>,
 ) {
   return [
-    ...modules.map((module) => ({
-      ...createDiagnostic(
-        MODULE_GENERATION_SUPPORT[module.architecture] === "pending-integration"
-          ? "MODULE_GENERATION_UNAVAILABLE"
-          : "MODULE_ARCHITECTURE_UNIMPLEMENTED",
-        MODULE_GENERATION_SUPPORT[module.architecture] === "pending-integration"
-          ? module.origin.path
-          : `${module.origin.path}.architecture`,
-        MODULE_GENERATION_SUPPORT[module.architecture] === "pending-integration"
-          ? "YAML v2 is resolved, but direct generation and Clean modules are not integrated. Complete that integration before generating; no files or external commands have been started."
-          : `Architecture '${module.architecture}' is recognized, but its generator is not implemented. Select an implemented family once modular integration is available; no fallback is performed.`,
-      ),
-      ...((module.architecture === "clean" ? module.origin : module.architectureOrigin).source
-        ? {
-            source: (module.architecture === "clean" ? module.origin : module.architectureOrigin)
-              .source,
-          }
-        : {}),
-    })),
+    ...modules
+      .filter(
+        (module) =>
+          module.architecture !== "clean" ||
+          modules.filter((other) => other.backend === module.backend).length > 1,
+      )
+      .map((module) => ({
+        ...createDiagnostic(
+          MODULE_GENERATION_SUPPORT[module.architecture] === "pending-integration"
+            ? "MODULE_GENERATION_UNAVAILABLE"
+            : "MODULE_ARCHITECTURE_UNIMPLEMENTED",
+          MODULE_GENERATION_SUPPORT[module.architecture] === "pending-integration"
+            ? module.origin.path
+            : `${module.origin.path}.architecture`,
+          MODULE_GENERATION_SUPPORT[module.architecture] === "pending-integration"
+            ? "Multiple Clean modules require the modular composition integration. Use a single Clean module until that integration is available; no files or external commands have been started."
+            : `Architecture '${module.architecture}' is recognized, but its generator is not implemented. Select an implemented family once modular integration is available; no fallback is performed.`,
+        ),
+        ...((module.architecture === "clean" ? module.origin : module.architectureOrigin).source
+          ? {
+              source: (module.architecture === "clean" ? module.origin : module.architectureOrigin)
+                .source,
+            }
+          : {}),
+      })),
     ...Object.values(entities).flatMap((entity) =>
       Object.values(entity.relations)
         .filter((relation) => relation.type === "many-to-many")

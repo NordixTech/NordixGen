@@ -1,29 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { NordixConfigSchema } from "../src/configuration/schema.js";
-import {
-  cleanArchitecturePlugin,
-  resolveCleanArchitectureLayout,
-} from "../src/plugins/architecture/clean.js";
+import { generateBackend } from "../src/generation/backend.js";
+import { resolveCleanArchitectureLayout } from "../src/plugins/architecture/clean.js";
 import { generateDomainFiles } from "../src/plugins/architecture/domain-files.js";
-import { composeBackendPlugins } from "../src/plugins/composer.js";
-import type { DomainModelContext, PluginContributionContext } from "../src/plugins/contracts.js";
-import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
-import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
-import { PluginRegistry } from "../src/plugins/registry.js";
+import type { BackendRenderContext, DomainModelContext } from "../src/plugins/contracts.js";
+import { backendPaths } from "../src/plugins/frameworks/hono.js";
 import { backendView } from "../src/project/views.js";
 import { resolvedFixture } from "./fixtures.js";
 import { createValidConfig } from "./fixtures.js";
 
 function composeFixture(config = createValidConfig()) {
-  const registry = new PluginRegistry();
-  registry.register(honoFrameworkPlugin);
-  registry.register(cleanArchitecturePlugin);
-  registry.register(drizzleOrmPlugin);
-  return composeBackendPlugins(
-    resolvedFixture(NordixConfigSchema.parse(config)),
-    "core-api",
-    registry,
-  );
+  return generateBackend(resolvedFixture(NordixConfigSchema.parse(config)), "core-api");
 }
 
 describe("Clean Architecture domain artifacts", () => {
@@ -87,8 +74,7 @@ describe("Clean Architecture domain artifacts", () => {
     const { framework, architecture, domainModel } = createContributionContext(
       backendView(resolvedFixture(NordixConfigSchema.parse(createValidConfig())), "core-api"),
     );
-    const colocatedContext: PluginContributionContext = {
-      selection: { pluginId: "clean" },
+    const colocatedContext: BackendRenderContext = {
       framework,
       architecture: {
         ...architecture,
@@ -97,7 +83,7 @@ describe("Clean Architecture domain artifacts", () => {
           outboundPort: architecture.directories.domainEntity,
         },
       },
-      availableCapabilities: new Set(),
+      projectName: "test",
       domainModel,
     };
     const files = generateDomainFiles(colocatedContext);
@@ -112,11 +98,10 @@ describe("Clean Architecture domain artifacts", () => {
       entities: {},
       endpoints: [],
     });
-    const context: PluginContributionContext = {
-      selection: { pluginId: "clean" },
+    const context: BackendRenderContext = {
       framework,
       architecture,
-      availableCapabilities: new Set(),
+      projectName: "test",
       domainModel: { enums: {}, entities: {}, endpoints: [] },
     };
     expect(generateDomainFiles(context)).toEqual([]);
@@ -124,15 +109,11 @@ describe("Clean Architecture domain artifacts", () => {
 });
 
 function createContributionContext(domainModel: DomainModelContext) {
-  const selection = {
-    pluginId: "hono",
-    configuration: { applicationRoot: "apps/api-core" },
-  };
-  const framework = honoFrameworkPlugin.createFrameworkContext?.(selection);
-  if (!framework) throw new Error("Hono framework context is unavailable.");
+  const framework = backendPaths("apps/api-core");
   return {
     framework,
     architecture: resolveCleanArchitectureLayout(framework),
     domainModel,
+    projectName: "test",
   };
 }

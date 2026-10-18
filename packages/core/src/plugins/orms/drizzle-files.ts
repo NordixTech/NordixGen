@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import type { RelationDefinition } from "../../configuration/schema.js";
 import type { ResolvedField } from "../../project/types.js";
-import type { DomainModelContext, GeneratedFile, PluginContributionContext } from "../contracts.js";
+import type { BackendRenderContext, DomainModelContext, GeneratedFile } from "../contracts.js";
 
 function importPath(fromFile: string, targetFile: string): string {
   const path = posix.relative(posix.dirname(fromFile), targetFile.replace(/\.ts$/, ".js"));
@@ -75,12 +75,7 @@ function drizzleColumnBuilder(fieldName: string, field: ResolvedField): string {
       }
     } else if (field.type === "boolean" || field.type === "number") {
       builder += `.default(${JSON.stringify(field.default)})`;
-    } else if (
-      field.type === "string" ||
-      field.type === "enum" ||
-      field.type === "uuid" ||
-      field.type === "json"
-    ) {
+    } else {
       builder += `.default(${JSON.stringify(field.default)})`;
     }
   }
@@ -89,11 +84,10 @@ function drizzleColumnBuilder(fieldName: string, field: ResolvedField): string {
 }
 
 export function generateDrizzleSchemaFiles(
-  context: PluginContributionContext,
-  persistence: NonNullable<PluginContributionContext["persistence"]>,
+  context: BackendRenderContext,
+  persistence: NonNullable<BackendRenderContext["persistence"]>,
 ): readonly GeneratedFile[] {
   const model = context.domainModel;
-  if (!model) return [];
 
   const schemaDirectory = posix.join(persistence.directories.infrastructure, "database/schema");
   const schemaIndexPath = posix.join(schemaDirectory, "index.ts");
@@ -195,9 +189,7 @@ export function generateDrizzleSchemaFiles(
     ...(enumDeclarations.length > 0 ? [...enumDeclarations, ""] : []),
     ...tableDefinitions.flatMap((t) => [t, ""]),
     ...(relationDefinitions.length > 0 ? [...relationDefinitions, ""] : []),
-    ...(context.availableCapabilities.has("authentication:better-auth")
-      ? ['export * from "./auth-schema";', ""]
-      : []),
+    ...(context.identity ? ['export * from "./auth-schema.js";', ""] : []),
   ].join("\n");
 
   files.push({
@@ -209,11 +201,10 @@ export function generateDrizzleSchemaFiles(
 }
 
 export function generateDrizzleAdapterFiles(
-  context: PluginContributionContext,
-  persistence: NonNullable<PluginContributionContext["persistence"]>,
+  context: BackendRenderContext,
+  persistence: NonNullable<BackendRenderContext["persistence"]>,
 ): readonly GeneratedFile[] {
   const model = context.domainModel;
-  if (!model) return [];
 
   const adapterDirectory = persistence.directories.adapter;
   const schemaDirectory = posix.join(persistence.directories.infrastructure, "database/schema");
@@ -628,7 +619,6 @@ export function generateDrizzleAdapterFiles(
   dependencyLines.push("  return {");
   dependencyLines.push("    endpoints: {");
   for (const endpoint of model.endpoints) {
-    if (!model.entities[endpoint.entity]) continue;
     dependencyLines.push(
       `      ${JSON.stringify(lowerFirst(endpointTypeName(endpoint)))}: ${lowerFirst(endpointTypeName(endpoint))}Endpoint,`,
     );
@@ -643,11 +633,10 @@ export function generateDrizzleAdapterFiles(
 }
 
 export function generateDrizzleMigrationFiles(
-  context: PluginContributionContext,
-  persistence: NonNullable<PluginContributionContext["persistence"]>,
+  context: BackendRenderContext,
+  persistence: NonNullable<BackendRenderContext["persistence"]>,
 ): readonly GeneratedFile[] {
   const model = context.domainModel;
-  if (!model) return [];
 
   const infrastructureDir = persistence.directories.infrastructure;
   const dbDir = posix.join(infrastructureDir, "database");
@@ -713,11 +702,10 @@ export function generateDrizzleMigrationFiles(
 }
 
 export function generateDrizzleSeedFiles(
-  context: PluginContributionContext,
-  persistence: NonNullable<PluginContributionContext["persistence"]>,
+  context: BackendRenderContext,
+  persistence: NonNullable<BackendRenderContext["persistence"]>,
 ): readonly GeneratedFile[] {
   const model = context.domainModel;
-  if (!model) return [];
 
   const infrastructureDir = persistence.directories.infrastructure;
   const dbDir = posix.join(infrastructureDir, "database");

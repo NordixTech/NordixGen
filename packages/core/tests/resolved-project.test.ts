@@ -16,7 +16,7 @@ describe("shared resolved project and boundary views", () => {
       const project = resolvedFixture(targetConfig(name));
       expect(project.formatVersion).toBe(5);
       expect(generationReadiness(project)).toBe(project.readiness);
-      expect(project.readiness.length).toBeGreaterThan(0);
+      expect(project.readiness.length === 0).toBe(name === "single-module");
       expect(Object.isFrozen(project.entities)).toBe(true);
       expect(Object.isFrozen(project.operations)).toBe(true);
     },

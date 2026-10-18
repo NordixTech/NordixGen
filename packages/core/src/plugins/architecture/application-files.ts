@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import type { FieldDefinition } from "../../configuration/schema.js";
 import type { ResolvedField, ResolvedInput } from "../../project/types.js";
-import type { DomainModelContext, GeneratedFile, PluginContributionContext } from "../contracts.js";
+import type { BackendRenderContext, DomainModelContext, GeneratedFile } from "../contracts.js";
 
 function importPath(fromFile: string, targetFile: string): string {
   const path = posix.relative(posix.dirname(fromFile), targetFile.replace(/\.ts$/, ".js"));
@@ -403,11 +403,8 @@ function endpointDtoFiles(
 }
 
 /** Generates Zod DTOs and framework-neutral application use cases for one backend. */
-export function generateApplicationFiles(
-  context: PluginContributionContext,
-): readonly GeneratedFile[] {
+export function generateApplicationFiles(context: BackendRenderContext): readonly GeneratedFile[] {
   const model = context.domainModel;
-  if (!model) return [];
   const codeRoot = context.framework.codeRoot;
   const useCaseDirectory = posix.join(codeRoot, context.architecture.directories.useCase);
   const dtoDirectory = posix.join(codeRoot, context.architecture.directories.useCase, "dtos");
@@ -416,12 +413,11 @@ export function generateApplicationFiles(
   const hasDynamicDefaults =
     Object.values(model.entities).some(
       (entity) =>
-        entity &&
-        (entity.timestamps.createdAt ||
-          entity.timestamps.updatedAt ||
-          Object.values(entity.fields).some(
-            (field) => field.type === "date" && field.defaultValue.kind === "clock",
-          )),
+        entity.timestamps.createdAt ||
+        entity.timestamps.updatedAt ||
+        Object.values(entity.fields).some(
+          (field) => field.type === "date" && field.defaultValue.kind === "clock",
+        ),
     ) ||
     model.endpoints.some(
       (endpoint) =>

@@ -1,28 +1,11 @@
 import { posix } from "node:path";
-import type { GeneratedFile, GeneratorPlugin, PluginContributionContext } from "../contracts.js";
+import type { BackendRenderContext, GeneratedFile } from "../contracts.js";
 
 interface BetterAuthSelection {
-  applicationRoot?: string;
-  projectName?: string;
-  authentication?: {
-    methods?: readonly string[];
-    identityProviders?: readonly string[];
-    features?: readonly string[];
-  };
-  authorization?: {
-    roles?: readonly string[];
-    defaultRole?: string;
-  };
+  projectName: string;
+  authentication: import("../../project/types.js").ResolvedIdentity;
+  authorization: import("../../project/types.js").ResolvedIdentity;
 }
-
-function selectionConfiguration(context: PluginContributionContext): BetterAuthSelection {
-  const value = context.selection.configuration;
-  if (typeof value !== "object" || value === null) {
-    throw new Error("Better Auth requires its validated backend authentication configuration.");
-  }
-  return value as BetterAuthSelection;
-}
-
 function relativeImport(fromFile: string, toFile: string): string {
   const importPath = posix.relative(posix.dirname(fromFile), toFile.replace(/\.ts$/, ".js"));
   return importPath.startsWith(".") ? importPath : `./${importPath}`;
@@ -115,17 +98,17 @@ function authSchemaContent(
 }
 
 function authRuntimeContent(
-  context: PluginContributionContext,
+  context: BackendRenderContext,
   config: BetterAuthSelection,
   authFilePath: string,
   schemaPath: string,
   databasePath: string,
 ): string {
-  const methods = config.authentication?.methods ?? ["email-password"];
-  const providers = config.authentication?.identityProviders ?? [];
-  const features = config.authentication?.features ?? [];
-  const projectName = config.projectName ?? "NordixGen application";
-  const defaultRole = config.authorization?.defaultRole ?? "user";
+  const methods = config.authentication.methods;
+  const providers = config.authentication.identityProviders;
+  const features = config.authentication.features;
+  const projectName = config.projectName;
+  const defaultRole = config.authorization.defaultRole;
   const lines = [
     'import { betterAuth } from "better-auth";',
     'import { drizzleAdapter } from "@better-auth/drizzle-adapter";',
@@ -239,112 +222,59 @@ function authRuntimeContent(
   return lines.join("\n");
 }
 
-export const betterAuthPlugin: GeneratorPlugin = {
-  descriptor: {
-    id: "better-auth",
-    version: "1.0.0",
-    role: "authentication",
-    provides: [
-      "authentication:better-auth",
-      "authentication:verified-principal",
-      "authentication:session",
-      "authentication:method:email-password",
-      "authentication:method:username-password",
-      "authentication:identity-provider:google",
-      "authentication:identity-provider:github",
-      "authentication:feature:email-verification",
-      "authentication:feature:password-recovery",
-      "authentication:feature:two-factor",
-    ],
-    requires: [
-      {
-        capability: "framework:hono-auth-handler",
-        description:
-          "Better Auth is initially integrated through the Hono Web Request/Response handler.",
-      },
-      {
-        capability: "language:typescript",
-        description: "The Better Auth integration requires a TypeScript backend.",
-      },
-      {
-        capability: "runtime:cloudflare-workers",
-        description: "The initial Better Auth integration targets Cloudflare Workers.",
-      },
-      {
-        capability: "runtime:cloudflare-nodejs-compat",
-        description:
-          "Better Auth requires the nodejs_compat Wrangler compatibility flag on Cloudflare Workers.",
-      },
-      {
-        capability: "orm:drizzle",
-        description: "Better Auth persistence uses its Drizzle adapter.",
-      },
-      {
-        capability: "driver:neon-http",
-        description: "The initial Better Auth adapter requires the Neon HTTP Drizzle driver.",
-      },
-      {
-        capability: "database:postgres",
-        description: "The Better Auth Drizzle adapter is configured for PostgreSQL.",
-      },
-      {
-        capability: "provider:neon",
-        description: "The initial Better Auth persistence path supports Neon PostgreSQL.",
-      },
-    ],
-    dependencies: {
-      "better-auth": "^1.7.7",
-      "@better-auth/drizzle-adapter": "^1.7.7",
+export function generateBetterAuthFiles(context: BackendRenderContext): readonly GeneratedFile[] {
+  if (!context.identity)
+    throw new Error("A resolved backend identity is required for authentication.");
+  const config: BetterAuthSelection = {
+    projectName: context.projectName,
+    authentication: context.identity,
+    authorization: context.identity,
+  };
+  const persistence = context.persistence;
+  if (!persistence) throw new Error("Better Auth requires a persistence context.");
+  const infrastructure = posix.join(
+    context.framework.codeRoot,
+    context.architecture.directories.infrastructure,
+  );
+  const schemaPath = posix.join(infrastructure, "database/schema/auth-schema.ts");
+  const authFilePath = posix.join(infrastructure, "auth/auth.ts");
+  const databasePath = posix.join(persistence.directories.adapter, "drizzle-database.ts");
+  const methods = config.authentication.methods;
+  const features = config.authentication.features;
+  const defaultRole = config.authorization.defaultRole;
+  return [
+    {
+      path: schemaPath,
+      content: authSchemaContent(methods, features, defaultRole),
     },
-  },
-  contribute(context): readonly GeneratedFile[] {
-    const config = selectionConfiguration(context);
-    const persistence = context.persistence;
-    if (!persistence) throw new Error("Better Auth requires a persistence context.");
-    const infrastructure = posix.join(
-      context.framework.codeRoot,
-      context.architecture.directories.infrastructure,
-    );
-    const schemaPath = posix.join(infrastructure, "database/schema/auth-schema.ts");
-    const authFilePath = posix.join(infrastructure, "auth/auth.ts");
-    const databasePath = posix.join(persistence.directories.adapter, "drizzle-database.ts");
-    const methods = config.authentication?.methods ?? ["email-password"];
-    const features = config.authentication?.features ?? [];
-    const defaultRole = config.authorization?.defaultRole ?? "user";
-    return [
-      {
-        path: schemaPath,
-        content: authSchemaContent(methods, features, defaultRole),
-      },
-      {
-        path: authFilePath,
-        content: authRuntimeContent(context, config, authFilePath, schemaPath, databasePath),
-      },
-      {
-        path: posix.join(infrastructure, "auth/README.md"),
-        content: [
-          "# Authentication runtime configuration",
-          "",
-          "Set these bindings as runtime secrets or environment variables. Never commit real values.",
-          "",
-          "- `DATABASE_URL`: Neon PostgreSQL connection string.",
-          "- `BETTER_AUTH_SECRET`: random secret of at least 32 characters.",
-          "- `BETTER_AUTH_URL`: public base URL of this backend.",
-          "- `AUTH_TRUSTED_ORIGINS`: optional comma-separated exact browser origins.",
-          "- Protected state-changing API requests require an `Origin` matching `BETTER_AUTH_URL` or `AUTH_TRUSTED_ORIGINS` to prevent cross-site request forgery.",
-          ...(config.authentication?.identityProviders?.flatMap((provider) => [
-            `- \`${provider.toUpperCase()}_CLIENT_ID\` and \`${provider.toUpperCase()}_CLIENT_SECRET\`: required for ${provider} sign-in.`,
-          ]) ?? []),
-          ...(features.includes("email-verification") || features.includes("password-recovery")
-            ? [
-                "- `RESEND_API_KEY` and `AUTH_EMAIL_FROM`: required to deliver configured authentication emails.",
-              ]
-            : []),
-          "",
-          "Apply database migrations with the generated Drizzle Kit configuration before serving auth requests.",
-          "",
-        ].join("\n"),
-      },
-    ];
-  },
-};
+    {
+      path: authFilePath,
+      content: authRuntimeContent(context, config, authFilePath, schemaPath, databasePath),
+    },
+    {
+      path: posix.join(infrastructure, "auth/README.md"),
+      content: [
+        "# Authentication runtime configuration",
+        "",
+        "Set these bindings as runtime secrets or environment variables. Never commit real values.",
+        "",
+        "- `DATABASE_URL`: Neon PostgreSQL connection string.",
+        "- `BETTER_AUTH_SECRET`: random secret of at least 32 characters.",
+        "- `BETTER_AUTH_URL`: public base URL of this backend.",
+        "- `AUTH_TRUSTED_ORIGINS`: optional comma-separated exact browser origins.",
+        "- Protected state-changing API requests require an `Origin` matching `BETTER_AUTH_URL` or `AUTH_TRUSTED_ORIGINS` to prevent cross-site request forgery.",
+        ...config.authentication.identityProviders.flatMap((provider) => [
+          `- \`${provider.toUpperCase()}_CLIENT_ID\` and \`${provider.toUpperCase()}_CLIENT_SECRET\`: required for ${provider} sign-in.`,
+        ]),
+        ...(features.includes("email-verification") || features.includes("password-recovery")
+          ? [
+              "- `RESEND_API_KEY` and `AUTH_EMAIL_FROM`: required to deliver configured authentication emails.",
+            ]
+          : []),
+        "",
+        "Apply database migrations with the generated Drizzle Kit configuration before serving auth requests.",
+        "",
+      ].join("\n"),
+    },
+  ];
+}

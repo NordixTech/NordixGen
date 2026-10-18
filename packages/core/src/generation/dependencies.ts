@@ -1,0 +1,21 @@
+/** Internal stack versions: runtime and tooling are distinct; no selector or version solver. */
+export const BACKEND_STACK = Object.freeze({
+  runtime: Object.freeze({ hono: "^4.7.2", "@hono/zod-validator": "^0.4.3", zod: "^3.24.2" }),
+  persistence: Object.freeze({ "drizzle-orm": "0.45.4", "@neondatabase/serverless": "^0.10.4" }),
+  identity: Object.freeze({ "better-auth": "^1.7.7", "@better-auth/drizzle-adapter": "^1.7.7" }),
+  tooling: Object.freeze({ typescript: "^5.8.2", "@types/node": "^24.0.0", tsx: "^4.19.3" }),
+  databaseTooling: Object.freeze({ "drizzle-kit": "0.31.11", "@faker-js/faker": "^9.5.0" }),
+});
+export function backendDependencies(database: boolean, identity: boolean) {
+  return {
+    runtimeDependencies: {
+      ...BACKEND_STACK.runtime,
+      ...(database ? BACKEND_STACK.persistence : {}),
+      ...(identity ? BACKEND_STACK.identity : {}),
+    },
+    developmentDependencies: {
+      ...BACKEND_STACK.tooling,
+      ...(database ? BACKEND_STACK.databaseTooling : {}),
+    },
+  };
+}

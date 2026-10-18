@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 import type { NordixConfig } from "../src/configuration/schema.js";
-import { cleanArchitecturePlugin } from "../src/plugins/architecture/clean.js";
-import { composeBackendPlugins } from "../src/plugins/composer.js";
-import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
-import { PluginRegistry } from "../src/plugins/registry.js";
+import { generateBackend } from "../src/generation/backend.js";
 import { resolveProject, resolveProjectYaml } from "../src/project/resolve.js";
 import { resolvedFixture, targetConfig } from "./fixtures.js";
 
@@ -36,25 +33,17 @@ function twoBackends() {
 }
 describe("resolved scopes, defaults and configuration failures", () => {
   it("refuses temporary renderer fallbacks and supports a resolved backend without persistence", () => {
-    const registry = new PluginRegistry();
-    registry.register(cleanArchitecturePlugin);
-    registry.register(honoFrameworkPlugin);
     const config = targetConfig("single-module");
     config.backends[0].persistence = undefined;
     const project = resolvedFixture(config);
-    expect(composeBackendPlugins(project, "api", registry).success).toBe(true);
-    expect(composeBackendPlugins(project, "missing", registry)).toMatchObject({
-      success: false,
-      diagnostics: [expect.objectContaining({ code: "UNKNOWN_BACKEND_TARGET" })],
-    });
+    expect(generateBackend(project, "api").success).toBe(true);
+    expect(() => generateBackend(project, "missing")).toThrow("UNKNOWN_BACKEND_TARGET");
     config.backends[0].modules.notes.architecture = "onion";
-    expect(composeBackendPlugins(resolvedFixture(config), "api", registry)).toMatchObject({
+    expect(generateBackend(resolvedFixture(config), "api")).toMatchObject({
       success: false,
-      diagnostics: [expect.objectContaining({ code: "BACKEND_RENDERER_SCOPE_UNSUPPORTED" })],
+      diagnostics: [expect.objectContaining({ code: "MODULE_ARCHITECTURE_UNIMPLEMENTED" })],
     });
-    expect(composeBackendPlugins(resolvedFixture(targetConfig()), "api", registry).success).toBe(
-      false,
-    );
+    expect(generateBackend(resolvedFixture(targetConfig()), "api").success).toBe(false);
     config.backends[0].modules.notes.architecture = "clean";
     config.entities.Note.relations.tags = {
       type: "many-to-many",
@@ -62,7 +51,7 @@ describe("resolved scopes, defaults and configuration failures", () => {
       joinTable: "note_tags",
       required: false,
     };
-    expect(composeBackendPlugins(resolvedFixture(config), "api", registry)).toMatchObject({
+    expect(generateBackend(resolvedFixture(config), "api")).toMatchObject({
       success: false,
       diagnostics: [expect.objectContaining({ code: "RELATION_MAPPING_UNIMPLEMENTED" })],
     });

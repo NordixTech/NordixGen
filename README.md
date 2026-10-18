@@ -2,13 +2,13 @@
 
 NordixGen is an internal Nordix tool for generating the starting point of client projects from a declarative YAML configuration. It focuses on the stack Nordix uses and maintains: TypeScript, Next.js App Router, Tailwind CSS, Hono, Drizzle ORM, PostgreSQL on Neon, Better Auth, TanStack Query, and Zustand.
 
-A generated backend is a modular monolith: business modules run together in one process. Each module may use Clean, Hexagonal, or Onion architecture, and a project may combine these approaches within one backend. Modules communicate through explicit, typed application contracts and direct in-process calls. Project configuration describes the business system—its repositories and paths, applications and connections, databases, modules, entities, endpoints, pagination, and authentication/authorization needs—rather than selecting unrelated technology stacks.
+A generated backend is a modular monolith: business modules run together in one process. Each module may use Clean, Hexagonal, or Onion architecture, and a project may combine these approaches within one backend. Modules communicate through explicit, typed application contracts and direct in-process calls. Project configuration describes the business systemâ€”its repositories and paths, applications and connections, databases, modules, entities, endpoints, pagination, and authentication/authorization needsâ€”rather than selecting unrelated technology stacks.
 
 ## Implementation status
 
 The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
 
-**End-to-end generation is temporarily unavailable.** Both CLI validation and generation report readiness errors before creating files or running scaffolding, installations or remote publication. The shared resolved model is implemented. Restoring generation requires the direct pipeline and Clean modules (RF-07 and RF-09), followed by integration acceptance. No complete generated-project acceptance is claimed at this stage.
+**Single Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules require the next module-layout integration; Hexagonal/Onion remain unsupported. Full database/browser acceptance is still pending.
 
 ## Target generated project
 

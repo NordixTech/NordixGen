@@ -1,61 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { NordixConfigSchema } from "../src/configuration/schema.js";
-import {
-  cleanArchitecturePlugin,
-  resolveCleanArchitectureLayout,
-} from "../src/plugins/architecture/clean.js";
-import { betterAuthPlugin } from "../src/plugins/authentication/better-auth.js";
-import { rbacPbacPlugin } from "../src/plugins/authorization/rbac-pbac.js";
-import { composeBackendPlugins } from "../src/plugins/composer.js";
+import { backendRenderContext } from "../src/generation/backend.js";
+import { generateBackend } from "../src/generation/backend.js";
+import { resolveCleanArchitectureLayout } from "../src/plugins/architecture/clean.js";
 import type {
-  ArchitectureLayout,
-  FrameworkContext,
+  BackendPaths,
+  BackendRenderContext,
+  CleanLayout,
   GeneratorPlugin,
-  PluginContributionContext,
 } from "../src/plugins/contracts.js";
-import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
 import {
   generateDrizzleAdapterFiles,
   generateDrizzleMigrationFiles,
   generateDrizzleSchemaFiles,
   generateDrizzleSeedFiles,
 } from "../src/plugins/orms/drizzle-files.js";
-import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
-import { PluginRegistry } from "../src/plugins/registry.js";
 import { backendView } from "../src/project/views.js";
 import { resolvedFixture } from "./fixtures.js";
 import { createSecuredConfig, createValidConfig } from "./fixtures.js";
 
-function createRegistry(framework: GeneratorPlugin = honoFrameworkPlugin) {
-  const registry = new PluginRegistry();
-  registry.register(framework);
-  registry.register(cleanArchitecturePlugin);
-  registry.register(drizzleOrmPlugin);
-  registry.register(betterAuthPlugin);
-  registry.register(rbacPbacPlugin);
-  return registry;
+function createDrizzleContext(persistence = createValidPersistenceContext()): BackendRenderContext {
+  return { ...backendRenderContext(resolvedFixture(), "core-api"), persistence };
 }
-
-function createDrizzleContext(
-  persistence: PluginContributionContext["persistence"] | null = createValidPersistenceContext(),
-): PluginContributionContext {
-  const selection = { pluginId: "hono", configuration: { applicationRoot: "apps/api-core" } };
-  const framework = honoFrameworkPlugin.createFrameworkContext?.(selection);
-  if (!framework) throw new Error("Hono framework context is unavailable.");
-  const architecture = cleanArchitecturePlugin.resolveArchitectureLayout?.(framework, {
-    pluginId: "clean",
-  });
-  if (!architecture) throw new Error("Clean architecture layout is unavailable.");
-  return {
-    selection: { pluginId: "drizzle" },
-    framework,
-    architecture,
-    availableCapabilities: new Set(),
-    ...(persistence ? { persistence } : {}),
-  };
-}
-
-function createValidPersistenceContext(): NonNullable<PluginContributionContext["persistence"]> {
+function createValidPersistenceContext(): NonNullable<BackendRenderContext["persistence"]> {
   return {
     database: { name: "commerce-db", engine: "postgres", provider: "neon" },
     directories: {
@@ -67,51 +34,9 @@ function createValidPersistenceContext(): NonNullable<PluginContributionContext[
 }
 
 describe("Drizzle ORM plugin", () => {
-  it("declares framework-agnostic language, runtime, database, and driver capabilities", () => {
-    expect(drizzleOrmPlugin.descriptor).toMatchObject({
-      id: "drizzle",
-      role: "orm",
-      provides: ["orm:drizzle", "driver:neon-http"],
-      requires: [
-        { capability: "language:typescript" },
-        { capability: "runtime:cloudflare-workers" },
-        { capability: "database:postgres" },
-        { capability: "provider:neon" },
-      ],
-    });
-  });
-
-  it.each([
-    ["missing persistence context", null],
-    [
-      "non-PostgreSQL database",
-      {
-        ...createValidPersistenceContext(),
-        database: { name: "commerce-db", engine: "mysql", provider: "neon" },
-      },
-    ],
-    [
-      "non-Neon provider",
-      {
-        ...createValidPersistenceContext(),
-        database: { name: "commerce-db", engine: "postgres", provider: "local" },
-      },
-    ],
-    [
-      "unexpected connection string environment variable",
-      {
-        ...createValidPersistenceContext(),
-        connectionStringEnvironmentVariable: "DATABASE_CONNECTION",
-      },
-    ],
-  ])("rejects %s when called without validated composition", (_label, persistence) => {
-    const context = createDrizzleContext(persistence);
-    expect(() => drizzleOrmPlugin.contribute(context)).toThrow();
-  });
-
   it("generates Drizzle Kit configuration from the selected backend persistence context", () => {
     const config = NordixConfigSchema.parse(createValidConfig());
-    const result = composeBackendPlugins(resolvedFixture(config), "core-api", createRegistry());
+    const result = generateBackend(resolvedFixture(config), "core-api");
 
     expect(result.success).toBe(true);
     if (!result.success) return;
@@ -187,11 +112,7 @@ describe("Drizzle ORM plugin", () => {
       },
       joins: [{ entity: "Customer", type: "inner", fields: ["email"] }],
     });
-    const result = composeBackendPlugins(
-      resolvedFixture(NordixConfigSchema.parse(config)),
-      "core-api",
-      createRegistry(),
-    );
+    const result = generateBackend(resolvedFixture(NordixConfigSchema.parse(config)), "core-api");
 
     expect(result.success).toBe(true);
     if (!result.success) return;
@@ -287,11 +208,7 @@ describe("Drizzle ORM plugin", () => {
       joins: [{ entity: "Customer", type: "inner", fields: ["id", "email"] }],
     });
 
-    const result = composeBackendPlugins(
-      resolvedFixture(NordixConfigSchema.parse(config)),
-      "core-api",
-      createRegistry(),
-    );
+    const result = generateBackend(resolvedFixture(NordixConfigSchema.parse(config)), "core-api");
 
     expect(result.success).toBe(true);
     if (!result.success) return;
@@ -374,11 +291,7 @@ describe("Drizzle ORM plugin", () => {
       },
     ];
 
-    const result = composeBackendPlugins(
-      resolvedFixture(NordixConfigSchema.parse(config)),
-      "core-api",
-      createRegistry(),
-    );
+    const result = generateBackend(resolvedFixture(NordixConfigSchema.parse(config)), "core-api");
     expect(result.success).toBe(true);
     if (!result.success) return;
 
@@ -449,10 +362,9 @@ describe("Drizzle ORM plugin", () => {
       pathParams: [],
       joins: [{ entity: "Order", type: "left", fields: ["total"] }],
     });
-    const userSummaryResult = composeBackendPlugins(
+    const userSummaryResult = generateBackend(
       resolvedFixture(NordixConfigSchema.parse(userSummaryConfig)),
       "core-api",
-      createRegistry(),
     );
     expect(userSummaryResult.success).toBe(true);
     if (!userSummaryResult.success) return;
@@ -480,10 +392,9 @@ describe("Drizzle ORM plugin", () => {
         joins: [{ entity: "Customer", type: "left", fields: ["id"] }],
       },
     ];
-    const falseDeleteResult = composeBackendPlugins(
+    const falseDeleteResult = generateBackend(
       resolvedFixture(NordixConfigSchema.parse(falseDeleteConfig)),
       "core-api",
-      createRegistry(),
     );
     expect(falseDeleteResult.success).toBe(true);
     if (!falseDeleteResult.success) return;
@@ -523,10 +434,9 @@ describe("Drizzle ORM plugin", () => {
       pagination: "compact",
       joins: [],
     });
-    const resultWithOne = composeBackendPlugins(
+    const resultWithOne = generateBackend(
       resolvedFixture(NordixConfigSchema.parse(config)),
       "core-api",
-      createRegistry(),
     );
     expect(resultWithOne.success).toBe(true);
     if (!resultWithOne.success) return;
@@ -542,27 +452,13 @@ describe("Drizzle ORM plugin", () => {
     config.entities.Order.relations = {};
     config.entities.OrderItem.relations = {};
     config.endpoints = [];
-    const result = composeBackendPlugins(
-      resolvedFixture(NordixConfigSchema.parse(config)),
-      "core-api",
-      createRegistry(),
-    );
+    const result = generateBackend(resolvedFixture(NordixConfigSchema.parse(config)), "core-api");
     expect(result.success).toBe(true);
     if (!result.success) return;
     const files = result.virtualFileSystem.snapshot();
     const schema = files["apps/api-core/src/infrastructure/database/schema/index.ts"];
     expect(schema).toBeDefined();
     expect(schema).not.toContain("relations(");
-  });
-
-  it("returns empty arrays when domain model is undefined", () => {
-    const context = createDrizzleContext();
-    (context as Record<string, unknown>).domainModel = undefined;
-    const persistence = createValidPersistenceContext();
-    expect(generateDrizzleSchemaFiles(context, persistence)).toEqual([]);
-    expect(generateDrizzleAdapterFiles(context, persistence)).toEqual([]);
-    expect(generateDrizzleMigrationFiles(context, persistence)).toEqual([]);
-    expect(generateDrizzleSeedFiles(context, persistence)).toEqual([]);
   });
 
   it("creates a related-entity subquery for one-to-many filters", () => {
@@ -604,11 +500,7 @@ describe("Drizzle ORM plugin", () => {
     config.entities.Customer.fields.metadata = { type: "json" };
     config.entities.Customer.fields.optionalNotes = { type: "string", required: false };
 
-    const result = composeBackendPlugins(
-      resolvedFixture(NordixConfigSchema.parse(config)),
-      "core-api",
-      createRegistry(),
-    );
+    const result = generateBackend(resolvedFixture(NordixConfigSchema.parse(config)), "core-api");
     expect(result.success).toBe(true);
     if (!result.success) return;
 

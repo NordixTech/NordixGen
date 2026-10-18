@@ -31,7 +31,7 @@ Module dependencies and stored-foreign-key dependencies have independent graphs 
 
 ## Readiness and temporary adapters
 
-Both CLI `validate` and `generate` call resolution with `{ requireGeneration: true }`. Invalid configuration or resolution fails before readiness. Valid Clean modules currently report `MODULE_GENERATION_UNAVAILABLE`; Hexagonal/Onion report `MODULE_ARCHITECTURE_UNIMPLEMENTED`. Many-to-many relations additionally report `RELATION_MAPPING_UNIMPLEMENTED`: no partial join table is generated. No output, installation or publication starts on these failures.
+Both CLI `validate` and `generate` call resolution with `{ requireGeneration: true }`. Invalid configuration or resolution fails before readiness. Single Clean modules are integrated through [direct backend generation](../generation/DIRECT_BACKEND.md). Multiple Clean modules still report `MODULE_GENERATION_UNAVAILABLE`; Hexagonal/Onion report `MODULE_ARCHITECTURE_UNIMPLEMENTED`. Many-to-many relations additionally report `RELATION_MAPPING_UNIMPLEMENTED`: no partial join table is generated. No output, installation or publication starts on these failures.
 
 The old IR and configuration normalizers have been removed. Existing renderer internals consume resolved views through temporary fixed adapters. Backend/plugin composition is removed by the direct pipeline work (RF-07), frontend renderer settings by RF-08 and the backend-wide layout by Clean module generation (RF-09). There is no new plugin protocol, planner or second authoritative model.
 
