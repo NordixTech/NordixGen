@@ -350,7 +350,7 @@ describe("Drizzle ORM plugin", () => {
     expect(orderAdapter).toContain("items.map((row) => this.toDomain(row))");
     expect(
       files["apps/api-core/src/infrastructure/adapters/create-route-dependencies.ts"],
-    ).toContain("new CreateOrderUseCase(orderRepository, clock)");
+    ).not.toContain("CreateOrderUseCase");
 
     const userAdapter =
       files["apps/api-core/src/infrastructure/adapters/User.drizzle.repository.ts"];

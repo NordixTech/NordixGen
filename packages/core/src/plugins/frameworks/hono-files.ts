@@ -156,177 +156,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
   const useCaseDirectory = posix.join(framework.codeRoot, architecture.directories.useCase);
   const dtoDirectory = posix.join(useCaseDirectory, "dtos");
 
-  // 3. Entity CRUD controllers
-  for (const [entityName] of Object.entries(model.entities).sort(([a], [b]) =>
-    a.localeCompare(b),
-  )) {
-    const controllerPath = posix.join(
-      controllerDirectory,
-      `${entityName.toLowerCase()}.controller.ts`,
-    );
-    const dtoPath = posix.join(dtoDirectory, `${entityName}.dto.ts`);
-    const problemImport = relativeImport(controllerPath, problemDetailsPath);
-    const dtoImport = relativeImport(controllerPath, dtoPath);
-
-    const useCaseImports = [
-      `import { Create${entityName}UseCase } from "${relativeImport(controllerPath, posix.join(useCaseDirectory, entityName, `create-${entityName.toLowerCase()}.use-case.ts`))}";`,
-      `import { Get${entityName}UseCase } from "${relativeImport(controllerPath, posix.join(useCaseDirectory, entityName, `get-${entityName.toLowerCase()}.use-case.ts`))}";`,
-      `import { List${entityName}UseCase } from "${relativeImport(controllerPath, posix.join(useCaseDirectory, entityName, `list-${entityName.toLowerCase()}.use-case.ts`))}";`,
-      `import { Update${entityName}UseCase } from "${relativeImport(controllerPath, posix.join(useCaseDirectory, entityName, `update-${entityName.toLowerCase()}.use-case.ts`))}";`,
-      `import { Delete${entityName}UseCase } from "${relativeImport(controllerPath, posix.join(useCaseDirectory, entityName, `delete-${entityName.toLowerCase()}.use-case.ts`))}";`,
-    ];
-
-    files.push({
-      path: controllerPath,
-      content: [
-        'import { Hono } from "hono";',
-        'import { zValidator } from "@hono/zod-validator";',
-        'import { z } from "zod";',
-        ...(hasAuthentication
-          ? [
-              `import { createAuth, isTrustedAuthOrigin, type AuthEnvironment } from "${relativeImport(controllerPath, authFilePath)}";`,
-            ]
-          : []),
-        `import { problemResponse } from "${problemImport}";`,
-        `import { Create${entityName}Schema, Update${entityName}Schema, ${entityName}IdSchema } from "${dtoImport}";`,
-        ...useCaseImports,
-        "",
-        `export interface ${entityName}ControllerDependencies {`,
-        `  createUseCase?: Create${entityName}UseCase;`,
-        `  getUseCase?: Get${entityName}UseCase;`,
-        `  listUseCase?: List${entityName}UseCase;`,
-        `  updateUseCase?: Update${entityName}UseCase;`,
-        `  deleteUseCase?: Delete${entityName}UseCase;`,
-        "}",
-        "",
-        `export function create${entityName}Controller(deps?: ${entityName}ControllerDependencies): Hono {`,
-        "  const router = new Hono();",
-        ...(hasAuthentication
-          ? [
-              '  router.use("*", async (c, next) => {',
-              "    const session = await createAuth(c.env as AuthEnvironment).api.getSession({ headers: c.req.raw.headers });",
-              '    if (!session) return problemResponse(c, 401, "Unauthorized", "Authentication is required");',
-              '    if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && !isTrustedAuthOrigin(c.req.header("origin"), c.env as AuthEnvironment)) return problemResponse(c, 403, "Forbidden", "A trusted Origin header is required for state-changing requests");',
-              "    await next();",
-              "  });",
-            ]
-          : []),
-        "",
-        "  router.post(",
-        '    "/",',
-        `    zValidator("json", Create${entityName}Schema, (result, c) => {`,
-        "      if (!result.success) {",
-        '        return problemResponse(c, 400, "Validation Failed", "Request body validation failed", result.error.issues);',
-        "      }",
-        "    }),",
-        "    async (c) => {",
-        '      const input = c.req.valid("json");',
-        "      const useCase = deps?.createUseCase;",
-        "      if (!useCase) {",
-        `        return problemResponse(c, 500, "Internal Server Error", "Create${entityName}UseCase not configured");`,
-        "      }",
-        "      const entity = await useCase.execute(input);",
-        "      return c.json(entity, 201);",
-        "    },",
-        "  );",
-        "",
-        "  router.get(",
-        '    "/",',
-        "    async (c) => {",
-        "      const useCase = deps?.listUseCase;",
-        "      if (!useCase) {",
-        `        return problemResponse(c, 500, "Internal Server Error", "List${entityName}UseCase not configured");`,
-        "      }",
-        "      const filter = c.req.query();",
-        "      const result = await useCase.execute({ filter });",
-        "      return c.json(result, 200);",
-        "    },",
-        "  );",
-        "",
-        "  router.get(",
-        '    "/:id",',
-        `    zValidator("param", z.object({ id: ${entityName}IdSchema }), (result, c) => {`,
-        "      if (!result.success) {",
-        '        return problemResponse(c, 400, "Validation Failed", "Invalid parameter: id", result.error.issues);',
-        "      }",
-        "    }),",
-        "    async (c) => {",
-        '      const { id } = c.req.valid("param");',
-        "      const useCase = deps?.getUseCase;",
-        "      if (!useCase) {",
-        `        return problemResponse(c, 500, "Internal Server Error", "Get${entityName}UseCase not configured");`,
-        "      }",
-        "      const entity = await useCase.execute(id);",
-        "      if (!entity) {",
-        `        return problemResponse(c, 404, "Not Found", "${entityName} not found");`,
-        "      }",
-        "      return c.json(entity, 200);",
-        "    },",
-        "  );",
-        "",
-        "  router.patch(",
-        '    "/:id",',
-        `    zValidator("param", z.object({ id: ${entityName}IdSchema }), (result, c) => {`,
-        "      if (!result.success) {",
-        '        return problemResponse(c, 400, "Validation Failed", "Invalid parameter: id", result.error.issues);',
-        "      }",
-        "    }),",
-        `    zValidator("json", Update${entityName}Schema, (result, c) => {`,
-        "      if (!result.success) {",
-        '        return problemResponse(c, 400, "Validation Failed", "Request body validation failed", result.error.issues);',
-        "      }",
-        "    }),",
-        "    async (c) => {",
-        '      const { id } = c.req.valid("param");',
-        '      const changes = c.req.valid("json");',
-        "      const useCase = deps?.updateUseCase;",
-        "      if (!useCase) {",
-        `        return problemResponse(c, 500, "Internal Server Error", "Update${entityName}UseCase not configured");`,
-        "      }",
-        "      const updated = await useCase.execute({ id, changes });",
-        "      if (!updated) {",
-        `        return problemResponse(c, 404, "Not Found", "${entityName} not found");`,
-        "      }",
-        "      return c.json(updated, 200);",
-        "    },",
-        "  );",
-        "",
-        "  router.delete(",
-        '    "/:id",',
-        `    zValidator("param", z.object({ id: ${entityName}IdSchema }), (result, c) => {`,
-        "      if (!result.success) {",
-        '        return problemResponse(c, 400, "Validation Failed", "Invalid parameter: id", result.error.issues);',
-        "      }",
-        "    }),",
-        "    async (c) => {",
-        '      const { id } = c.req.valid("param");',
-        "      const useCase = deps?.deleteUseCase;",
-        "      if (!useCase) {",
-        `        return problemResponse(c, 500, "Internal Server Error", "Delete${entityName}UseCase not configured");`,
-        "      }",
-        "      await useCase.execute(id);",
-        "      return c.body(null, 204);",
-        "    },",
-        "  );",
-        "",
-        "  return router;",
-        "}",
-        "",
-        `export default create${entityName}Controller();`,
-        "",
-      ].join("\n"),
-    });
-
-    const routeVar = `${lowerFirst(entityName)}Controller`;
-    routesImports.push(
-      `import ${routeVar}, { create${entityName}Controller } from "${relativeImport(routesPath, controllerPath)}";`,
-    );
-    routesRegistrations.push(
-      `  routes.route("/${entityName.toLowerCase()}s", deps?.entities?.${lowerFirst(entityName)} ? create${entityName}Controller(deps.entities.${lowerFirst(entityName)}) : ${routeVar});`,
-    );
-  }
-
-  // 4. Custom endpoint controllers
+  // 3. Declared business endpoint controllers
   for (const endpoint of model.endpoints) {
     const operationName = endpointTypeName(endpoint);
     const controllerPath = posix.join(
@@ -461,19 +291,19 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
     );
   }
 
-  // 5. Routes aggregator
+  // 4. Routes aggregator
   files.push({
     path: routesPath,
     content: [
       ...routesImports,
       "",
       "export interface RoutesDependencies {",
-      "  entities?: Record<string, unknown>;",
       "  endpoints?: Record<string, unknown>;",
       "}",
       "",
       "export function createRoutes(deps?: RoutesDependencies): Hono {",
       "  const routes = new Hono();",
+      '  routes.onError((err, c) => problemResponse(c, 500, "Internal Server Error", err.message));',
       ...routesRegistrations,
       '  routes.notFound((c) => problemResponse(c, 404, "Not Found", `Route not found: ${c.req.path}`));',
       "  return routes;",
@@ -485,7 +315,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
     ].join("\n"),
   });
 
-  // 6. Entrypoint with RFC 7807 error and notFound handlers
+  // 5. Entrypoint with RFC 7807 error and notFound handlers
   const routesImport = relativeImport(entryPoint, routesPath);
   const problemImportInIndex = relativeImport(entryPoint, problemDetailsPath);
   const dependenciesFactoryPath = posix.join(
