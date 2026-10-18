@@ -109,6 +109,15 @@ describe
         "@faker-js/faker": faker,
         "node:path": path,
         "node:url": url,
+        [`${root}/platform/authorization/repository.ts`]: {
+          createIamRepository: () => ({
+            principal: async () => ({
+              id: "verified-server-user",
+              role: "admin",
+              permissions: ["*"],
+            }),
+          }),
+        },
         [`${root}/platform/auth/auth.ts`]: {
           createAuth: () => ({
             api: {
@@ -404,6 +413,8 @@ describe
         "@neondatabase/serverless": neon,
         "better-auth": betterAuth,
         "@better-auth/drizzle-adapter": authAdapter,
+        "node:path": path,
+        "node:url": url,
       });
       const liveApp = live(`${root}/index.ts`).default as hono.Hono;
       const env = {
@@ -455,6 +466,336 @@ describe
       expect((await session.json()).user.role).toBe("viewer");
       expect((await authRequest("/api/invoices", {}, cookie)).status).toBe(403);
       expect((await authRequest("/api/invoices", {})).status).toBe(401);
+      const adminTools = live(`${root}/platform/authorization/create-admin.ts`) as {
+        createAdmin(email: string): Promise<void>;
+      };
+      await expect(adminTools.createAdmin("missing@example.test")).rejects.toThrow(
+        "User not found",
+      );
+      await adminTools.createAdmin("ordinary@example.test");
+      const iamRequest = (route: string, method = "GET", body?: unknown, token = cookie) =>
+        liveApp.request(
+          `http://localhost:8787/api/iam${route}`,
+          {
+            method,
+            headers: {
+              origin: "http://localhost:3000",
+              "content-type": "application/json",
+              cookie: token,
+            },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          },
+          env,
+          { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+        );
+      expect((await iamRequest("/permissions")).status).toBe(200);
+      expect(
+        (
+          await iamRequest("/roles", "POST", {
+            id: "auditor",
+            name: "Auditor",
+            permissions: ["invoices:read"],
+          })
+        ).status,
+      ).toBe(201);
+      expect(
+        (
+          await iamRequest("/roles", "POST", {
+            id: "invalid",
+            name: "Invalid",
+            permissions: ["unknown:permission"],
+          })
+        ).status,
+      ).toBe(400);
+      expect((await iamRequest("/roles/admin", "DELETE")).status).toBe(409);
+      expect((await iamRequest("/roles/viewer", "DELETE")).status).toBe(409);
+      expect((await iamRequest("/roles/admin", "PUT", { permissions: [] })).status).toBe(400);
+      expect(
+        (await iamRequest("/roles/viewer", "PUT", { permissions: ["iam:roles:manage"] })).status,
+      ).toBe(400);
+      const second = await authRequest("/api/auth/sign-up/email", {
+        name: "Auditor",
+        email: "auditor@example.test",
+        password: "test-long-password-12",
+      });
+      expect(second.status).toBe(200);
+      const secondId = (await second.json()).user.id as string;
+      const secondCookie = second.headers
+        .getSetCookie()
+        .map((value) => value.split(";")[0])
+        .join("; ");
+      expect(
+        (await iamRequest(`/users/${secondId}/role`, "POST", { role: "auditor" })).status,
+      ).toBe(200);
+      expect((await iamRequest("/roles/auditor", "DELETE")).status).toBe(409);
+      expect((await iamRequest("/me", "GET", undefined, secondCookie)).status).toBe(200);
+      const business = () =>
+        liveApp.request(
+          "http://localhost:8787/api/invoices",
+          { headers: { cookie: secondCookie } },
+          env,
+          { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+        );
+      expect((await business()).status).toBe(200);
+      expect((await iamRequest("/roles/auditor", "PUT", { permissions: [] })).status).toBe(200);
+      expect((await business()).status).toBe(403);
+      const firstId = (await sql("SELECT id FROM auth_user WHERE email='ordinary@example.test'"))[0]
+        .id as string;
+      const last = await iamRequest(`/users/${firstId}/role`, "POST", {
+        role: "viewer",
+        confirmation: "anything",
+      });
+      expect(last.status).toBe(409);
+      expect(await last.json()).toMatchObject({ code: "last_admin" });
+      expect((await sql("SELECT role FROM auth_user WHERE id=$1", [firstId]))[0].role).toBe(
+        "admin",
+      );
+      expect(
+        (
+          await iamRequest("/roles", "POST", {
+            id: "delegated",
+            name: "Delegated admin",
+            permissions: ["iam:roles:manage", "iam:users:manage-roles"],
+          })
+        ).status,
+      ).toBe(201);
+      expect(
+        (await iamRequest(`/users/${secondId}/role`, "POST", { role: "delegated" })).status,
+      ).toBe(200);
+      const selfEdit = await iamRequest(
+        "/roles/delegated",
+        "PUT",
+        { permissions: ["iam:users:manage-roles"] },
+        secondCookie,
+      );
+      expect(selfEdit.status).toBe(409);
+      const editImpact = await selfEdit.json();
+      expect(
+        (await iamRequest("/roles/delegated", "PUT", { name: "Delegated administrator" })).status,
+      ).toBe(200);
+      expect(
+        (
+          await sql(
+            "SELECT count(*)::int AS n FROM auth_role_permissions WHERE role_id='delegated'",
+          )
+        )[0].n,
+      ).toBe(2);
+      const stale = await iamRequest(
+        "/roles/delegated",
+        "PUT",
+        { permissions: ["iam:users:manage-roles"], confirmation: editImpact.token },
+        secondCookie,
+      );
+      expect(stale.status).toBe(409);
+      const refreshedImpact = await stale.json();
+      expect(refreshedImpact.code).toBe("confirmation_required");
+      expect(refreshedImpact.token).not.toBe(editImpact.token);
+      editImpact.token = refreshedImpact.token;
+
+      expect(editImpact).toMatchObject({
+        code: "confirmation_required",
+        selfLoss: ["iam:roles:manage"],
+        affected: 1,
+      });
+      expect(
+        (
+          await sql(
+            "SELECT count(*)::int AS n FROM auth_role_permissions WHERE role_id='delegated'",
+          )
+        )[0].n,
+      ).toBe(2);
+      expect(
+        (
+          await iamRequest(
+            "/roles/delegated",
+            "PUT",
+            { permissions: ["iam:users:manage-roles"], confirmation: editImpact.token },
+            secondCookie,
+          )
+        ).status,
+      ).toBe(200);
+      expect((await iamRequest("/roles", "GET", undefined, secondCookie)).status).toBe(403);
+      // Reassignment and role edits share the same global transaction lock.
+      expect(
+        (
+          await iamRequest("/roles/delegated", "PUT", {
+            permissions: ["iam:roles:manage", "iam:users:manage-roles"],
+          })
+        ).status,
+      ).toBe(200);
+      const own = await iamRequest(`/users/${firstId}/role`, "POST", { role: "viewer" });
+      const other = await iamRequest(
+        `/users/${secondId}/role`,
+        "POST",
+        { role: "viewer" },
+        secondCookie,
+      );
+      expect(own.status).toBe(409);
+      expect(other.status).toBe(409);
+      const ownImpact = await own.json();
+      const otherImpact = await other.json();
+      expect(ownImpact.selfLoss).toEqual(["iam:roles:manage", "iam:users:manage-roles"]);
+      const race = await Promise.all([
+        iamRequest(`/users/${firstId}/role`, "POST", {
+          role: "viewer",
+          confirmation: ownImpact.token,
+        }),
+        iamRequest(
+          `/users/${secondId}/role`,
+          "POST",
+          { role: "viewer", confirmation: otherImpact.token },
+          secondCookie,
+        ),
+      ]);
+      expect(race.map((result) => result.status).sort()).toEqual([200, 409]);
+      expect(
+        (
+          await sql("SELECT count(*)::int AS n FROM auth_user WHERE role IN ('admin','delegated')")
+        )[0].n,
+      ).toBe(1);
+      await adminTools.createAdmin("ordinary@example.test");
+      const restore = await iamRequest(`/users/${secondId}/role`, "POST", { role: "auditor" });
+      if (restore.status === 409) {
+        const impact = await restore.json();
+        expect(impact.code).toBe("confirmation_required");
+        expect(
+          (
+            await iamRequest(`/users/${secondId}/role`, "POST", {
+              role: "auditor",
+              confirmation: impact.token,
+            })
+          ).status,
+        ).toBe(200);
+      } else expect(restore.status).toBe(200);
+
+      expect(
+        (await iamRequest(`/users/${firstId}/role`, "POST", { role: "delegated" })).status,
+      ).toBe(200);
+      const lastRoleEdit = await iamRequest("/roles/delegated", "PUT", {
+        permissions: ["iam:roles:manage"],
+        confirmation: "cannot-override",
+      });
+      expect(lastRoleEdit.status).toBe(409);
+      expect(await lastRoleEdit.json()).toMatchObject({ code: "last_admin" });
+      await adminTools.createAdmin("ordinary@example.test");
+      await sql("ALTER TABLE auth_iam_audit RENAME TO isolated_audit_unavailable");
+      try {
+        const failedAudit = await iamRequest("/roles/auditor", "PUT", {
+          name: "Must roll back",
+          permissions: ["invoices:read"],
+        });
+        expect(failedAudit.status).toBe(500);
+        expect((await sql("SELECT name FROM auth_roles WHERE id='auditor'"))[0].name).toBe(
+          "Auditor",
+        );
+        expect(
+          (
+            await sql(
+              "SELECT count(*)::int AS n FROM auth_role_permissions WHERE role_id='auditor'",
+            )
+          )[0].n,
+        ).toBe(0);
+      } finally {
+        await sql("ALTER TABLE isolated_audit_unavailable RENAME TO auth_iam_audit");
+      }
+      const audit = await iamRequest("/audit");
+      expect(audit.status).toBe(200);
+      expect(await audit.json()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            actorId: firstId,
+            action: "user.role-assigned",
+            targetId: secondId,
+          }),
+          expect.objectContaining({
+            actorId: secondId,
+            action: "role.updated",
+            targetId: "delegated",
+          }),
+        ]),
+      );
+      // Re-running seed must not resurrect grants removed by an operator.
+      await sql("DELETE FROM auth_role_permissions WHERE role_id='viewer'");
+      const currentDb = live(`${root}/platform/database/drizzle-database.ts`)
+        .createDrizzleDatabase as (url: string) => unknown;
+      const originalSeed = generatedRuntime(generatedFiles, { "drizzle-orm": orm });
+      await (
+        originalSeed(`${root}/platform/authorization/seed.ts`).seedAuthorization as (
+          db: unknown,
+        ) => Promise<void>
+      )(currentDb(databaseUrl as string));
+      expect(
+        (
+          await sql(
+            "SELECT count(*)::int AS count FROM auth_role_permissions WHERE role_id='viewer'",
+          )
+        )[0].count,
+      ).toBe(0);
+      // New YAML roles are initialized without changing existing roles, metadata or grants.
+      const updated = persistenceFixture();
+      updated.backends[0].authorization.roles.push("newteam");
+      updated.backends[0].authorization.rolePermissions.newteam = ["invoices:read"];
+      const regenerated = generateBackend(resolvedFixture(updated), "api");
+      if (!regenerated.success) throw Error("Invalid updated seed fixture");
+      const updatedLoad = generatedRuntime(
+        {
+          ...generatedFiles,
+          [`${root}/platform/authorization/seed.ts`]: regenerated.virtualFileSystem.readFile(
+            `${root}/platform/authorization/seed.ts`,
+          ) as string,
+        },
+        { "drizzle-orm": orm },
+      );
+      const db = live(`${root}/platform/database/drizzle-database.ts`).createDrizzleDatabase as (
+        url: string,
+      ) => unknown;
+      const updatedSeed = updatedLoad(`${root}/platform/authorization/seed.ts`)
+        .seedAuthorization as (db: unknown) => Promise<void>;
+      await Promise.all([
+        updatedSeed(db(databaseUrl as string)),
+        updatedSeed(db(databaseUrl as string)),
+      ]);
+      expect(
+        (await sql("SELECT permission FROM auth_role_permissions WHERE role_id='newteam'"))[0]
+          .permission,
+      ).toBe("invoices:read");
+      expect(
+        (
+          await sql(
+            "SELECT count(*)::int AS count FROM auth_role_permissions WHERE role_id='viewer'",
+          )
+        )[0].count,
+      ).toBe(0);
+      await Promise.all([
+        iamRequest("/roles/newteam", "PUT", { permissions: ["customers:read"] }),
+        iamRequest("/roles/newteam", "PUT", { permissions: ["invoices:read"] }),
+      ]);
+      const concurrentGrants = await sql(
+        "SELECT permission FROM auth_role_permissions WHERE role_id='newteam'",
+      );
+      expect(concurrentGrants).toHaveLength(1);
+      expect(["customers:read", "invoices:read"]).toContain(concurrentGrants[0].permission);
+      await sql("UPDATE auth_roles SET is_system=false WHERE id='viewer'");
+      expect((await iamRequest("/roles/viewer", "DELETE")).status).toBe(409);
+      await sql("UPDATE auth_roles SET is_system=true WHERE id='viewer'");
+      await sql(
+        "INSERT INTO auth_role_permissions(role_id,permission) VALUES('viewer','iam:roles:manage')",
+      );
+      await expect(
+        (
+          originalSeed(`${root}/platform/authorization/seed.ts`).seedAuthorization as (
+            db: unknown,
+          ) => Promise<void>
+        )(currentDb(databaseUrl as string)),
+      ).rejects.toThrow("signup default role has IAM privileges");
+      await sql("DELETE FROM auth_role_permissions WHERE role_id='viewer'");
+      expect((await iamRequest(`/users/${secondId}/role`, "POST", { role: "viewer" })).status).toBe(
+        200,
+      );
+      expect((await iamRequest("/roles/auditor", "DELETE")).status).toBe(204);
+      expect(
+        (await iamRequest(`/users/${secondId}/role`, "POST", { role: "auditor" })).status,
+      ).toBe(404);
       const forged = await authRequest(
         "/api/auth/get-session",
         undefined,
@@ -465,7 +806,7 @@ describe
       expect(
         await (await authRequest("/api/auth/get-session", undefined, cookie)).json(),
       ).toBeNull();
-    }, 30_000);
+    }, 60_000);
     it("applies a decimal database default when an insert omits the numeric column", async () => {
       const [row] = await sql("INSERT INTO invoice (customer_id) VALUES ($1) RETURNING id, total", [
         "11111111-1111-4111-8111-111111111111",

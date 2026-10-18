@@ -205,8 +205,9 @@ export function createSecuredConfig() {
     authentication: {},
     authorization: {
       roles: ["admin", "viewer"],
+      adminRole: "admin",
       defaultRole: "viewer",
-      rolePermissions: { admin: ["orders:create", "orders:update", "orders:delete"], viewer: [] },
+      rolePermissions: { viewer: [] },
     },
   });
   return config;

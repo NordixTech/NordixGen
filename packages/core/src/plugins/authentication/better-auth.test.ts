@@ -30,9 +30,9 @@ backends:
       features: [${features.join(", ")}]
     authorization:
       roles: [admin, customer]
+      adminRole: admin
       defaultRole: customer
       rolePermissions:
-        admin: ["*"]
         customer: [orders:read]
 databases:
   primary: {}
@@ -47,7 +47,7 @@ endpoints:
     path: /api/orders
     operationId: listOrders
     entity: Order
-    roles: [admin]
+
     permissions: [orders:read]
 `);
   if (!parsed.success) throw new Error(JSON.stringify(parsed.diagnostics));
@@ -122,19 +122,20 @@ describe("backend Better Auth generation", () => {
     );
 
     expect(
-      policy.isAuthorized({ role: "admin" }, { roles: ["admin"], permissions: ["orders:delete"] }),
+      policy.isAuthorized({ role: "admin", permissions: ["*"] }, { permissions: ["orders:read"] }),
     ).toBe(true);
     expect(
       policy.isAuthorized(
-        { role: "customer" },
+        { role: "customer", permissions: ["orders:read"] },
         { roles: ["customer"], permissions: ["orders:read"] },
       ),
     ).toBe(true);
-    expect(policy.isAuthorized({ role: "customer" }, { roles: ["admin"], permissions: [] })).toBe(
-      false,
-    );
+    expect(policy.isAuthorized({ role: "admin" }, { permissions: ["orders:read"] })).toBe(false);
     expect(
-      policy.isAuthorized({ role: "customer" }, { roles: [], permissions: ["orders:delete"] }),
+      policy.isAuthorized(
+        { role: "customer", permissions: ["orders:read"] },
+        { roles: [], permissions: ["orders:delete"] },
+      ),
     ).toBe(false);
     expect(policy.isAuthorized({}, { roles: [], permissions: [] })).toBe(true);
     for (const role of ["constructor", "toString", "hasOwnProperty"])

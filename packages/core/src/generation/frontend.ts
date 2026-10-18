@@ -3,6 +3,7 @@ import type { FrontendRenderContext } from "../plugins/frontend-contracts.js";
 import { generateFrontendAuthFiles } from "../plugins/frontends/better-auth-client.js";
 import { generateClientStateFiles } from "../plugins/frontends/client-state.js";
 import { generateFeatureScreenFiles } from "../plugins/frontends/feature-screens.js";
+import { generateFrontendIam } from "../plugins/frontends/iam.js";
 import { generateUiFiles } from "../plugins/frontends/native-ui.js";
 import { frontendPaths } from "../plugins/frontends/nextjs.js";
 import { generateFrontendShell } from "../plugins/frontends/root-shell.js";
@@ -58,6 +59,7 @@ export function generateFrontend(project: ResolvedProject, name: string) {
     { owner: "ui-state", files: generateClientStateFiles(context) },
     { owner: "screens", files: generateFeatureScreenFiles(context) },
     { owner: "page-access", files: generateFrontendAccess(context) },
+    { owner: "iam", files: generateFrontendIam(context) },
     ...(context.api.authentication
       ? [{ owner: "identity", files: generateFrontendAuthFiles(context) }]
       : []),

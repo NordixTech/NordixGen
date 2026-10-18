@@ -29,7 +29,7 @@ Messages are English, identify a configuration path, explain the failure and pro
 | Cross-module data access | `CROSS_MODULE_RELATION`, `CROSS_MODULE_JOIN`, `CROSS_MODULE_FIELD_REFERENCE` |
 | Generated names, explicit routes and inputs | `GENERATED_NAME_COLLISION`, `DUPLICATE_OPERATION_ID`, `DUPLICATE_ENDPOINT`, `OPERATION_INPUT_COLLISION`, `ENDPOINT_PATH_PARAMETERS_INVALID` |
 | Pagination and writes | `UNKNOWN_PAGINATION_PROFILE`, `PAGINATION_PROFILE_INVALID`, `PAGINATION_PARAMETER_CONFLICT`, `MUTATION_GUARD_REQUIRED`, `OPERATION_MAPPING_UNSUPPORTED` |
-| Identity and policies | `AUTHENTICATION_REQUIRED`, `ACCESS_POLICY_CONFLICT`, `ROLE_UNKNOWN`, `PERMISSION_UNKNOWN`, `DEFAULT_ROLE_UNKNOWN`, plus specific method, grant and persistence errors |
+| Identity and policies | `AUTHENTICATION_REQUIRED`, `ACCESS_POLICY_CONFLICT`, `ENDPOINT_ROLES_REMOVED`, `ROLE_UNKNOWN`, `PERMISSION_UNKNOWN`, `DEFAULT_ROLE_UNKNOWN`, `DEFAULT_ROLE_PRIVILEGED`, plus specific method, grant and persistence errors |
 | Frontend authority/pages | `FRONTEND_BACKEND_UNKNOWN`, `FRONTEND_IDENTITY_REQUIRED`, `FRONTEND_IDENTITY_INVALID`, `FRONTEND_IDENTITY_AMBIGUOUS`, `FRONTEND_IDENTITY_MISMATCH`, `FRONTEND_ACCESS_ROUTE_INVALID` |
 
 The reference's `MODULE_PRIVATE_IMPORT`, `MODULE_DEPENDENCY_UNDECLARED` and `ARCHITECTURE_DEPENDENCY_INVALID` concern generated/authored source boundaries, not YAML declarations. Those source checks belong with module generation. Module cycles and stored-foreign-key cycles have separate resolved graphs. `RELATION_CYCLE` identifies an actual stored cycle, including self-cycles, at its source relation; inverse relations and scalar identifiers do not create stored dependencies.

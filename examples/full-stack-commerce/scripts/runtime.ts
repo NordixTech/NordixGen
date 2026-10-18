@@ -9,6 +9,7 @@ import { PreviewCustomer } from "./src/modules/billing/application/preview-custo
 import { createOperationBoundary } from "./src/platform/application/access.js";
 import type { OperationContext } from "./src/platform/application/contracts.js";
 import { createAuth } from "./src/platform/auth/auth.js";
+import { createIamRepository } from "./src/platform/authorization/repository.js";
 import { composeModules } from "./src/platform/database/create-route-dependencies.js";
 import { createDrizzleDatabase } from "./src/platform/database/drizzle-database.js";
 import { runMigrations } from "./src/platform/database/migrate.js";
@@ -138,7 +139,11 @@ if (process.argv[2] === "prepare") {
             const session = await createAuth(environment, executionContext).api.getSession({
               headers,
             });
-            return session ? { id: session.user.id, role: session.user.role ?? "" } : null;
+            return session
+              ? ((await createIamRepository(createDrizzleDatabase(connection)).principal(
+                  session.user.id,
+                )) ?? null)
+              : null;
           });
           const modules = composeModules(createDrizzleDatabase(connection), boundary.authorize);
           const preview = new PreviewCustomer(modules.billing.dependencies, boundary.authorize);

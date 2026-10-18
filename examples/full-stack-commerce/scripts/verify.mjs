@@ -444,7 +444,13 @@ export async function verifyApplication(state, directory, expireAccountant) {
         "Your account does not have the roles or permissions required to send this request.",
         { exact: true },
       );
-      await expect(deniedMessage).toBeVisible();
+      // The permission-scoped query provider can remount the Explorer as IAM finishes loading.
+      await expect
+        .poll(async () => {
+          await operation.selectOption("listInvoices");
+          return deniedMessage.isVisible();
+        })
+        .toBe(true);
       await expect(send).toBeDisabled();
       await expect(send).toHaveAttribute("aria-describedby", "api-operation-access");
       await expect(send).toHaveCSS("cursor", "not-allowed");
@@ -476,6 +482,236 @@ export async function verifyApplication(state, directory, expireAccountant) {
     }
     await passed(
       "Explorer explains pending/denied requests without sending them, while a public operation remains executable",
+    );
+
+    const confirmedChange = async (context, path, data) => {
+      let response = await context.post(path, { data });
+      if (response.status() === 409) {
+        const impact = await response.json();
+        expect(impact.code).toBe("confirmation_required");
+        response = await context.post(path, { data: { ...data, confirmation: impact.token } });
+      }
+      expect(response.status()).toBe(200);
+    };
+    const iamContext = await browser.newContext({ storageState: await admin.storageState() });
+    const iamPage = await iamContext.newPage();
+    iamPage.on("pageerror", (error) => browserErrors.push(error.message));
+    await iamPage.goto(`${web}/admin/roles`);
+    await expect(iamPage.getByRole("heading", { name: "Access administration" })).toBeVisible();
+    await expect(iamPage.getByRole("heading", { name: "Roles", exact: true })).toBeVisible();
+    await expect(iamPage.getByRole("button", { name: "Create role", exact: true })).toBeEnabled();
+    await iamPage.screenshot({
+      path: join(directory, "verified-iam-roles-desktop.png"),
+      fullPage: true,
+    });
+    await iamPage.getByRole("button", { name: "Create role", exact: true }).click();
+    const iamDialog = iamPage.getByRole("dialog");
+    await iamDialog.getByLabel("ID", { exact: true }).fill("ui-reviewer");
+    await iamDialog.getByLabel("Name", { exact: true }).fill("UI reviewer");
+    await iamDialog.getByLabel("invoices:read", { exact: false }).check();
+    await iamDialog.locator(".ng-dialog-content").evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await iamPage.screenshot({
+      path: join(directory, "verified-iam-role-editor.png"),
+      fullPage: false,
+    });
+    await iamDialog.getByRole("button", { name: "Save role" }).click();
+    await expect(iamDialog).toHaveCount(0);
+    await expect(
+      iamPage.getByRole("button", { name: "Edit ui-reviewer", exact: true }),
+    ).toBeVisible();
+    await iamPage.getByRole("searchbox", { name: "Search roles" }).fill("ui-reviewer");
+    await expect(iamPage.getByRole("row")).toHaveCount(2);
+    await iamPage.getByRole("searchbox", { name: "Search roles" }).fill("");
+    await iamPage.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await iamPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await iamPage.screenshot({
+      path: join(directory, "verified-iam-roles-mobile.png"),
+      fullPage: true,
+    });
+    await iamPage.setViewportSize({ width: 1400, height: 1000 });
+    await iamPage.getByRole("tab", { name: /Users/ }).click();
+    await expect(iamPage.getByRole("heading", { name: "Users", exact: true })).toBeVisible();
+    const viewerRow = iamPage
+      .getByRole("row")
+      .filter({ hasText: "viewer@acceptance.example.test" });
+    await viewerRow.getByRole("combobox").selectOption("ui-reviewer");
+    await expect(viewerRow.getByRole("combobox")).toHaveValue("ui-reviewer");
+    expect((await viewer.get("/api/invoices")).status()).toBe(200);
+    await iamPage.getByRole("tab", { name: /Roles/ }).click();
+    await iamPage.getByRole("button", { name: "Edit ui-reviewer", exact: true }).click();
+    await iamDialog.getByLabel("invoices:read", { exact: false }).uncheck();
+    await iamDialog.getByRole("button", { name: "Save role" }).click();
+    await expect(iamDialog).toHaveCount(0);
+    expect((await viewer.get("/api/invoices")).status()).toBe(403);
+    const viewerId = persistence.identities.viewer;
+    expect(
+      (await admin.post(`/api/iam/users/${viewerId}/role`, { data: { role: "viewer" } })).status(),
+    ).toBe(200);
+    await iamPage.getByRole("button", { name: "Delete ui-reviewer", exact: true }).click();
+    await iamPage
+      .getByRole("dialog", { name: "Delete role?" })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    await expect(
+      iamPage.getByRole("button", { name: "Edit ui-reviewer", exact: true }),
+    ).toBeVisible();
+    await iamPage.getByRole("button", { name: "Delete ui-reviewer", exact: true }).click();
+    await iamPage
+      .getByRole("dialog", { name: "Delete role?" })
+      .getByRole("button", { name: "Delete role", exact: true })
+      .click();
+    await expect(
+      iamPage.getByRole("button", { name: "Edit ui-reviewer", exact: true }),
+    ).toHaveCount(0);
+    expect(
+      (
+        await admin.post("/api/iam/roles", {
+          data: { id: "support", name: "Support", permissions: ["iam:users:manage-roles"] },
+        })
+      ).status(),
+    ).toBe(201);
+    expect(
+      (
+        await admin.post(`/api/iam/users/${persistence.identities.outsider}/role`, {
+          data: { role: "support" },
+        })
+      ).status(),
+    ).toBe(200);
+    const supportContext = await browser.newContext({
+      storageState: await outsider.storageState(),
+    });
+    const supportPage = await supportContext.newPage();
+    await supportPage.goto(`${web}/admin/roles`);
+    await expect(supportPage.getByRole("heading", { name: "Users", exact: true })).toBeVisible();
+    await expect(supportPage.getByRole("heading", { name: "Roles", exact: true })).toHaveCount(0);
+    await expect(supportPage.getByRole("button", { name: "Create role", exact: true })).toHaveCount(
+      0,
+    );
+    expect((await outsider.get("/api/iam/roles")).status()).toBe(403);
+    expect((await outsider.get("/api/iam/role-options")).status()).toBe(200);
+    await supportPage.screenshot({
+      path: join(directory, "verified-iam-user-operator.png"),
+      fullPage: true,
+    });
+    await confirmedChange(admin, `/api/iam/users/${persistence.identities.outsider}/role`, {
+      role: "outsider",
+    });
+    await supportPage.goto(`${web}/admin/roles`);
+    await expect(supportPage).toHaveURL(`${web}/`);
+    await iamPage.bringToFront();
+    // The sole full administrator cannot demote itself, even with a forged confirmation.
+    await iamPage.getByRole("tab", { name: /Users/ }).click();
+    await iamPage
+      .getByRole("combobox", { name: "Role for admin@acceptance.example.test" })
+      .selectOption("viewer");
+    await expect(
+      iamPage.getByRole("alert").filter({ hasText: "Keep at least one user" }),
+    ).toBeVisible();
+    expect((await admin.get("/api/iam/me")).status()).toBe(200);
+    await iamPage.screenshot({
+      path: join(directory, "verified-iam-last-admin.png"),
+      fullPage: true,
+    });
+    expect(
+      (
+        await admin.post("/api/iam/roles", {
+          data: {
+            id: "delegated-admin",
+            name: "Delegated administrator",
+            permissions: ["iam:roles:manage", "iam:users:manage-roles"],
+          },
+        })
+      ).status(),
+    ).toBe(201);
+    await confirmedChange(admin, `/api/iam/users/${persistence.identities.outsider}/role`, {
+      role: "delegated-admin",
+    });
+    await iamPage.reload();
+    await iamPage.getByRole("tab", { name: /Users/ }).click();
+    await iamPage
+      .getByRole("combobox", { name: "Role for outsider@acceptance.example.test" })
+      .selectOption("outsider");
+    const otherWarning = iamPage.getByRole("dialog", {
+      name: "Remove administrative access?",
+      exact: true,
+    });
+    await expect(otherWarning).toBeVisible();
+    await expect(otherWarning.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+    await otherWarning.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect((await outsider.get("/api/iam/me")).status()).toBe(200);
+    await iamPage
+      .getByRole("combobox", { name: "Role for outsider@acceptance.example.test" })
+      .selectOption("outsider");
+    await otherWarning.getByRole("button", { name: "Confirm access change" }).click();
+    await expect(otherWarning).toHaveCount(0);
+    expect((await outsider.get("/api/iam/roles")).status()).toBe(403);
+    await confirmedChange(admin, `/api/iam/users/${persistence.identities.outsider}/role`, {
+      role: "delegated-admin",
+    });
+    await supportPage.bringToFront();
+    await supportPage.goto(`${web}/admin/roles`);
+    await supportPage.getByRole("button", { name: "Edit delegated-admin", exact: true }).click();
+    await supportPage
+      .getByRole("dialog")
+      .getByLabel("iam:roles:manage", { exact: false })
+      .uncheck();
+    await supportPage.getByRole("button", { name: "Save role", exact: true }).click();
+    const selfWarning = supportPage.getByRole("dialog", {
+      name: "Remove your own administrative access?",
+      exact: true,
+    });
+    await expect(selfWarning).toBeVisible();
+    await expect(selfWarning).toContainText("Manage roles & permissions");
+    await expect(selfWarning.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+    await supportPage.screenshot({
+      path: join(directory, "verified-iam-self-warning.png"),
+      fullPage: false,
+    });
+    await selfWarning.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(supportPage.getByRole("dialog", { name: "Edit role", exact: true })).toBeVisible();
+    await supportPage.getByRole("button", { name: "Save role", exact: true }).click();
+    await selfWarning.getByRole("button", { name: "Confirm access change" }).click();
+    await expect(supportPage.getByRole("heading", { name: "Users", exact: true })).toBeVisible();
+    await expect(supportPage.getByRole("button", { name: "Create role", exact: true })).toHaveCount(
+      0,
+    );
+    await supportPage
+      .getByRole("combobox", { name: "Role for outsider@acceptance.example.test" })
+      .selectOption("outsider");
+    await expect(selfWarning).toBeVisible();
+    await expect(selfWarning).toContainText("Assign user roles");
+    await selfWarning.getByRole("button", { name: "Confirm access change" }).click();
+    await expect(supportPage).toHaveURL(`${web}/`);
+    const activity = await admin.get("/api/iam/audit");
+    expect(activity.status()).toBe(200);
+    expect(
+      (await activity.json()).some(
+        (entry) =>
+          entry.action === "role.updated" && entry.actorId === persistence.identities.outsider,
+      ),
+    ).toBe(true);
+    // Leave the retained demo ready for all three manual scenarios.
+    expect(
+      (
+        await admin.put("/api/iam/roles/delegated-admin", {
+          data: { permissions: ["iam:roles:manage", "iam:users:manage-roles"] },
+        })
+      ).status(),
+    ).toBe(200);
+    await confirmedChange(admin, `/api/iam/users/${persistence.identities.outsider}/role`, {
+      role: "delegated-admin",
+    });
+    await passed(
+      "Administrative loss requires focused Cancel/explicit confirmation; self role edits and reassignments refresh access; the final administrator is blocked and changes are audited",
+    );
+    await supportContext.close();
+    await iamContext.close();
+    await passed(
+      "IAM role editing and user reassignment work in the browser; database grants apply on the next request and user-only operators cannot edit roles",
     );
 
     const expiredContext = await browser.newContext({

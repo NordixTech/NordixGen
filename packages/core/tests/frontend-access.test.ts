@@ -49,9 +49,51 @@ function guard(
     require: load(`${root}/lib/auth/server.ts`).requirePageSession as (
       path: string,
     ) => Promise<unknown>,
+    requireIam: load(`${root}/lib/auth/server.ts`).requireIamAccess as () => Promise<void>,
   };
 }
 describe("verified server page access", () => {
+  it("checks IAM permissions on the server in public page mode and denies unavailable or insufficient authority", async () => {
+    vi.stubEnv("NEXT_PUBLIC_AUTH_BASE_URL", "http://localhost:8787");
+    try {
+      for (const permission of ["*", "iam:roles:manage", "iam:users:manage-roles"]) {
+        const f = guard("public");
+        f.fetchSession
+          .mockResolvedValueOnce(
+            new Response(JSON.stringify({ session: { id: "session" }, user: { id: "user" } })),
+          )
+          .mockResolvedValueOnce(new Response(JSON.stringify({ permissions: [permission] })));
+        await expect(f.requireIam()).resolves.toBeUndefined();
+        expect(String(f.fetchSession.mock.calls[1][0])).toBe("http://localhost:8787/api/iam/me");
+        expect(f.fetchSession.mock.calls[1][1]).toMatchObject({
+          cache: "no-store",
+          headers: { cookie: "test-cookie" },
+          redirect: "error",
+        });
+      }
+      for (const response of [
+        new Response("", { status: 403 }),
+        new Response(JSON.stringify({ permissions: [] })),
+      ]) {
+        const f = guard();
+        f.fetchSession
+          .mockResolvedValueOnce(
+            new Response(JSON.stringify({ session: { id: "session" }, user: { id: "user" } })),
+          )
+          .mockResolvedValueOnce(response);
+        await expect(f.requireIam()).rejects.toThrow("redirect:/");
+      }
+      const f = guard();
+      f.fetchSession
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ session: { id: "session" }, user: { id: "user" } })),
+        )
+        .mockResolvedValueOnce(new Response("unavailable", { status: 503 }));
+      await expect(f.requireIam()).rejects.toThrow("identity service is unavailable");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it("reads pending, signed-in and signed-out presentation directly from Better Auth", () => {
     const files = fixture().output.virtualFileSystem.snapshot();
     let state: { isPending: boolean; data: { user: { id: string; role: string } } | null } = {
@@ -60,6 +102,8 @@ describe("verified server page access", () => {
     };
     const load = generatedRuntime(files, {
       "@/lib/auth/client": { authClient: { useSession: () => state } },
+      react: { useState: () => [null, () => {}], useEffect: () => {} },
+      "@/lib/iam/client": { iamRequest: async () => null },
     });
     const view = load(`${root}/lib/auth/use-session-view.ts`).useSessionView as () => {
       user: { id: string } | null;
@@ -68,7 +112,7 @@ describe("verified server page access", () => {
     };
     expect(view()).toMatchObject({ user: null, isPending: true });
     state = { isPending: false, data: { user: { id: "verified", role: "viewer" } } };
-    expect(view()).toMatchObject({ user: { id: "verified" }, isPending: false });
+    expect(view()).toMatchObject({ user: { id: "verified" }, isPending: true });
     expect(view().hasRole("viewer")).toBe(true);
     state = { isPending: false, data: null };
     expect(view()).toMatchObject({ user: null, isPending: false });

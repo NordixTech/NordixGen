@@ -6,6 +6,7 @@
 export interface Principal {
   readonly id: string;
   readonly role: string;
+  readonly permissions?: readonly string[];
 }
 
 export interface OperationContext {
@@ -106,7 +107,8 @@ function createBillingModule(dependencies: BillingDependencies, guard: Guard) {
 
 /**
  * Trusted composition boundary. Only this server-owned closure may issue context.
- * In production verifySession invokes Better Auth; never accept Principal from JSON.
+ * In production verifySession invokes Better Auth and loads current grants from IAM persistence;
+ * never accept Principal or permission grants from JSON.
  * The injected repository stays private to Customers and may use its own adapter.
  */
 export function composeExampleBackend(
@@ -114,16 +116,11 @@ export function composeExampleBackend(
   repository: CustomerRepository,
 ) {
   const issuedContexts = new WeakSet<OperationContext>();
-  const grants: Readonly<Record<string, readonly string[]>> = {
-    admin: ["*"],
-    viewer: ["customers:read"],
-    accountant: ["invoices:read"],
-  };
   const guard: Guard = (context, permission) => {
     if (!issuedContexts.has(context) || !context.principal) {
       return { code: "unauthorized", message: "A verified session is required." };
     }
-    const allowed = grants[context.principal.role] ?? [];
+    const allowed = context.principal.permissions ?? [];
     if (!allowed.includes(permission) && !allowed.includes("*")) {
       return { code: "forbidden", message: "Required permission is missing." };
     }
@@ -140,7 +137,13 @@ export function composeExampleBackend(
       try {
         const session = await verifySession(cookieHeader);
         const context: OperationContext = Object.freeze({
-          principal: session ? Object.freeze({ id: session.id, role: session.role }) : null,
+          principal: session
+            ? Object.freeze({
+                id: session.id,
+                role: session.role,
+                permissions: Object.freeze([...(session.permissions ?? [])]),
+              })
+            : null,
         });
         issuedContexts.add(context);
         return await billing.previewForCustomer(input, context);

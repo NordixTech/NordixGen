@@ -49,7 +49,7 @@ return useQuery({queryKey:[...${JSON.stringify(scopedKey(operation))},${privateD
       path: `${root}/lib/api/cache.ts`,
       content: `import {QueryClient} from "@tanstack/react-query";
 /** Scalar presentation scope only; Better Auth remains the session source. A new keyed provider owns each cache. */
-export function sessionCacheIdentity(session:{isPending:boolean;user:{id:string;role?:string|null}|null}):string {return session.isPending?"pending":session.user?JSON.stringify(["user",session.user.id,session.user.role??null]):"anonymous";}
+export function sessionCacheIdentity(session:{isPending:boolean;user:{id:string;role?:string|null;permissions?:readonly string[]}|null}):string {return session.isPending?"pending":session.user?JSON.stringify(["user",session.user.id,session.user.role??null,[...(session.user.permissions??[])].sort()]):"anonymous";}
 export function createSessionQueryCache(){const client=new QueryClient();return {client,dispose:()=>{void client.cancelQueries().finally(()=>client.clear());}};}
 `,
     },

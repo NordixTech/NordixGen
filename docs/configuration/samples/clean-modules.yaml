@@ -25,9 +25,9 @@ backends:
     authentication: {}
     authorization:
       roles: [admin, viewer]
+      adminRole: admin
       defaultRole: viewer
       rolePermissions:
-        admin: ["*", customers:write, customers:read, invoices:read]
         viewer: [customers:read, invoices:read]
 frontends:
   - name: web
@@ -99,7 +99,6 @@ endpoints:
     operationId: createCustomer
     method: POST
     path: /api/customers
-    roles: [admin]
     permissions: [customers:write]
     requestBody: { useCase: { entity: Customer, operation: create } }
   - backend: api

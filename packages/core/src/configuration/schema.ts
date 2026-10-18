@@ -103,6 +103,7 @@ export const AuthenticationSchema = z
 export const AuthorizationSchema = z
   .object({
     roles: unique(SlugSchema).refine((v) => v.length > 0, "Declare at least one role."),
+    adminRole: SlugSchema,
     defaultRole: SlugSchema,
     rolePermissions: z.record(SlugSchema, unique(PermissionSchema)).default({}),
   })
@@ -194,7 +195,11 @@ export const EndpointSchema = z
     summary: z.string().optional(),
     entity: IdentifierSchema,
     authRequired: z.boolean().optional(),
-    roles: unique(SlugSchema).default([]),
+    roles: unique(SlugSchema)
+      .default([])
+      .describe(
+        "Deprecated for business endpoints: only an empty list is accepted. Declare required permissions instead.",
+      ),
     permissions: unique(PermissionSchema).default([]),
     queryParams: z.array(ParameterSchema).default([]),
     pathParams: z.array(PathParameterSchema).default([]),
@@ -264,7 +269,8 @@ export type NordixConfig = z.infer<typeof NordixConfigSchema>;
 export function effectiveAuthorization(backend: BackendDefinition) {
   return (
     backend.authorization ?? {
-      roles: backend.authentication ? ["user"] : [],
+      roles: backend.authentication ? ["admin", "user"] : [],
+      adminRole: backend.authentication ? "admin" : undefined,
       defaultRole: backend.authentication ? "user" : undefined,
       rolePermissions: {} as Record<string, string[]>,
     }

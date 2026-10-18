@@ -166,7 +166,9 @@ describe("own configuration references and immutable dictionary values", () => {
     const policy = await import(
       `data:text/javascript;base64,${Buffer.from(javascript).toString("base64")}`
     );
-    expect(policy.hasPermission({ id: "verified", role: "admin" }, "customers:read")).toBe(true);
+    expect(
+      policy.hasPermission({ id: "verified", role: "admin", permissions: ["*"] }, "customers:read"),
+    ).toBe(true);
     for (const role of ["constructor", "toString", "hasOwnProperty"])
       expect(policy.hasPermission({ id: "verified", role }, "customers:read")).toBe(false);
   });

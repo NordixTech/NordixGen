@@ -214,11 +214,13 @@ export interface ResolvedDatabase {
   readonly provider: "neon";
 }
 export interface ResolvedIdentity {
+  readonly permissions: readonly string[];
   readonly backend: string;
   readonly methods: readonly string[];
   readonly identityProviders: readonly string[];
   readonly features: readonly string[];
   readonly roles: readonly string[];
+  readonly adminRole: string;
   readonly defaultRole: string;
   readonly rolePermissions: Readonly<Record<string, readonly string[]>>;
 }

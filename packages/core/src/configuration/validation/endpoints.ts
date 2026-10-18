@@ -78,12 +78,15 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
     if (
       endpoint.path === "/health" ||
       (backend?.authentication &&
-        (endpoint.path === "/api/auth" || endpoint.path.startsWith("/api/auth/")))
+        (endpoint.path === "/api/auth" ||
+          endpoint.path.startsWith("/api/auth/") ||
+          endpoint.path === "/api/iam" ||
+          endpoint.path.startsWith("/api/iam/")))
     )
       add(
         "PLATFORM_ROUTE_RESERVED",
         `${path}.path`,
-        "This path belongs to a platform health/authentication handler. Choose a separate business path.",
+        "This path belongs to a platform health/authentication/IAM handler. Choose a separate business path.",
       );
     const placeholders = [...endpoint.path.matchAll(/\{([^{}]+)\}/g)].map((m) => m[1]);
     if (
@@ -330,11 +333,13 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
     }
     if (backend) {
       const policy = effectiveAuthorization(backend);
-      const known = new Set(
-        Object.values(policy.rolePermissions)
-          .flat()
-          .filter((p) => p !== "*"),
-      );
+      // Endpoint declarations define the static capability registry.
+      if (endpoint.roles.length)
+        add(
+          "ENDPOINT_ROLES_REMOVED",
+          `${path}.roles`,
+          "Business operations require capabilities, not role names. Replace roles with permissions.",
+        );
       if (
         !backend.authentication &&
         (endpoint.authRequired || endpoint.roles.length || endpoint.permissions.length)
@@ -358,11 +363,11 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
             `Role "${role}" is not declared by this backend. Declare it or choose a known role.`,
           );
       for (const [pi, permission] of endpoint.permissions.entries())
-        if (!known.has(permission) || permission.includes("*"))
+        if (permission.includes("*"))
           add(
             "PERMISSION_UNKNOWN",
             `${path}.permissions[${pi}]`,
-            `Permission "${permission}" must be a concrete token declared in backend role grants. Correct it or declare its grant.`,
+            `Permission "${permission}" must be a concrete application capability. Replace wildcard requirements with explicit permission tokens.`,
           );
     }
   }

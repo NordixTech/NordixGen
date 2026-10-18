@@ -59,6 +59,9 @@ export function applicationManifest(
           "db:generate": "drizzle-kit generate",
           "db:migrate": "tsx src/platform/database/migrate.ts",
           "db:seed": "tsx src/platform/database/seed.ts",
+          ...(app.runtime["better-auth"]
+            ? { "auth:create-admin": "tsx src/platform/authorization/create-admin.ts" }
+            : {}),
         }
       : {}),
   };
@@ -146,6 +149,7 @@ export async function finishWorkspace(
       "## Local setup",
       "- Backends: copy `.dev.vars.example` to `.dev.vars` inside the application and set the indicated runtime values. These files are ignored; never commit real credentials.",
       "- Database tooling runs in Node: also provide `DATABASE_URL` in your shell before `pnpm db:migrate` or `pnpm db:seed`. Generate SQL with `pnpm db:generate`, review it, then migrate before serving business/auth requests. Seeds create synthetic business data, not login identities.",
+      "- With authentication enabled, migrations also initialize database roles and grants without overwriting existing role edits. Register the first operator normally, then run `pnpm auth:create-admin operator@example.com` in the backend to promote that existing account. `/admin/roles` exposes permission-protected role/user administration; signup never accepts an elevated role.",
       "- Frontends: copy `.env.example` to `.env.local` and configure every backend origin. For a single local backend, use `http://localhost:8787`; Next.js normally uses `http://localhost:3000`.",
       "- With auth disabled, set backend `CORS_ALLOWED_ORIGINS` to the exact frontend origins. With Better Auth, use its `BETTER_AUTH_URL` / `AUTH_TRUSTED_ORIGINS` settings. CORS is a browser transport control, not business authorization.",
       "- Multiple backends need distinct local ports and matching public/identity URLs. Do not forward session cookies to a different authority or assume cookies cross unrelated hostnames.",

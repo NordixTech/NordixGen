@@ -60,9 +60,17 @@ These accounts are disposable local demo identities:
 | `admin@acceptance.example.test` | Customer and Invoice reads/writes |
 | `viewer@acceptance.example.test` | Protected Customer reads and Invoice reads |
 | `accountant@acceptance.example.test` | Invoice reads/writes, without permission for protected Customer lookup |
-| `outsider@acceptance.example.test` | Public operations only |
+| `outsider@acceptance.example.test` | No business permissions; after successful verification, the custom `delegated-admin` role allows both IAM operations |
 
-All four use `acceptance-local-password-2026`. The example creates users through the actual signup endpoint, verifies that callers cannot select an elevated role, and then provisions the demo roles directly in its isolated database. Normal generated signup uses the configured default role; the generator does not seed login accounts or provide an automatic role-management endpoint.
+All four use `acceptance-local-password-2026`. The example creates users through the actual signup endpoint, verifies that callers cannot select an elevated role, and then provisions demo account assignments directly in its isolated database. Normal generated signup uses the configured default role; the generator seeds the role catalog but never login accounts. An administrator can manage roles and user assignments through the automatically generated `/admin/roles` screen and `/api/iam/*` endpoints.
+
+After verification, open `/admin/roles` with the admin or outsider account (use separate browser profiles). The outsider finishes with the custom `delegated-admin` role and both IAM permissions, while admin retains `*`. You can test:
+
+- Removing outsider's administrative role as admin: review the warning, cancel or confirm, then inspect recent activity.
+- Editing `delegated-admin` while signed in as outsider: removing either IAM permission warns that you are changing your own access. Removing the final IAM permission returns you to the workspace.
+- Demoting one administrator, then attempting to demote the remaining one: the backend rejects the second change. Reassign another full administrator to proceed.
+
+The demo verifies these cases automatically before leaving this baseline. The PostgreSQL integration suite also verifies simultaneous demotions, stale confirmations and audit-failure rollback. To restore an existing account if you change its role, use another administrator or the generated `auth:create-admin` command with this run's database environment.
 
 Stop the running example when finished:
 

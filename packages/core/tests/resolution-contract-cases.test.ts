@@ -97,7 +97,8 @@ describe("resolved scopes, defaults and configuration failures", () => {
     expect(new Set(names).size).toBe(2);
     expect(first.frontends.web.identity).toBe(first.backends["other-api"].identity);
     expect(first.backends.api.identity).toMatchObject({
-      roles: ["user"],
+      roles: ["admin", "user"],
+      adminRole: "admin",
       defaultRole: "user",
       rolePermissions: {},
     });
