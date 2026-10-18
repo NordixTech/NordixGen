@@ -9,12 +9,29 @@ export function generateFrontendShell(context: FrontendRenderContext): readonly 
       path: `${root}/app/providers.tsx`,
       content: [
         '"use client";',
-        'import {useState,type ReactNode} from "react";',
-        'import {QueryClient,QueryClientProvider} from "@tanstack/react-query";',
+        'import {useEffect,useState,type ReactNode} from "react";',
+        'import {QueryClientProvider} from "@tanstack/react-query";',
+        'import {createSessionQueryCache} from "@/lib/api/cache";',
         'import {Toaster} from "@/components/ui/toaster";',
+        ...(auth
+          ? [
+              'import {useSessionView} from "@/lib/auth/use-session-view";',
+              'import {sessionCacheIdentity} from "@/lib/api/cache";',
+            ]
+          : []),
+        "function QueryScope({children}:{children:ReactNode}) {",
+        " const [cache]=useState(createSessionQueryCache);",
+        " useEffect(()=>()=>cache.dispose(),[cache]);",
+        " return <QueryClientProvider client={cache.client}>{children}<Toaster /></QueryClientProvider>;",
+        "}",
         "export function Providers({children}:{children:ReactNode}) {",
-        " const [client]=useState(()=>new QueryClient());",
-        " return <QueryClientProvider client={client}>{children}<Toaster /></QueryClientProvider>;",
+        ...(auth
+          ? [
+              " const session=useSessionView();",
+              " const identity=sessionCacheIdentity(session);",
+              " return <QueryScope key={identity}>{children}</QueryScope>;",
+            ]
+          : [" return <QueryScope>{children}</QueryScope>;"]),
         "}",
         "",
       ].join("\n"),

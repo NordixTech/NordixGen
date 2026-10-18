@@ -254,6 +254,7 @@ export type TransportJoin = Pick<
 > & { readonly projection: Readonly<Record<string, TransportField>> };
 export interface TransportOperation {
   readonly id: string;
+  readonly moduleId: string;
   readonly operationId: string;
   readonly action: ResolvedOperation["action"];
   readonly recordIdParameter?: string;

@@ -17,8 +17,10 @@ import * as httpException from "hono/http-exception";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as zod from "zod";
 import { generateBackend } from "../src/generation/backend.js";
+import { generateFrontend } from "../src/generation/frontend.js";
 import { ACCOUNT_POLICY } from "../src/project/account-policy.js";
 import { resolvedFixture } from "./fixtures.js";
+import { frontendRuntime } from "./frontend-runtime.js";
 import { generatedRuntime } from "./generated-runtime.js";
 import { constrainedPersistenceFixture, persistenceFixture } from "./persistence-fixture.js";
 const databaseUrl = process.env.NORDIXGEN_TEST_DATABASE_URL;
@@ -323,6 +325,75 @@ describe
       await repository.delete(id);
       expect(await repository.findById(id)).toBeNull();
       expect((await repository.findPage({ id }, 0, 1)).total).toBe(0);
+      expect((await sql("SELECT is_deleted FROM invoice WHERE id=$1", [id]))[0].is_deleted).toBe(
+        true,
+      );
+    }, 20_000);
+    it("executes typed browser form mutations through generated Hono into PostgreSQL", async () => {
+      const project = resolvedFixture(persistenceFixture());
+      const files = generateFrontend(project, "web").virtualFileSystem.snapshot();
+      const browser = frontendRuntime(
+        files,
+        "apps/web/src",
+        { zod },
+        {
+          process: { env: { NEXT_PUBLIC_API_BASE_URL: "https://api.example.test" } },
+          fetch: async (target: URL, init: RequestInit) => {
+            const headers = new Headers(init.headers);
+            headers.set("origin", "https://web.example.test");
+            return app.request(
+              String(target),
+              { ...init, headers },
+              { DATABASE_URL: databaseUrl },
+              { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+            );
+          },
+        },
+      );
+      const forms = browser("apps/web/src/lib/api/forms.ts") as Record<
+        string,
+        (values: Record<string, unknown>, id?: string) => unknown
+      >;
+      const api = browser("apps/web/src/lib/api/endpoints.ts") as Record<
+        string,
+        (input: unknown) => Promise<Row[]>
+      >;
+      const created = (
+        await api.createInvoice(
+          forms.createInvoiceFormInput({
+            customerId: "11111111-1111-4111-8111-111111111111",
+            total: "2.50",
+            discount: null,
+            note: "Typed browser contract",
+            issuedAt: "2026-10-18T12:34:56.000Z",
+            payload: '"json string value"',
+          }),
+        )
+      )[0].entity;
+      expect(created).toMatchObject({
+        total: 2.5,
+        discount: null,
+        issuedAt: "2026-10-18T12:34:56.000Z",
+        payload: "json string value",
+      });
+      expect(
+        (
+          await request("/api/invoices", "POST", {
+            customerId: "11111111-1111-4111-8111-111111111111",
+            total: 2,
+            payload: null,
+          })
+        ).status,
+      ).toBe(400);
+      const id = String(created.id);
+      expect(
+        (
+          await api.updateInvoice(
+            forms.updateInvoiceFormInput({ total: "3.25", discount: null }, id),
+          )
+        )[0].entity,
+      ).toMatchObject({ id, total: 3.25, discount: null, issuedAt: created.issuedAt });
+      await api.deleteInvoice(forms.deleteInvoiceFormInput({}, id));
       expect((await sql("SELECT is_deleted FROM invoice WHERE id=$1", [id]))[0].is_deleted).toBe(
         true,
       );

@@ -13,6 +13,7 @@ import type { ResolvedProject } from "../project/types.js";
 import { frontendView } from "../project/views.js";
 import { collectFiles } from "./files.js";
 import { generateFrontendAccess, protectFrontendPage } from "./frontend-access.js";
+import { generateFrontendForms } from "./frontend-forms.js";
 export const FRONTEND_STACK = {
   runtime: {
     "@tanstack/react-query": "^5.80.7",
@@ -49,6 +50,7 @@ export function generateFrontend(project: ResolvedProject, name: string) {
     { owner: "ui", files: generateUiFiles(context) },
     { owner: "tailwind", files: generateTailwindFiles(context) },
     { owner: "api", files: generateApiClientFiles(context) },
+    { owner: "forms", files: generateFrontendForms(context) },
     { owner: "queries", files: generateQueryFiles(context) },
     { owner: "ui-state", files: generateClientStateFiles(context) },
     { owner: "screens", files: generateFeatureScreenFiles(context) },
