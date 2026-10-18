@@ -196,6 +196,7 @@ function resolveValidated(
       },
     ]),
   );
+  const frontendDiagnostics: ConfigDiagnostic[] = [];
   const frontends = sortedRecord(
     config.frontends.map((frontend, index) => [
       frontend.name,
@@ -206,6 +207,7 @@ function resolveValidated(
         entities,
         operationList,
         origin(`frontends[${index}]`),
+        (diagnostic) => frontendDiagnostics.push(diagnostic),
       ),
     ]),
   );
@@ -235,7 +237,7 @@ function resolveValidated(
   });
   return options?.requireGeneration && project.readiness.length
     ? { success: false, diagnostics: project.readiness }
-    : { success: true, project, diagnostics: [] };
+    : { success: true, project, diagnostics: [...validation.diagnostics, ...frontendDiagnostics] };
 }
 export function resolveProject(
   input: unknown,

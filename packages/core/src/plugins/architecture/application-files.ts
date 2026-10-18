@@ -41,7 +41,8 @@ function fieldSchema(
     case "json":
       // Unlike z.unknown(), this schema excludes undefined in both runtime validation
       // and inference, so required JSON properties stay required with Zod 3.
-      schema = "JsonValueSchema";
+      schema =
+        'JsonValueSchema.refine(value=>value!==null,{message:"Expected a non-null JSON value."})';
       break;
     case "enum": {
       const values = field.value.enumValues as readonly string[];

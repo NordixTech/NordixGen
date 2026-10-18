@@ -181,7 +181,7 @@ describe("fixed UI assembly and declared features", () => {
       const screen = files[`${root}/components/features/customer-screen.tsx`];
       expect(screen).toContain("useListCustomers");
       expect(screen).toContain("mutateAsync");
-      expect(screen).toContain("searchFilter");
+      expect(screen).toContain("setFilters");
       expect(screen).toContain("setPage");
       expect(screen).toContain("zodResolver");
       expect(files[`${root}/lib/api/hooks.ts`]).toContain("invalidateQueries");
@@ -316,8 +316,8 @@ describe("frontend contract edge cases", () => {
         "store-web",
       ).virtualFileSystem.snapshot();
       const screen = files["apps/store-web/src/components/features/customer-screen.tsx"];
-      expect(screen).toContain(".default(");
-      expect(screen).toContain("hasRole");
+      expect(screen).toContain("formDefaults(");
+      expect(screen).toContain("canAccess(");
       expect(screen).toContain("createMutation");
     },
   );
@@ -345,7 +345,7 @@ describe("presentation access requirements", () => {
         "store-web",
       ).virtualFileSystem.snapshot();
       expect(files["apps/store-web/src/components/features/customer-screen.tsx"]).toContain(
-        "hasPermission(permission)",
+        "canAccess(",
       );
     },
   );

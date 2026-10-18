@@ -1,5 +1,6 @@
 import type { FrontendDefinition, NordixConfig } from "../configuration/schema.js";
 import { scopedOperationName } from "../configuration/validation/shared.js";
+import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
 import { dictionary, sortedRecord } from "./fields.js";
 import type {
   ConfigurationOrigin,
@@ -53,6 +54,7 @@ export function transportOperation(operation: ResolvedOperation): TransportOpera
   const pagination = operation.pagination;
   return {
     id: operation.id,
+    moduleId: operation.moduleId,
     operationId: operation.operationId,
     backend: operation.backend,
     entity: operation.entity,
@@ -105,6 +107,7 @@ export function resolveFrontend(
   entities: Readonly<Record<string, ResolvedEntity>>,
   operations: readonly ResolvedOperation[],
   origin: ConfigurationOrigin,
+  diagnose: (diagnostic: ConfigDiagnostic) => void,
 ): ResolvedFrontend {
   const visible = operations.filter((operation) => frontend.connectsTo.includes(operation.backend));
   const authorities = frontend.connectsTo.flatMap((name) =>
@@ -119,14 +122,15 @@ export function resolveFrontend(
     ...transportOperation(operation),
     invalidates: [
       ...new Set([
-        operation.entity,
         ...visible
           .filter(
             (query) =>
-              query.action === "query" &&
-              query.joins.some((join) => join.entity === operation.entity),
+              query.method === "GET" &&
+              query.backend === operation.backend &&
+              (query.entity === operation.entity ||
+                query.joins.some((join) => join.entity === operation.entity)),
           )
-          .map((query) => query.entity),
+          .map((query) => query.id),
       ]),
     ].sort(),
   }));
@@ -152,8 +156,42 @@ export function resolveFrontend(
         : operation.action === "custom"
           ? undefined
           : operation.action;
-    if (slot && !group[slot]) group[slot] = operation.id;
-    else group.custom.push(operation.id);
+    if (!slot) {
+      group.custom.push(operation.id);
+      continue;
+    }
+    const recordMutation = slot === "update" || slot === "delete";
+    const recordId = operation.pathParams.find(
+      (parameter) =>
+        parameter.input.binding?.entityId === operation.entityId &&
+        parameter.input.binding.field === "id",
+    );
+    const needsBinding =
+      operation.queryParams.some((parameter) => parameter.required) ||
+      (recordMutation
+        ? operation.pathParams.length !== 1 || !recordId
+        : slot === "create" && operation.pathParams.length > 0);
+    const candidates = visible.filter(
+      (candidate) =>
+        candidate.entity === operation.entity &&
+        candidate.action === operation.action &&
+        (candidate.action !== "query" ||
+          Boolean(candidate.pathParams.length) === Boolean(operation.pathParams.length)),
+    );
+    if (needsBinding || candidates.length > 1) {
+      group.custom.push(operation.id);
+      diagnose({
+        ...createDiagnostic(
+          needsBinding ? "FRONTEND_SCREEN_BINDING_REQUIRED" : "FRONTEND_SCREEN_OPERATION_AMBIGUOUS",
+          origin.path,
+          needsBinding
+            ? `Operation "${operation.id}" requires explicit path/query inputs that the automatic ${slot} screen cannot supply. Use its typed client/API Explorer; no action or guessed binding is generated.`
+            : `Entity "${operation.entity}" has multiple ${slot} operations (${candidates.map((candidate) => candidate.id).join(", ")}). Use their typed clients/API Explorer; the ambiguous automatic screen action is omitted.`,
+          "warning",
+        ),
+        ...(origin.source ? { source: origin.source } : {}),
+      });
+    } else group[slot] = operation.id;
   }
   const names = dictionary(
     visible.map((operation) => [

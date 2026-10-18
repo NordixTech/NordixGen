@@ -111,5 +111,6 @@ export async function runGenerate(
     requireGeneration: true,
   });
   if (!result.success) throw new Error(result.diagnostics.map(formatDiagnostic).join("\n"));
+  for (const diagnostic of result.diagnostics) console.warn(formatDiagnostic(diagnostic));
   await executeGeneration(result.project, _output, _runner);
 }
