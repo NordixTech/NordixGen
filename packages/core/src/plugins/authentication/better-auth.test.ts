@@ -71,7 +71,7 @@ endpoints:
 }
 
 describe("Better Auth plugin composition", () => {
-  it("generates the default credential flow and protects generated CRUD routes", () => {
+  it("generates the default credential flow and protects declared business routes", () => {
     const result = compose();
     expect(result.success).toBe(true);
     if (!result.success) return;
@@ -81,10 +81,10 @@ describe("Better Auth plugin composition", () => {
     expect(files["apps/api/src/infrastructure/database/schema/index.ts"]).toContain(
       'export * from "./auth-schema";',
     );
-    expect(files["apps/api/src/presentation/controllers/order.controller.ts"]).toContain(
+    expect(files["apps/api/src/presentation/controllers/listOrders.controller.ts"]).toContain(
       "Authentication is required",
     );
-    expect(files["apps/api/src/presentation/controllers/order.controller.ts"]).toContain(
+    expect(files["apps/api/src/presentation/controllers/listOrders.controller.ts"]).toContain(
       "A trusted Origin header is required for state-changing requests",
     );
     expect(files["apps/api/src/presentation/controllers/listOrders.controller.ts"]).toContain(

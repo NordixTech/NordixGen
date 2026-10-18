@@ -263,11 +263,12 @@ export function generateDrizzleAdapterFiles(
     "export function createRouteDependencies(connectionString: string) {",
     "  const db = createDrizzleDatabase(connectionString);",
   ];
-  const needsSystemClock = Object.values(model.entities).some(
-    (entity) =>
-      entity.timestamps.createdAt ||
-      entity.timestamps.updatedAt ||
-      Object.values(entity.fields).some((field) => field.type === "date" && hasNowDefault(field)),
+  const needsSystemClock = model.endpoints.some(
+    (endpoint) =>
+      endpoint.requestBody !== undefined &&
+      Object.values(model.entities[endpoint.entity]?.fields ?? {}).some(
+        (field) => field.type === "date" && hasNowDefault(field),
+      ),
   );
   if (needsSystemClock) {
     const clockAdapterPath = posix.join(adapterDirectory, "system-clock.adapter.ts");
@@ -276,7 +277,6 @@ export function generateDrizzleAdapterFiles(
     );
     dependencyLines.push("  const clock = new SystemClock();");
   }
-  const entitiesDependencyEntries: string[] = [];
 
   // Generate database client helper
   const dbClientPath = posix.join(adapterDirectory, "drizzle-database.ts");
@@ -309,35 +309,6 @@ export function generateDrizzleAdapterFiles(
     const adapterPath = posix.join(adapterDirectory, `${entityName}.drizzle.repository.ts`);
     const entityPath = posix.join(entityDirectory, `${entityName}.entity.ts`);
     const repositoryPortPath = posix.join(outboundPortDirectory, `${entityName}.repository.ts`);
-    const entityUseCaseDirectory = posix.join(
-      context.framework.codeRoot,
-      context.architecture.directories.useCase,
-      entityName,
-    );
-    const repositoryClass = `Drizzle${entityName}Repository`;
-    const repositoryVariable = `${lowerFirst(entityName)}Repository`;
-    dependencyImports.push(
-      `import { ${repositoryClass} } from "./${entityName}.drizzle.repository.js";`,
-    );
-    dependencyLines.push(`  const ${repositoryVariable} = new ${repositoryClass}(db);`);
-    const hasDynamicDefaults =
-      entity.timestamps.createdAt ||
-      entity.timestamps.updatedAt ||
-      Object.values(entity.fields).some((field) => field.type === "date" && hasNowDefault(field));
-    const useCaseProperties = [
-      ...(["Create", "Get", "List", "Update", "Delete"] as const).map((operation) => {
-        const className = `${operation}${entityName}UseCase`;
-        const filename = `${operation.toLowerCase()}-${entityName.toLowerCase()}.use-case.ts`;
-        dependencyImports.push(
-          `import { ${className} } from "${importPath(dependencyFactoryPath, posix.join(entityUseCaseDirectory, filename))}";`,
-        );
-        return `${lowerFirst(operation)}UseCase: new ${className}(${repositoryVariable}${operation === "Create" && hasDynamicDefaults ? ", clock" : ""})`;
-      }),
-    ];
-    entitiesDependencyEntries.push(
-      `    ${JSON.stringify(lowerFirst(entityName))}: { ${useCaseProperties.join(", ")} },`,
-    );
-
     const softDeleteCondition =
       entity.softDelete === "boolean"
         ? `eq(schema.${entityName}Table.isDeleted, false)`
@@ -716,9 +687,6 @@ export function generateDrizzleAdapterFiles(
   }
 
   dependencyLines.push("  return {");
-  dependencyLines.push("    entities: {");
-  dependencyLines.push(...entitiesDependencyEntries);
-  dependencyLines.push("    },");
   dependencyLines.push("    endpoints: {");
   for (const endpoint of model.endpoints) {
     if (!model.entities[endpoint.entity]) continue;

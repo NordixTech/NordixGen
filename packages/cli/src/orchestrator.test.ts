@@ -242,7 +242,18 @@ describe("generate command orchestration", () => {
       .replace(
         "    framework: hono",
         '    framework: hono\n    persistence:\n      database: commerce-db\n      orm: drizzle\n    authentication:\n      plugin: better-auth\n      methods: [email-password]\n    authorization:\n      roles: [admin, customer]\n      defaultRole: customer\n      rolePermissions:\n        admin: ["*"]\n        customer: [orders:read]',
-      );
+      )
+      .concat(`
+endpoints:
+  - backend: api
+    operationId: createUser
+    method: POST
+    path: /api/users
+    entity: User
+    roles: [admin]
+    permissions: [orders:read]
+    requestBody: { useCase: { entity: User, operation: create } }
+`);
     await writeFile(configPath, authConfiguration, "utf8");
 
     const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
@@ -277,16 +288,22 @@ describe("generate command orchestration", () => {
     );
     expect(
       await readFile(
-        join(apiRoot, "src", "presentation", "controllers", "user.controller.ts"),
+        join(apiRoot, "src", "presentation", "controllers", "createUser.controller.ts"),
         "utf8",
       ),
     ).toContain("Authentication is required");
     expect(
       await readFile(
-        join(apiRoot, "src", "presentation", "controllers", "user.controller.ts"),
+        join(apiRoot, "src", "presentation", "controllers", "createUser.controller.ts"),
         "utf8",
       ),
     ).toContain("A trusted Origin header is required for state-changing requests");
+    await expect(
+      access(join(apiRoot, "src", "presentation", "controllers", "user.controller.ts")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(
+      await readFile(join(apiRoot, "src", "presentation", "controllers", "routes.ts"), "utf8"),
+    ).not.toContain('routes.route("/users"');
   });
 
   it("rejects an unregistered ORM before creating output or scaffolding", async () => {
