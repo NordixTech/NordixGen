@@ -62,6 +62,7 @@ if (cleanupId) {
     ...process.env,
     NORDIXGEN_ACCEPTANCE_STATE: stateFile,
     NEXT_TELEMETRY_DISABLED: "1",
+    WRANGLER_SEND_METRICS: "false",
   };
   // Windows environment names are case-insensitive; plain objects are not. Keep one PATH key.
   const inheritedPath = process.env.PATH ?? process.env.Path ?? "";
@@ -175,6 +176,12 @@ if (cleanupId) {
       await check();
       return pnpmCommand(["run", "typecheck"], api);
     });
+    await runStage("build-generated-backend", () =>
+      pnpmCommand(
+        ["exec", "wrangler", "deploy", "--dry-run", "--outdir", ".acceptance-worker"],
+        api,
+      ),
+    );
     const owned = names(state);
     const label = [
       "--label",
