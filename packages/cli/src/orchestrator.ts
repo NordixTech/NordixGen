@@ -7,6 +7,7 @@ import {
   resolveProjectYaml,
   stringifyNordixYaml,
 } from "@nordixgen/core";
+import { executeGeneration } from "./execution.js";
 import { type CommandRunner, runCommand } from "./process.js";
 
 export function createStarterConfiguration(name: string, includeFrontend: boolean): string {
@@ -112,7 +113,5 @@ export async function runGenerate(
     requireGeneration: true,
   });
   if (!result.success) throw new Error(result.diagnostics.map(formatDiagnostic).join("\n"));
-  throw new Error(
-    "No modular generator is integrated. Generation cannot start; no files or commands were emitted.",
-  );
+  await executeGeneration(result.project, _output, _runner);
 }

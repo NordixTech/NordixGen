@@ -17,7 +17,9 @@ describe("YAML structure, references and descriptive diagnostics", () => {
     (name) => {
       const config = targetConfig(name);
       expect(validateNordixConfig(config)).toMatchObject({ success: true, diagnostics: [] });
-      expect(generationReadiness(resolvedFixture(config)).length).toBeGreaterThan(0);
+      expect(generationReadiness(resolvedFixture(config)).length === 0).toBe(
+        name === "single-module",
+      );
       if (name === "mixed-modules")
         expect(generationReadiness(resolvedFixture(config)).map((d) => d.code)).toContain(
           "MODULE_ARCHITECTURE_UNIMPLEMENTED",

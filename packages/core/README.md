@@ -23,7 +23,7 @@ if (!result.success) {
 }
 ```
 
-`resolveProject(input, options?)` accepts object input without invented source coordinates. `resolveProjectYaml(source, filename?, options?)` attaches YAML source locations. Pass `{ requireGeneration: true }` as resolution options to require readiness as well. Both CLI commands use this same resolution/preflight. All modular generation remains blocked until direct generation and Clean modules are integrated; Hexagonal/Onion have no renderer. Many-to-many generation also has an explicit readiness diagnostic.
+`resolveProject(input, options?)` accepts object input without invented source coordinates. `resolveProjectYaml(source, filename?, options?)` attaches YAML source locations. Pass `{ requireGeneration: true }` as resolution options to require readiness as well. Both CLI commands use this same resolution/preflight. The direct backend flow supports one Clean module per backend; multiple-module integration is pending and Hexagonal/Onion have no renderer. Many-to-many generation also has an explicit readiness diagnostic.
 
 `parseNordixYaml(source, filename?)` and `validateNordixConfig(input)` remain configuration-only APIs. They return canonical configuration, not a normalized renderer model; the parser no longer accepts generation options. The old IR builder, normalized-configuration API and renderer field/name inference have been removed. Use the [resolved model guide](../../docs/configuration/RESOLVED_MODEL.md) for value mapping, views and public contract boundaries.
 

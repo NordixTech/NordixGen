@@ -4,14 +4,14 @@ The approved [YAML v2 contract](YAML_V2.md) is implemented by the core Zod schem
 
 ## Current generation boundary
 
-`parseNordixYaml(source, filename)` and `validateNordixConfig(input)` check configuration independently of generation readiness. `resolveProjectYaml` and `resolveProject` additionally build the [shared resolved model](RESOLVED_MODEL.md). Both CLI `validate` and `generate` require the same resolution and readiness. They currently exit 1 for otherwise valid configurations:
+`parseNordixYaml(source, filename)` and `validateNordixConfig(input)` check configuration independently of generation readiness. `resolveProjectYaml` and `resolveProject` additionally build the [shared resolved model](RESOLVED_MODEL.md). Both CLI `validate` and `generate` require the same resolution and readiness. They exit 1 for valid configurations outside the currently implemented scope:
 
-- Clean modules report `MODULE_GENERATION_UNAVAILABLE` because modular emission is not integrated.
+- Multiple Clean modules report `MODULE_GENERATION_UNAVAILABLE` until modular composition is integrated. One Clean module per backend can generate through the [direct flow](../generation/DIRECT_BACKEND.md).
 - Hexagonal/Onion report `MODULE_ARCHITECTURE_UNIMPLEMENTED`; they never fall back to Clean.
 - Invalid syntax, structure, references or stored foreign-key cycles report their own errors before readiness, avoiding derivative failures.
 - Many-to-many mappings report `RELATION_MAPPING_UNIMPLEMENTED`; no partial join table is emitted.
 
-The CLI never invokes the old global-layer generator for a modular configuration. It creates no output directory and starts no scaffold, dependency installation, Git command or remote publication. `init` still writes a valid canonical starter configuration and refuses overwrites. The resolved model is implemented. Restoring generation requires the direct pipeline (RF-07) and Clean modules (RF-09), followed by executable integration acceptance. This work does not establish database/browser acceptance or support all three architecture generators.
+The CLI never invokes the old global-layer generator for a modular configuration. It creates no output directory and starts no scaffold, dependency installation, Git command or remote publication. `init` still writes a valid canonical starter configuration and refuses overwrites. The resolved model and direct single-module pipeline are implemented. Multiple-module generation requires the Clean layout integration (RF-09), followed by executable integration acceptance. This work does not establish database/browser acceptance or support all three architecture generators.
 
 ## Diagnostic categories
 
@@ -59,4 +59,4 @@ The old IR tests, sparse/invalid renderer-model tests and retired field/name inf
 
 Coverage includes all core source files, including the resolver, without new exclusions. The existing gates remain unchanged: minimum 98% lines/statements/branches and 99% functions. Coverage supports functional evidence; it does not prove every generated-project behavior. The existing CI order remains aligned: lint, typecheck, package build and tests, rebuilding core before CLI integration.
 
-Local verification on Node.js 24.21.0: 333 core tests across 24 suites and 17 CLI tests across two suites pass. Core coverage is 99.74% lines/statements, 98.11% branches and 100% functions, above the unchanged gates. Both package builds, root TypeScript checking and full Biome formatting/lint/import checks pass (the full formatting check uses an LF-normalized source/config copy to match Linux without changing unrelated Windows files). Six built-CLI invocations compare both commands on all three samples: identical readiness codes, exit 1 and no output. The pull request records CI for the pushed commit. See the [model guide](RESOLVED_MODEL.md) for the explicit adapter retirement boundaries and remaining integration work.
+Local verification on Node.js 24.21.0: 308 core tests across 22 suites and 17 CLI tests across two suites pass. Core coverage is 99.75% lines/statements, 98.05% branches and 100% functions, above the unchanged gates. Both package builds, root TypeScript checking and full Biome formatting/lint/import checks pass (the full formatting check uses an LF-normalized source/config copy to match Linux without changing unrelated Windows files). Single-module CLI emission is exercised with an injected runner; invalid, multi-module and unimplemented input has matched readiness diagnostics and no output. The pull request records CI for the pushed commit. See the [model guide](RESOLVED_MODEL.md) for the explicit adapter retirement boundaries and remaining integration work.

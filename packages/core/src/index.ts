@@ -23,13 +23,16 @@ export * from "./project/types.js";
 export * from "./project/resolve.js";
 export * from "./project/views.js";
 export * from "./json-schema.js";
-export * from "./plugins/composer.js";
+export * from "./generation/backend.js";
+export * from "./generation/frontend.js";
+export * from "./generation/files.js";
+export * from "./generation/dependencies.js";
 export * from "./plugins/contracts.js";
 export * from "./plugins/frontend-contracts.js";
 export * from "./plugins/frontend-api-contract.js";
 export * from "./plugins/frontend-composer.js";
 export * from "./plugins/frontend-registry.js";
-export * from "./plugins/registry.js";
+
 export * from "./plugins/architecture/clean.js";
 export * from "./plugins/architecture/domain-files.js";
 export * from "./plugins/architecture/application-files.js";

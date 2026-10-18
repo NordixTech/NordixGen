@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 import type { ResolvedField } from "../../project/types.js";
-import type { DomainModelContext, GeneratedFile, PluginContributionContext } from "../contracts.js";
+import type { BackendRenderContext, DomainModelContext, GeneratedFile } from "../contracts.js";
 
 function typeForField(field: ResolvedField): string {
   return field.type === "enum" ? field.enumName : field.value.applicationType;
@@ -93,9 +93,8 @@ function repositoryFile(
 }
 
 /** Produces deterministic, dependency-free domain artifacts in architecture-resolved paths. */
-export function generateDomainFiles(context: PluginContributionContext): readonly GeneratedFile[] {
+export function generateDomainFiles(context: BackendRenderContext): readonly GeneratedFile[] {
   const model = context.domainModel;
-  if (!model) return [];
 
   const entityDirectory = posix.join(
     context.framework.codeRoot,

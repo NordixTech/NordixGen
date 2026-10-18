@@ -2,14 +2,8 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { resolvedFixture } from "../../../tests/fixtures.js";
 import { parseNordixYaml } from "../../configuration/validate.js";
-import { cleanArchitecturePlugin } from "../architecture/clean.js";
-import { rbacPbacPlugin } from "../authorization/rbac-pbac.js";
-import { composeBackendPlugins } from "../composer.js";
-import type { PluginContributionContext } from "../contracts.js";
-import { honoFrameworkPlugin } from "../frameworks/hono.js";
-import { drizzleOrmPlugin } from "../orms/drizzle.js";
-import { PluginRegistry } from "../registry.js";
-import { betterAuthPlugin } from "./better-auth.js";
+import { generateBackend } from "../../generation/backend.js";
+import type { BackendRenderContext } from "../contracts.js";
 
 function compose(features: string[] = [], methods = ["email-password"], providers: string[] = []) {
   const parsed = parseNordixYaml(`
@@ -57,17 +51,7 @@ endpoints:
 `);
   if (!parsed.success) throw new Error(JSON.stringify(parsed.diagnostics));
 
-  const registry = new PluginRegistry();
-  for (const plugin of [
-    cleanArchitecturePlugin,
-    honoFrameworkPlugin,
-    drizzleOrmPlugin,
-    betterAuthPlugin,
-    rbacPbacPlugin,
-  ])
-    registry.register(plugin);
-
-  return composeBackendPlugins(resolvedFixture(parsed.config), "api", registry);
+  return generateBackend(resolvedFixture(parsed.config), "api");
 }
 
 describe("Better Auth plugin composition", () => {
@@ -79,7 +63,7 @@ describe("Better Auth plugin composition", () => {
     const files = result.virtualFileSystem.snapshot();
     expect(files["apps/api/src/infrastructure/auth/auth.ts"]).toContain("minPasswordLength: 4");
     expect(files["apps/api/src/infrastructure/database/schema/index.ts"]).toContain(
-      'export * from "./auth-schema";',
+      'export * from "./auth-schema.js";',
     );
     expect(files["apps/api/src/presentation/controllers/listOrders.controller.ts"]).toContain(
       "Authentication is required",
@@ -175,62 +159,5 @@ entities:
     expect(parsed.diagnostics.map(({ message }) => message).join(" ")).toContain(
       "email-password, username-password",
     );
-  });
-
-  it("fails explicitly when either security plugin receives no validated configuration", () => {
-    const missingAuthConfiguration = {
-      selection: { pluginId: "better-auth", configuration: null },
-    } as unknown as PluginContributionContext;
-    expect(() => betterAuthPlugin.contribute(missingAuthConfiguration)).toThrow(
-      "Better Auth requires its validated backend authentication configuration.",
-    );
-
-    const missingPolicyConfiguration = {
-      selection: { pluginId: "rbac-pbac", configuration: {} },
-    } as unknown as PluginContributionContext;
-    expect(() => rbacPbacPlugin.contribute(missingPolicyConfiguration)).toThrow(
-      "RBAC/PBAC requires validated authorization roles and permission grants.",
-    );
-  });
-
-  it("uses secure defaults for partial direct plugin configuration and requires persistence", () => {
-    const context = {
-      selection: { pluginId: "better-auth", configuration: {} },
-      framework: { codeRoot: "apps/api/src" },
-      architecture: { directories: { infrastructure: "infrastructure" } },
-      availableCapabilities: new Set<string>(),
-      persistence: {
-        directories: {
-          infrastructure: "apps/api/src/infrastructure",
-          adapter: "apps/api/src/infrastructure/adapters",
-        },
-      },
-    } as unknown as PluginContributionContext;
-    const generated = betterAuthPlugin.contribute(context);
-    expect(generated[0]?.content).toContain('.default("user")');
-    expect(generated[1]?.content).toContain("enabled: true");
-    expect(generated[2]?.content).not.toContain("RESEND_API_KEY");
-    const sameDirectoryImport = betterAuthPlugin.contribute({
-      ...context,
-      persistence: {
-        directories: {
-          infrastructure: "apps/api/src/infrastructure",
-          adapter: "apps/api/src/infrastructure/auth",
-        },
-      },
-    });
-    expect(sameDirectoryImport[1]?.content).toContain('from "./drizzle-database.js"');
-
-    expect(() => betterAuthPlugin.contribute({ ...context, persistence: undefined })).toThrow(
-      "Better Auth requires a persistence context.",
-    );
-
-    const policyContext = {
-      selection: { pluginId: "rbac-pbac", configuration: { authorization: { roles: [] } } },
-      framework: context.framework,
-      architecture: context.architecture,
-      availableCapabilities: new Set<string>(),
-    } as unknown as PluginContributionContext;
-    expect(rbacPbacPlugin.contribute(policyContext)[0]?.content).toContain("rolePermissions");
   });
 });

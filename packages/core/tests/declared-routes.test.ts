@@ -8,21 +8,15 @@ import { describe, expect, it, vi } from "vitest";
 import * as zod from "zod";
 import {
   FrontendPluginRegistry,
-  PluginRegistry,
   betterAuthFrontendPlugin,
-  betterAuthPlugin,
   buildFrontendApiContract,
-  cleanArchitecturePlugin,
-  composeBackendPlugins,
   composeFrontendPlugins,
-  drizzleOrmPlugin,
   featureScreensFrontendPlugin,
   frontendRenderSettings,
-  honoFrameworkPlugin,
+  generateBackend,
   nativeReactUiPlugin,
   nextjsFrontendPlugin,
   parseNordixYaml,
-  rbacPbacPlugin,
   tailwindStylingPlugin,
   tanstackQueryServerStatePlugin,
   typedFetchApiPlugin,
@@ -122,16 +116,7 @@ function generatedApplication(
 ) {
   const config = configuration(withEndpoints, createPath);
   customize?.(config);
-  const registry = new PluginRegistry();
-  for (const plugin of [
-    cleanArchitecturePlugin,
-    honoFrameworkPlugin,
-    drizzleOrmPlugin,
-    betterAuthPlugin,
-    rbacPbacPlugin,
-  ])
-    registry.register(plugin);
-  const result = composeBackendPlugins(resolvedFixture(config), "api", registry);
+  const result = generateBackend(resolvedFixture(config), "api");
   if (!result.success) throw new Error(JSON.stringify(result.diagnostics));
   const files = result.virtualFileSystem.snapshot();
 
