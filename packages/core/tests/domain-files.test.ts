@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { NordixConfigSchema } from "../src/configuration/schema.js";
-import { buildBackendDomainModel } from "../src/intermediate-representation.js";
 import {
   cleanArchitecturePlugin,
   resolveCleanArchitectureLayout,
@@ -11,6 +10,8 @@ import type { DomainModelContext, PluginContributionContext } from "../src/plugi
 import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
 import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
 import { PluginRegistry } from "../src/plugins/registry.js";
+import { backendView } from "../src/project/views.js";
+import { resolvedFixture } from "./fixtures.js";
 import { createValidConfig } from "./fixtures.js";
 
 function composeFixture(config = createValidConfig()) {
@@ -18,38 +19,29 @@ function composeFixture(config = createValidConfig()) {
   registry.register(honoFrameworkPlugin);
   registry.register(cleanArchitecturePlugin);
   registry.register(drizzleOrmPlugin);
-  return composeBackendPlugins(NordixConfigSchema.parse(config), "core-api", registry);
+  return composeBackendPlugins(
+    resolvedFixture(NordixConfigSchema.parse(config)),
+    "core-api",
+    registry,
+  );
 }
 
 describe("Clean Architecture domain artifacts", () => {
   it("generates state-shaped domain entities, per-enum modules, and repository ports", () => {
     const config = createValidConfig();
-    config.entities.User.fields.enabled = { type: "boolean", default: true };
-    config.entities.User.fields.birthday = { type: "date", required: false };
-    config.entities.User.fields.externalId = { type: "uuid" };
-    config.entities.User.fields.profile = { type: "json", required: false };
-    config.entities.User.relations.teams = {
-      type: "many-to-many",
-      target: "Team",
-      joinTable: "user_teams",
-    };
-    config.entities.Order.relations.receipt = {
-      type: "one-to-one",
-      target: "User",
-      foreignKey: "order_id",
-      onDelete: "set-null",
-      required: true,
-    };
-    config.entities.Team = { backend: "core-api", fields: { name: { type: "string" } } };
+    config.entities.Customer.fields.enabled = { type: "boolean", default: true };
+    config.entities.Customer.fields.birthday = { type: "date", required: false };
+    config.entities.Customer.fields.externalId = { type: "uuid" };
+    config.entities.Customer.fields.profile = { type: "json", required: false };
     const result = composeFixture(config);
     expect(result.success).toBe(true);
     if (!result.success) return;
 
     const files = result.virtualFileSystem.snapshot();
-    const user = files["apps/api-core/src/domain/entities/User.entity.ts"];
+    const user = files["apps/api-core/src/domain/entities/Customer.entity.ts"];
     const order = files["apps/api-core/src/domain/entities/Order.entity.ts"];
     const repository = files["apps/api-core/src/application/ports/outbound/Order.repository.ts"];
-    expect(user).toContain('import type { UserRole } from "./UserRole.enum.js";');
+    expect(user).toContain('import type { CustomerRole } from "./CustomerRole.enum.js";');
     expect(user).toContain('"email": string;');
     expect(user).toContain('"enabled": boolean;');
     expect(user).toContain('"birthday": Date | null;');
@@ -93,7 +85,7 @@ describe("Clean Architecture domain artifacts", () => {
 
   it("uses a same-directory relative import when an architecture colocates its ports", () => {
     const { framework, architecture, domainModel } = createContributionContext(
-      buildBackendDomainModel(NordixConfigSchema.parse(createValidConfig()), "core-api"),
+      backendView(resolvedFixture(NordixConfigSchema.parse(createValidConfig())), "core-api"),
     );
     const colocatedContext: PluginContributionContext = {
       selection: { pluginId: "clean" },
@@ -109,8 +101,8 @@ describe("Clean Architecture domain artifacts", () => {
       domainModel,
     };
     const files = generateDomainFiles(colocatedContext);
-    expect(files.find((file) => file.path.endsWith("User.repository.ts"))?.content).toContain(
-      'from "./User.entity.js"',
+    expect(files.find((file) => file.path.endsWith("Customer.repository.ts"))?.content).toContain(
+      'from "./Customer.entity.js"',
     );
   });
 
@@ -128,33 +120,6 @@ describe("Clean Architecture domain artifacts", () => {
       domainModel: { enums: {}, entities: {}, endpoints: [] },
     };
     expect(generateDomainFiles(context)).toEqual([]);
-  });
-
-  it("rejects an entity name with no corresponding normalized entity", () => {
-    const { framework, architecture } = createContributionContext({
-      enums: {},
-      entities: {},
-    });
-    expect(() =>
-      generateDomainFiles({
-        selection: { pluginId: "clean" },
-        framework,
-        architecture,
-        availableCapabilities: new Set(),
-        domainModel: {
-          enums: {},
-          endpoints: [],
-          entities: new Proxy(
-            {},
-            {
-              ownKeys: () => ["Missing"],
-              get: () => undefined,
-              getOwnPropertyDescriptor: () => ({ configurable: true, enumerable: true }),
-            },
-          ) as DomainModelContext["entities"],
-        },
-      }),
-    ).toThrow('Domain model is missing entity "Missing".');
   });
 });
 

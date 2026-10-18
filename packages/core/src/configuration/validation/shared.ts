@@ -5,11 +5,11 @@ export function fieldDefinitions(
   name: string,
 ): Record<string, FieldDefinition> {
   const entity = config.entities[name];
-  if (!entity) return {};
-  const fields: Record<string, FieldDefinition> = {
+  if (!entity) return Object.create(null);
+  const fields: Record<string, FieldDefinition> = Object.assign(Object.create(null), {
     ...entity.fields,
     id: { type: "uuid", required: true, unique: true },
-  };
+  });
   if (entity.timestamps.createdAt)
     fields.createdAt = { type: "date", required: true, unique: false };
   if (entity.timestamps.updatedAt)

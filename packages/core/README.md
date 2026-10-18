@@ -1,25 +1,31 @@
 # @nordixgen/core
 
-The core parses and validates strict YAML v2 for NordixGen's fixed stack. It checks module ownership, public operation references, independent module cycles, data relationships, explicit endpoint bindings, project paths, authentication and frontend access.
+The core parses strict YAML v2 and resolves it once into a typed, immutable project model. Backend, module and frontend consumers share resolved fields, operation contracts, ownership, policies and independent dependency graphs.
 
-## Configuration API
+## Resolution API
 
 ```ts
 import { readFile } from "node:fs/promises";
-import { parseNordixYaml, formatDiagnostic } from "@nordixgen/core";
+import { resolveProjectYaml, backendView, moduleView, frontendView,
+  formatDiagnostic } from "@nordixgen/core";
 
 const file = "nordix.config.yaml";
-const result = parseNordixYaml(await readFile(file, "utf8"), file);
+const result = resolveProjectYaml(await readFile(file, "utf8"), file);
 if (!result.success) {
   for (const diagnostic of result.diagnostics) console.error(formatDiagnostic(diagnostic));
 } else {
-  console.log(result.config.schemaVersion); // 2
+  const project = result.project; // formatVersion: 5, deeply frozen
+  console.log(project.moduleOrder, project.entityOrder, project.readiness);
+  // Select declared names; views never parse or validate again.
+  const backend = backendView(project, "api");
+  const module = moduleView(project, "api.notes");
+  const frontend = frontendView(project, "web");
 }
 ```
 
-`validateNordixConfig(input)` validates object input without invented source coordinates. `parseNordixYaml(source, filename)` attaches YAML line/column information. A successful result includes the canonical configuration and a transitional normalized endpoint view (effective authentication and pagination); it is not the complete resolved model planned for RF-05.
+`resolveProject(input, options?)` accepts object input without invented source coordinates. `resolveProjectYaml(source, filename?, options?)` attaches YAML source locations. Pass `{ requireGeneration: true }` as resolution options to require readiness as well. Both CLI commands use this same resolution/preflight. All modular generation remains blocked until direct generation and Clean modules are integrated; Hexagonal/Onion have no renderer. Many-to-many generation also has an explicit readiness diagnostic.
 
-Pass `{ requireGeneration: true }` as the third parser argument to include shared readiness checks. All modular generation is currently blocked; Clean requires integration and Hexagonal/Onion have no renderer. The CLI always includes this preflight.
+`parseNordixYaml(source, filename?)` and `validateNordixConfig(input)` remain configuration-only APIs. They return canonical configuration, not a normalized renderer model; the parser no longer accepts generation options. The old IR builder, normalized-configuration API and renderer field/name inference have been removed. Use the [resolved model guide](../../docs/configuration/RESOLVED_MODEL.md) for value mapping, views and public contract boundaries.
 
 ## Development and remaining internals
 
@@ -33,6 +39,6 @@ pnpm test
 pnpm generate:schema
 ```
 
-The editor schema is generated from the authoritative Zod definitions and a test checks exact equality with the checked-in file. IR format version 4 contains canonical applications and removes dormant deployment/Docker/AI settings. The existing virtual filesystem and concrete renderer tests remain useful low-level checks. Temporary fixed renderer views and the internal plugin composition machinery are scheduled for replacement by the resolved model and direct generation work; they are not a supported alternative v2 CLI pipeline.
+The editor schema comes from the authoritative Zod definitions; a test checks exact equality. Concrete renderer tests execute generated Hono handlers and compile generated application/client contracts. They do not establish database or browser acceptance. Temporary fixed renderer adapters read the resolved model: backend/plugin composition is scheduled for RF-07, frontend adapters for RF-08 and the old backend layout for RF-09. None is a supported alternative CLI generation pipeline.
 
 See the [contract](../../docs/configuration/YAML_V2.md) and [validation/evidence guide](../../docs/configuration/VALIDATION.md). Keep credentials in environment configuration, never YAML.

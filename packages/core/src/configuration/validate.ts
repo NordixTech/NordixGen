@@ -1,8 +1,8 @@
 import { LineCounter, isNode, isScalar, parseDocument, stringify, visit } from "yaml";
 import type { z } from "zod";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
-import { generationReadiness } from "./readiness.js";
-import { type NordixConfig, NordixConfigSchema, type NormalizedNordixConfig } from "./schema.js";
+import { isolateConfigurationDictionaries } from "./dictionaries.js";
+import { type NordixConfig, NordixConfigSchema } from "./schema.js";
 import { validateAccess } from "./validation/access.js";
 import { validateApplications } from "./validation/applications.js";
 import { validateEndpoints } from "./validation/endpoints.js";
@@ -14,7 +14,7 @@ export type ConfigValidationResult =
   | {
       success: true;
       config: NordixConfig;
-      normalizedConfig: NormalizedNordixConfig;
+      locate?: (path: string) => ConfigDiagnostic["source"];
       diagnostics: ConfigDiagnostic[];
     }
   | { success: false; diagnostics: ConfigDiagnostic[] };
@@ -76,7 +76,9 @@ function structuralDiagnostics(error: z.ZodError): ConfigDiagnostic[] {
         createDiagnostic(
           "CONFIG_FIELD_INVALID",
           path,
-          "Use the documented field definition/reference, or the strict requestBody useCase entity/create-or-update form. Do not mix forms or add unknown properties.",
+          path.endsWith(".softDelete")
+            ? "Use false to disable soft deletion, or select boolean or timestamp. Correct this softDelete declaration."
+            : "Use the documented field definition/reference, or the strict requestBody useCase entity/create-or-update form. Do not mix forms or add unknown properties.",
         ),
       ];
     if (issue.code === "invalid_type")
@@ -142,20 +144,12 @@ function dataProblem(value: unknown): ConfigDiagnostic | undefined {
   return walk(value, [], 0);
 }
 function ordered(diagnostics: ConfigDiagnostic[]): ConfigDiagnostic[] {
-  const seen = new Set<string>();
-  return diagnostics
-    .filter((d) => {
-      const key = `${d.code}:${d.path}:${d.message}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort(
-      (a, b) =>
-        a.path.localeCompare(b.path) ||
-        a.code.localeCompare(b.code) ||
-        a.message.localeCompare(b.message),
-    );
+  return diagnostics.sort(
+    (a, b) =>
+      a.path.localeCompare(b.path) ||
+      a.code.localeCompare(b.code) ||
+      a.message.localeCompare(b.message),
+  );
 }
 export function validateNordixConfig(input: unknown): ConfigValidationResult {
   const problem = dataProblem(input);
@@ -163,7 +157,7 @@ export function validateNordixConfig(input: unknown): ConfigValidationResult {
   const parsed = NordixConfigSchema.safeParse(input);
   if (!parsed.success)
     return { success: false, diagnostics: ordered(structuralDiagnostics(parsed.error)) };
-  const config = parsed.data;
+  const config = isolateConfigurationDictionaries(parsed.data);
   const diagnostics = ordered([
     ...validateApplications(config),
     ...validateModules(config),
@@ -176,28 +170,10 @@ export function validateNordixConfig(input: unknown): ConfigValidationResult {
   return {
     success: true,
     config,
-    normalizedConfig: normalizePaginationConfig(config),
     diagnostics,
   };
 }
-export function resolvePaginationProfileReferences(config: NordixConfig): NormalizedNordixConfig {
-  return {
-    ...config,
-    endpoints: config.endpoints.map((endpoint) => ({
-      ...endpoint,
-      authRequired:
-        endpoint.authRequired ??
-        Boolean(config.backends.find((b) => b.name === endpoint.backend)?.authentication),
-      pagination: endpoint.pagination ? config.pagination[endpoint.pagination] : undefined,
-    })),
-  };
-}
-export const normalizePaginationConfig = resolvePaginationProfileReferences;
-export function parseNordixYaml(
-  source: string,
-  file?: string,
-  options?: { requireGeneration?: boolean },
-): ConfigValidationResult {
+export function parseNordixYaml(source: string, file?: string): ConfigValidationResult {
   const lineCounter = new LineCounter();
   const document = parseDocument(source, { uniqueKeys: true, lineCounter });
   const locate = (diagnostic: ConfigDiagnostic, offset: number): ConfigDiagnostic => ({
@@ -287,14 +263,9 @@ export function parseNordixYaml(
       ],
     };
   }
-  const validation = validateNordixConfig(input);
-  const readiness =
-    validation.success && options?.requireGeneration ? generationReadiness(validation.config) : [];
-  const result: ConfigValidationResult = readiness.length
-    ? { success: false, diagnostics: [...validation.diagnostics, ...readiness] }
-    : validation;
-  const diagnostics = result.diagnostics.map((diagnostic) => {
-    const keys = (diagnostic.path.match(/[^.\[\]]+/g) ?? []).map((key) =>
+  const result = validateNordixConfig(input);
+  const locatePath = (path: string): ConfigDiagnostic["source"] => {
+    const keys = (path.match(/[^.\[\]]+/g) ?? []).map((key) =>
       /^\d+$/.test(key) ? Number(key) : key,
     );
     let node: unknown;
@@ -304,9 +275,19 @@ export function parseNordixYaml(
       keys.pop();
     }
     const offset = isNode(node) ? (node.range?.[0] ?? 0) : 0;
-    return locate(diagnostic, offset);
-  });
-  return { ...result, diagnostics };
+    return {
+      ...(file ? { file } : {}),
+      line: lineCounter.linePos(offset).line,
+      column: lineCounter.linePos(offset).col,
+    };
+  };
+  const diagnostics = result.diagnostics.map((diagnostic) => ({
+    ...diagnostic,
+    source: locatePath(diagnostic.path),
+  }));
+  return result.success
+    ? { ...result, diagnostics, locate: locatePath }
+    : { ...result, diagnostics };
 }
 
 export function stringifyNordixYaml(input: unknown): string {

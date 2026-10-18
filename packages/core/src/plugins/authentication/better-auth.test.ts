@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { resolvedFixture } from "../../../tests/fixtures.js";
 import { parseNordixYaml } from "../../configuration/validate.js";
 import { cleanArchitecturePlugin } from "../architecture/clean.js";
 import { rbacPbacPlugin } from "../authorization/rbac-pbac.js";
@@ -66,7 +67,7 @@ endpoints:
   ])
     registry.register(plugin);
 
-  return composeBackendPlugins(parsed.config, "api", registry);
+  return composeBackendPlugins(resolvedFixture(parsed.config), "api", registry);
 }
 
 describe("Better Auth plugin composition", () => {
@@ -149,6 +150,10 @@ describe("Better Auth plugin composition", () => {
       policy.isAuthorized({ role: "customer" }, { roles: [], permissions: ["orders:delete"] }),
     ).toBe(false);
     expect(policy.isAuthorized({}, { roles: [], permissions: [] })).toBe(true);
+    for (const role of ["constructor", "toString", "hasOwnProperty"])
+      expect(policy.isAuthorized({ role }, { roles: [], permissions: ["orders:read"] })).toBe(
+        false,
+      );
   });
 
   it("rejects unsupported PIN authentication before plugin composition", () => {

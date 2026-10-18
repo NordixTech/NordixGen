@@ -8,7 +8,7 @@ function relativeImport(fromFile: string, toFile: string): string {
 }
 
 function endpointTypeName(endpoint: DomainModelContext["endpoints"][number]): string {
-  return endpoint.operationId.charAt(0).toUpperCase() + endpoint.operationId.slice(1);
+  return endpoint.typeName;
 }
 
 function lowerFirst(value: string): string {
@@ -143,6 +143,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
 
   const routesImports: string[] = [
     'import { Hono } from "hono";',
+    'import { HTTPException } from "hono/http-exception";',
     `import healthController from "${relativeImport(routesPath, healthControllerPath)}";`,
     `import { problemResponse } from "${relativeImport(routesPath, problemDetailsPath)}";`,
   ];
@@ -166,16 +167,15 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
     const useCaseImport = relativeImport(controllerPath, endpointUseCasePath);
 
     const hasPathParams = endpoint.pathParams.length > 0;
-    const hasQueryParams = endpoint.queryParams.length > 0 || endpoint.pagination !== undefined;
-    const hasRequestBody = endpoint.requestBody !== undefined;
-    const isSecured =
-      endpoint.authRequired || endpoint.roles.length > 0 || endpoint.permissions.length > 0;
+    // Even an empty declared query contract rejects undeclared query names.
+    const hasRequestBody = endpoint.body.kind !== "none";
+    const isSecured = endpoint.access.authenticated;
     const httpMethod = endpoint.method.toLowerCase();
     const honoPath = endpoint.path.replace(/\{([^{}]+)\}/g, ":$1");
 
     const dtoImportsList: string[] = [];
     if (hasPathParams) dtoImportsList.push("PathParamsSchema");
-    if (hasQueryParams) dtoImportsList.push("QueryParamsSchema");
+    dtoImportsList.push("QueryParamsSchema");
     if (hasRequestBody) dtoImportsList.push("RequestBodySchema");
 
     const validatorsList: string[] = [];
@@ -203,15 +203,13 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
         "    }),",
       );
     }
-    if (hasQueryParams) {
-      validatorsList.push(
-        '    zValidator("query", QueryParamsSchema, (result, c) => {',
-        "      if (!result.success) {",
-        '        return problemResponse(c, 400, "Validation Failed", "Invalid query parameters", result.error.issues);',
-        "      }",
-        "    }),",
-      );
-    }
+    validatorsList.push(
+      '    zValidator("query", QueryParamsSchema, (result, c) => {',
+      "      if (!result.success) {",
+      '        return problemResponse(c, 400, "Validation Failed", "Invalid query parameters", result.error.issues);',
+      "      }",
+      "    }),",
+    );
     if (hasRequestBody) {
       validatorsList.push(
         '    zValidator("json", RequestBodySchema, (result, c) => {',
@@ -256,9 +254,9 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
       `        return problemResponse(c, 500, "Internal Server Error", "${operationName}UseCase not configured");`,
       "      }",
       `      const path = ${hasPathParams ? 'c.req.valid("param")' : "{}"};`,
-      `      const query = ${hasQueryParams ? 'c.req.valid("query")' : "{}"};`,
+      '      const query = c.req.valid("query");',
       ...(hasRequestBody ? ['      const body = c.req.valid("json");'] : []),
-      `      const rawInput = { path, query${hasRequestBody ? ", body" : ""} };`,
+      `      const rawInput = { ...path, ...query${hasRequestBody ? ", ...body" : ""} };`,
       "      const response = await useCase.execute(rawInput);",
       "      return c.json(response, 200);",
       "    },",
@@ -298,7 +296,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
       "",
       "export function createRoutes(deps?: RoutesDependencies): Hono {",
       "  const routes = new Hono();",
-      '  routes.onError((err, c) => problemResponse(c, 500, "Internal Server Error", err.message));',
+      '  routes.onError((error, c) => error instanceof HTTPException && error.status === 400 ? problemResponse(c, 400, "Validation Failed", "Malformed request data") : problemResponse(c, 500, "Internal Server Error", "An unexpected error occurred"));',
       ...routesRegistrations,
       '  routes.notFound((c) => problemResponse(c, 404, "Not Found", `Route not found: ${c.req.path}`));',
       "  return routes;",
@@ -323,6 +321,7 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
     path: entryPoint,
     content: [
       'import { Hono } from "hono";',
+      'import { HTTPException } from "hono/http-exception";',
       ...(hasAuthentication
         ? [
             'import { cors } from "hono/cors";',
@@ -344,8 +343,9 @@ export function generateHonoFiles(context: PluginContributionContext): readonly 
           : ["const app = new Hono();"]),
       "",
       "// Global RFC 7807 error handler",
-      "app.onError((err, c) => {",
-      '  return problemResponse(c, 500, "Internal Server Error", err.message);',
+      "app.onError((error, c) => {",
+      '  if (error instanceof HTTPException && error.status === 400) return problemResponse(c, 400, "Validation Failed", "Malformed request data");',
+      '  return problemResponse(c, 500, "Internal Server Error", "An unexpected error occurred");',
       "});",
       "",
       "// Global RFC 7807 not found handler",

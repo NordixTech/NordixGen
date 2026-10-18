@@ -2,6 +2,7 @@ import { posix } from "node:path";
 import * as validator from "@hono/zod-validator";
 import * as hono from "hono";
 import * as cors from "hono/cors";
+import * as httpException from "hono/http-exception";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import * as zod from "zod";
@@ -27,6 +28,7 @@ import {
   typedFetchApiPlugin,
   zustandClientStatePlugin,
 } from "../src/index.js";
+import { resolvedFixture } from "./fixtures.js";
 
 function configuration(withEndpoints = true, createPath = "/api/sample-items") {
   const parsed = parseNordixYaml(`
@@ -113,8 +115,13 @@ const id = "123e4567-e89b-12d3-a456-426614174000";
 const record = { id, name: "Sample" };
 const origin = "https://web.example.test";
 
-function generatedApplication(withEndpoints = true, createPath?: string) {
+function generatedApplication(
+  withEndpoints = true,
+  createPath?: string,
+  customize?: (config: ReturnType<typeof configuration>) => void,
+) {
   const config = configuration(withEndpoints, createPath);
+  customize?.(config);
   const registry = new PluginRegistry();
   for (const plugin of [
     cleanArchitecturePlugin,
@@ -124,7 +131,7 @@ function generatedApplication(withEndpoints = true, createPath?: string) {
     rbacPbacPlugin,
   ])
     registry.register(plugin);
-  const result = composeBackendPlugins(config, "api", registry);
+  const result = composeBackendPlugins(resolvedFixture(config), "api", registry);
   if (!result.success) throw new Error(JSON.stringify(result.diagnostics));
   const files = result.virtualFileSystem.snapshot();
 
@@ -148,6 +155,7 @@ function generatedApplication(withEndpoints = true, createPath?: string) {
   const external: Record<string, unknown> = {
     hono,
     "hono/cors": cors,
+    "hono/http-exception": httpException,
     "@hono/zod-validator": validator,
     zod,
     [`${root}/infrastructure/auth/auth.ts`]: {
@@ -202,6 +210,7 @@ function generatedApplication(withEndpoints = true, createPath?: string) {
     cookie?: string,
     body?: unknown,
     requestOrigin = origin,
+    rawBody = false,
   ) =>
     app.request(
       path,
@@ -212,7 +221,9 @@ function generatedApplication(withEndpoints = true, createPath?: string) {
           "Content-Type": "application/json",
           ...(cookie ? { cookie } : {}),
         },
-        ...(body === undefined || method === "GET" ? {} : { body: JSON.stringify(body) }),
+        ...(body === undefined || method === "GET"
+          ? {}
+          : { body: rawBody ? String(body) : JSON.stringify(body) }),
       },
       { DATABASE_URL: "postgresql://unused:test@localhost/test" },
       {
@@ -225,6 +236,123 @@ function generatedApplication(withEndpoints = true, createPath?: string) {
 }
 
 describe("declared business routes in generated Hono applications", () => {
+  it("decodes HTTP arrays and scalar values into the resolved flat application input", async () => {
+    const { request, pageQuery } = generatedApplication(true, undefined, (config) => {
+      config.entities.SampleItem.fields.count = {
+        type: "number",
+        format: "integer",
+        required: false,
+        unique: false,
+      };
+      const endpoint = config.endpoints.find(
+        (operation) => operation.operationId === "listSampleItems",
+      );
+      if (!endpoint) throw new Error("Missing collection fixture");
+      endpoint.queryParams.push(
+        {
+          name: "ids",
+          field: { entity: "SampleItem", field: "id" },
+          required: false,
+          operator: "in",
+        },
+        { name: "count", field: { entity: "SampleItem", field: "count" }, required: false },
+        { name: "flag", type: "boolean", required: false },
+        { name: "at", type: "date", required: false },
+        { name: "extra", type: "json", required: false },
+      );
+    });
+    const search = new URLSearchParams({
+      count: "2",
+      flag: "false",
+      at: "2024-01-01T03:00:00+03:00",
+      extra: '{"active":true}',
+    });
+    search.append("ids", id);
+    search.append("ids", id);
+    expect((await request(`/api/sample-items?${search}`)).status).toBe(200);
+    expect(pageQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          ids: [id, id],
+          count: 2,
+          flag: false,
+          at: new Date("2024-01-01T00:00:00Z"),
+          extra: { active: true },
+        }),
+      }),
+    );
+    expect((await request(`/api/sample-items?ids=${id}`)).status).toBe(200);
+    expect(pageQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ request: expect.objectContaining({ ids: [id] }) }),
+    );
+    for (const query of [
+      "count=1&count=2",
+      "count=",
+      "count=1.5",
+      "flag=1",
+      "at=2024-01-01",
+      "extra=%7B",
+      "unknown=1",
+    ])
+      expect((await request(`/api/sample-items?${query}`)).status, query).toBe(400);
+    expect(pageQuery).toHaveBeenCalledTimes(2);
+  });
+  it("rejects malformed JSON and undeclared query names before invoking an operation", async () => {
+    const { request, query } = generatedApplication();
+    const malformed = await request(
+      "/api/sample-items",
+      "POST",
+      "verified=editor",
+      "{",
+      origin,
+      true,
+    );
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toMatchObject({ detail: "Malformed request data" });
+    expect((await request(`/api/sample-items/${id}?unknown=1`)).status).toBe(400);
+    expect(query).not.toHaveBeenCalled();
+  });
+  it("serializes application Date values as UTC JSON strings and absent nullable values as null", async () => {
+    const { request, query, config } = generatedApplication(true, undefined, (config) => {
+      config.entities.SampleItem.fields.publishedAt = {
+        type: "date",
+        required: false,
+        unique: false,
+      };
+      config.entities.SampleItem.fields.metadata = { type: "json", required: false, unique: false };
+    });
+    const publishedAt = new Date("2024-06-15T12:00:00+03:00");
+    query.mockResolvedValueOnce([{ entity: { ...record, publishedAt }, joins: {} }]);
+    const response = await request(`/api/sample-items/${id}`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([
+      { entity: { ...record, publishedAt: "2024-06-15T09:00:00.000Z", metadata: null }, joins: {} },
+    ]);
+    const api = buildFrontendApiContract(resolvedFixture(config), "web");
+    const fields = api.endpoints.find((operation) => operation.operationId === "getSampleItem")
+      ?.response.entity;
+    expect(fields?.publishedAt).toMatchObject({
+      nullable: true,
+      value: { transportType: "string", serialization: "utc-iso-instant" },
+    });
+    expect(fields?.metadata).toMatchObject({ nullable: true, type: "json" });
+    const created = await request("/api/sample-items", "POST", "verified=editor", {
+      name: "Sample",
+      publishedAt: "2024-06-15T12:00:00+03:00",
+    });
+    expect(created.status).toBe(200);
+    expect(query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ request: { name: "Sample", publishedAt } }),
+    );
+    expect(
+      (
+        await request("/api/sample-items", "POST", "verified=editor", {
+          name: "Sample",
+          publishedAt: "2024-06-15",
+        })
+      ).status,
+    ).toBe(400);
+  });
   it.each([false, true])(
     "does not expose implicit CRUD (declared endpoints: %s)",
     async (withEndpoints) => {
@@ -289,17 +417,15 @@ describe("declared business routes in generated Hono applications", () => {
     expect(allowed.status).toBe(200);
     expect(await allowed.json()).toEqual([{ entity: record, joins: {} }]);
     expect(query).toHaveBeenCalledTimes(1);
-    expect(query).toHaveBeenCalledWith(
-      expect.objectContaining({ request: expect.objectContaining({ body: { name: "Sample" } }) }),
-    );
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({ request: { name: "Sample" } }));
     const createRoutes = load(`${root}/presentation/controllers/routes.ts`)
       .createRoutes as () => hono.Hono;
-    // One registration contains the auth middleware, body validator and handler.
+    // One registration contains auth, the strict empty query contract, body validation and handler.
     expect(
       createRoutes().routes.filter(
         (route) => route.method === "POST" && route.path === "/api/sample-items",
       ),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
     expect((await request("/health")).status).toBe(200);
     expect((await request("/api/auth/get-session")).status).toBe(200);
     expect(authHandler).toHaveBeenCalledTimes(1);
@@ -311,7 +437,7 @@ describe("declared business routes in generated Hono applications", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ total: 1, page: 2, pageSize: 2 });
     expect(pageQuery).toHaveBeenCalledWith({
-      request: { path: {}, query: { name: "Sample", page: 2, pageSize: 2 } },
+      request: { name: "Sample", page: 2, pageSize: 2 },
       filters: [{ entity: "SampleItem", field: "name", operator: "eq", value: "Sample" }],
       pagination: { offset: 2, limit: 2 },
     });
@@ -321,10 +447,12 @@ describe("declared business routes in generated Hono applications", () => {
     query.mockRejectedValueOnce(new Error("Controlled persistence failure"));
     const error = await request(`/api/sample-items/${id}`);
     expect(error.status).toBe(500);
-    expect(await error.json()).toMatchObject({
+    const problem = await error.json();
+    expect(problem).toMatchObject({
       title: "Internal Server Error",
-      detail: "Controlled persistence failure",
+      detail: "An unexpected error occurred",
     });
+    expect(JSON.stringify(problem)).not.toContain("Controlled persistence failure");
   });
 
   it("allows an explicitly declared former CRUD URL with its declared policy", async () => {
@@ -345,11 +473,12 @@ describe("declared business routes in generated Hono applications", () => {
     (withEndpoints) => {
       const config = configuration(withEndpoints);
       const declaration = config.frontends[0];
-      const frontend = declaration ? frontendRenderSettings(declaration) : undefined;
+      const project = resolvedFixture(config);
+      const frontend = declaration ? frontendRenderSettings(project, declaration.name) : undefined;
       if (!frontend) throw new Error("Frontend fixture is missing");
-      const api = buildFrontendApiContract(config, frontend);
+      const api = buildFrontendApiContract(project, frontend.name);
       expect(api.endpoints.map(({ operationId }) => operationId)).toEqual(
-        withEndpoints ? ["createSampleItem", "listSampleItems", "getSampleItem"] : [],
+        withEndpoints ? ["listSampleItems", "createSampleItem", "getSampleItem"] : [],
       );
       expect(api.entities.PrivateRecord).toBeUndefined();
       const registry = new FrontendPluginRegistry();

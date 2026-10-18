@@ -1,7 +1,4 @@
-import type {
-  NordixEntityRepresentation,
-  NordixIntermediateRepresentation,
-} from "../intermediate-representation.js";
+import type { BackendModelView } from "../project/types.js";
 
 export const PLUGIN_ROLES = [
   "architecture",
@@ -91,12 +88,8 @@ export interface PluginContributionContext {
   persistence?: PersistenceContext;
 }
 
-export interface DomainModelContext {
-  readonly enums: Readonly<Record<string, readonly string[]>>;
-  readonly entities: Readonly<Record<string, NordixEntityRepresentation>>;
-  readonly endpoints: NordixIntermediateRepresentation["endpoints"];
-  readonly entityOrder?: readonly string[];
-}
+/** Temporary renderer-context name; the data is a view over the shared project. */
+export type DomainModelContext = BackendModelView;
 
 /** Backend persistence details made available to ORM plugins during generation. */
 export interface PersistenceContext {

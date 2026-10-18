@@ -77,7 +77,7 @@ function permissionsContent(config: FrontendAuthenticationContract): string {
     "// Protected operations remain enforced by the generated backend.",
     "export function hasPermission(user: SessionUser | null | undefined, permission: string): boolean {",
     '  const role = user?.role ?? "";',
-    "  const grants = rolePermissions[role] ?? [];",
+    "  const grants = Object.hasOwn(rolePermissions, role) ? rolePermissions[role] : [];",
     '  return grants.includes("*") || grants.includes(permission);',
     "}",
     "",

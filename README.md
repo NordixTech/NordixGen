@@ -8,7 +8,7 @@ A generated backend is a modular monolith: business modules run together in one 
 
 The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
 
-**End-to-end generation is temporarily unavailable.** Both CLI validation and generation report readiness errors before creating files or running scaffolding, installations or remote publication. Restoring generation requires the resolved model, direct pipeline and Clean modules (RF-05, RF-07 and RF-09). No complete generated-project acceptance is claimed at this stage.
+**End-to-end generation is temporarily unavailable.** Both CLI validation and generation report readiness errors before creating files or running scaffolding, installations or remote publication. The shared resolved model is implemented. Restoring generation requires the direct pipeline and Clean modules (RF-07 and RF-09), followed by integration acceptance. No complete generated-project acceptance is claimed at this stage.
 
 ## Target generated project
 
@@ -33,7 +33,7 @@ npx nordixgen validate -f nordix.config.yaml
 npx nordixgen generate -f nordix.config.yaml -o ./my-client-project
 ```
 
-The [approved YAML reference](docs/configuration/YAML_V2.md) defines the target contract. [Validation behavior and evidence](docs/configuration/VALIDATION.md) explains what currently works, how to run checks, diagnostic categories and remaining integration work. The core parsing API can validate configuration independently of generation readiness.
+The [approved YAML reference](docs/configuration/YAML_V2.md) defines the target contract. [Validation behavior and evidence](docs/configuration/VALIDATION.md) explains what currently works, how to run checks, diagnostic categories and remaining integration work. The core resolution API builds the [shared project model](docs/configuration/RESOLVED_MODEL.md) independently of generation readiness.
 
 ## Development requirements
 

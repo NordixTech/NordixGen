@@ -1,170 +1,59 @@
-import type { FieldDefinition, NormalizedEndpointDefinition } from "../../configuration/schema.js";
-import type { FrontendApiEntity, FrontendGeneratorPlugin } from "../frontend-contracts.js";
-import { getFrontendOperationNames } from "../frontend-operation-names.js";
+import type {
+  TransportField,
+  TransportInput,
+  TransportOperation,
+  TransportParameter,
+} from "../../project/types.js";
+import type { FrontendGeneratorPlugin } from "../frontend-contracts.js";
 
-function tsType(
-  field: FieldDefinition,
-  enums: Readonly<Record<string, readonly string[]>>,
-): string {
-  switch (field.type) {
-    case "string":
-    case "uuid":
-      return "string";
-    case "date":
-      return "string";
-    case "number":
-      return "number";
-    case "boolean":
-      return "boolean";
-    case "json":
-      return "unknown";
-    case "enum":
-      return (
-        (enums[field.enumName] ?? []).map((value) => JSON.stringify(value)).join(" | ") || "string"
-      );
-  }
+function valueType(field: TransportField, nullable = field.nullable): string {
+  return field.value.transportType + (nullable ? " | null" : "");
 }
-
-function entityType(
-  name: string,
-  entity: FrontendApiEntity,
-  enums: Readonly<Record<string, readonly string[]>>,
-): string {
-  const entries = Object.entries(entity.fields);
-  return `export interface ${name} {\n${entries
-    .map(
-      ([fieldName, field]) =>
-        `  ${JSON.stringify(fieldName)}${field.required ? "" : "?"}: ${tsType(field, enums)};`,
-    )
+function inputValue(input: TransportInput): string {
+  const type = valueType(input.definition, input.nullable);
+  return input.array ? `readonly (${type})[]` : type;
+}
+function entityType(name: string, fields: Readonly<Record<string, TransportField>>): string {
+  return `export interface ${name} {\n${Object.entries(fields)
+    .map(([name, field]) => `  ${JSON.stringify(name)}: ${valueType(field)};`)
     .join("\n")}\n}`;
 }
-
-function responseType(
-  endpoint: NormalizedEndpointDefinition,
-  entities: Readonly<Record<string, FrontendApiEntity>>,
-  enums: Readonly<Record<string, readonly string[]>>,
-): string {
-  const entityName = endpoint.entity;
-  const joins = endpoint.joins.map((join) => {
-    const many = Object.values(entities[entityName]?.relations ?? {}).some(
-      (relation) =>
-        relation.target === join.entity &&
-        (relation.type === "one-to-many" || relation.type === "many-to-many"),
-    );
-    const nullable = join.type === "left" ? " | null" : "";
-    const projection = `Pick<${join.entity}Response, ${join.fields.map((field) => JSON.stringify(field)).join(" | ") || "never"}>`;
-    return `    ${JSON.stringify(join.entity)}: ${many ? `readonly ${projection}[]` : `${projection}${nullable}`};`;
+function responseType(endpoint: TransportOperation): string {
+  const joins = endpoint.response.joins.map((join) => {
+    const projection = `{ ${Object.entries(join.projection)
+      .map(([name, field]) => `readonly ${JSON.stringify(name)}: ${valueType(field)}`)
+      .join("; ")} }`;
+    return `    ${JSON.stringify(join.entity)}: ${join.cardinality === "many" ? `readonly ${projection}[]` : projection + (join.nullable ? " | null" : "")};`;
   });
-  const joinShape = joins.length ? `{\n${joins.join("\n")}\n    }` : "Record<string, never>";
-  const row = `{\n    entity: ${entityName}Response;\n    joins: ${joinShape};\n  }`;
-  return endpoint.pagination
+  const row = `{ entity: ${endpoint.entity}Response; joins: ${joins.length ? `{\n${joins.join("\n")}\n}` : "Record<string, never>"} }`;
+  return endpoint.response.kind === "page"
     ? `{ readonly items: readonly ${row}[]; readonly total: number; readonly page: number; readonly pageSize: number }`
     : `readonly ${row}[]`;
 }
-
-function inputType(
-  endpoint: NormalizedEndpointDefinition,
-  enums: Readonly<Record<string, readonly string[]>>,
-  name: string,
-  entities: Readonly<Record<string, FrontendApiEntity>>,
-): string {
-  const pathParams = endpoint.pathParams.map(
-    (param) => `    ${JSON.stringify(param.name)}: ${paramType(param, enums, entities)};`,
+function inputType(endpoint: TransportOperation, name: string): string {
+  const properties = (inputs: readonly TransportInput[]) =>
+    inputs.length
+      ? `{\n${inputs.map((input) => `    ${JSON.stringify(input.name)}${input.optional ? "?" : ""}: ${inputValue(input)};`).join("\n")}\n  }`
+      : "Record<string, never>";
+  const path = endpoint.pathParams.map((p) => p.input);
+  const query = Object.values(endpoint.input).filter(
+    (input) => input.from === "query" || input.from === "pagination",
   );
-  const queryParams = endpoint.queryParams.map(
-    (param) =>
-      `    ${JSON.stringify(param.name)}${param.required ? "" : "?"}: ${paramType(param, enums, entities)};`,
-  );
-  if (endpoint.pagination) {
-    queryParams.push(
-      `    ${JSON.stringify(endpoint.pagination.pageParam)}?: number;`,
-      `    ${JSON.stringify(endpoint.pagination.pageSizeParam)}?: number;`,
-    );
-  }
-  const body = endpoint.requestBody ? `  body: ${name}Body;` : "";
-  const queryRequired = endpoint.queryParams.some((parameter) => parameter.required);
-  const pathShape = pathParams.length
-    ? `{\n${pathParams.join("\n")}\n  }`
-    : "Record<string, never>";
-  const queryShape = queryParams.length
-    ? `{\n${queryParams.join("\n")}\n  }`
-    : "Record<string, never>";
-  return `export interface ${name}Input {\n  path${endpoint.pathParams.length ? "" : "?"}: ${pathShape};\n  query${queryRequired ? "" : "?"}: ${queryShape};\n${body}\n}`;
+  return `export interface ${name}Input {\n  path${path.length ? "" : "?"}: ${properties(path)};\n  query${query.some((input) => !input.optional) ? "" : "?"}: ${properties(query)};\n${endpoint.body.kind === "none" ? "" : `  body: ${name}Body;\n`}}`;
 }
-
-function paramType(
-  param: NormalizedEndpointDefinition["queryParams"][number],
-  enums: Readonly<Record<string, readonly string[]>>,
-  entities: Readonly<Record<string, FrontendApiEntity>>,
-): string {
-  if (param.field) {
-    const field = entities[param.field.entity]?.fields[param.field.field];
-    if (field) {
-      const type = tsType(field, enums);
-      return param.operator === "in" ? `readonly (${type})[]` : type;
-    }
-  }
-  let type = "unknown";
-  if (param.type === "number") type = "number";
-  if (param.type === "boolean") type = "boolean";
-  if (param.type === "date" || param.type === "uuid" || param.type === "string") type = "string";
-  if (param.type === "enum" && param.enumName)
-    type =
-      (enums[param.enumName] ?? []).map((value) => JSON.stringify(value)).join(" | ") || "string";
-  return param.operator === "in" ? `readonly (${type})[]` : type;
-}
-
-function endpointPath(endpoint: NormalizedEndpointDefinition): string {
+function endpointPath(endpoint: TransportOperation): string {
   return endpoint.path.replace(/\{([^{}]+)\}/g, "${encodeURIComponent(String(input.path?.$1))}");
 }
-
-function bodyType(
-  endpoint: NormalizedEndpointDefinition,
-  entities: Readonly<Record<string, FrontendApiEntity>>,
-  enums: Readonly<Record<string, readonly string[]>>,
-  name: string,
-): string {
-  if (!endpoint.requestBody) return "";
-  const useCase = (
-    endpoint.requestBody as { useCase?: { entity: string; operation: "create" | "update" } }
-  ).useCase;
-  if (useCase) {
-    const entity = entities[useCase.entity];
-    const generatedFields = new Set(["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"]);
-    const fields = Object.entries(entity?.fields ?? {})
-      .filter(([field]) => !generatedFields.has(field))
-      .map(([fieldName, field]) => {
-        const required =
-          useCase.operation === "create" && field.required && field.default === undefined;
-        return `  ${JSON.stringify(fieldName)}${required ? "" : "?"}: ${tsType(field, enums)};`;
-      });
-    return fields.length
-      ? `export interface ${name}Body {\n${fields.join("\n")}\n}`
-      : `export type ${name}Body = Record<string, never>;`;
-  }
-  const fields = Object.entries(endpoint.requestBody).map(([name, definition]) => {
-    const parameter = definition as {
-      field?: { entity: string; field: string };
-      required?: boolean;
-    };
-    if (parameter.field) {
-      const field = entities[parameter.field.entity]?.fields[parameter.field.field];
-      const optional =
-        parameter.required === false || field?.required === false || field?.default !== undefined;
-      return `  ${JSON.stringify(name)}${optional ? "?" : ""}: ${field ? tsType(field, enums) : "unknown"};`;
-    }
-    const field = definition as FieldDefinition;
-    return `  ${JSON.stringify(name)}${field.required && field.default === undefined ? "" : "?"}: ${tsType(field, enums)};`;
-  });
+function bodyType(endpoint: TransportOperation, name: string): string {
+  if (endpoint.body.kind === "none") return "";
+  const fields = Object.values(endpoint.body.fields).map(
+    (input) => `  ${JSON.stringify(input.name)}${input.optional ? "?" : ""}: ${inputValue(input)};`,
+  );
   return fields.length
     ? `export interface ${name}Body {\n${fields.join("\n")}\n}`
     : `export type ${name}Body = Record<string, never>;`;
 }
-
-function exampleFieldValue(
-  field: FieldDefinition,
-  enums: Readonly<Record<string, readonly string[]>>,
-): unknown {
+function exampleFieldValue(field: TransportField): unknown {
   if (field.default !== undefined) return field.default;
   switch (field.type) {
     case "number":
@@ -172,52 +61,32 @@ function exampleFieldValue(
     case "boolean":
       return false;
     case "enum":
-      return enums[field.enumName ?? ""]?.[0] ?? "";
+      return field.value.enumValues?.[0] ?? "";
     case "json":
       return {};
     default:
       return "";
   }
 }
-
-function bodyExample(
-  endpoint: NormalizedEndpointDefinition,
-  entities: Readonly<Record<string, FrontendApiEntity>>,
-  enums: Readonly<Record<string, readonly string[]>>,
-): Record<string, unknown> {
-  if (!endpoint.requestBody) return {};
-  const useCase = (endpoint.requestBody as { useCase?: { entity: string } }).useCase;
-  if (useCase) {
-    const generatedFields = new Set(["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"]);
-    return Object.fromEntries(
-      Object.entries(entities[useCase.entity]?.fields ?? {})
-        .filter(([name]) => !generatedFields.has(name))
-        .map(([name, field]) => [name, exampleFieldValue(field, enums)]),
-    );
-  }
+function bodyExample(endpoint: TransportOperation): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(endpoint.requestBody).map(([name, definition]) => {
-      const ref = (definition as { field?: { entity: string; field: string } }).field;
-      const field = ref ? entities[ref.entity]?.fields[ref.field] : (definition as FieldDefinition);
-      return [name, field ? exampleFieldValue(field, enums) : ""];
-    }),
+    Object.values(endpoint.body.fields)
+      .filter((input) => input.definition.defaultValue.kind !== "clock")
+      .map((input) => [input.name, exampleFieldValue(input.definition)]),
   );
 }
-
-function explorerParameter(
-  parameter: NormalizedEndpointDefinition["queryParams"][number],
-  entities: Readonly<Record<string, FrontendApiEntity>>,
-  enums: Readonly<Record<string, readonly string[]>>,
-) {
-  const referencedField = parameter.field
-    ? entities[parameter.field.entity]?.fields[parameter.field.field]
-    : undefined;
-  const enumName =
-    parameter.enumName ?? (referencedField?.type === "enum" ? referencedField.enumName : undefined);
+function explorerParameter(parameter: TransportParameter) {
   return {
-    ...parameter,
-    type: parameter.type ?? referencedField?.type,
-    ...(enumName ? { enumName, enumValues: enums[enumName] ?? [] } : {}),
+    name: parameter.name,
+    type: parameter.definition.type,
+    required: parameter.required,
+    ...(parameter.operator ? { operator: parameter.operator } : {}),
+    ...(parameter.definition.type === "enum"
+      ? {
+          enumName: parameter.definition.enumName,
+          enumValues: parameter.definition.value.enumValues,
+        }
+      : {}),
   };
 }
 
@@ -231,15 +100,15 @@ export const typedFetchApiPlugin: FrontendGeneratorPlugin = {
   contribute(context) {
     const { api, framework } = context;
     const endpoints = api.endpoints;
-    const names = getFrontendOperationNames(endpoints);
+    const names = new Map(endpoints.map((endpoint) => [endpoint, api.operationNames[endpoint.id]]));
     const entities = Object.entries(api.entities);
     const typeParts = entities.map(([name, entity]) =>
-      entityType(`${name}Response`, entity, api.enums),
+      entityType(`${name}Response`, entity.fields),
     );
     const operationTypes = endpoints.flatMap((endpoint) => [
-      inputType(endpoint, api.enums, names.get(endpoint) as string, api.entities),
-      bodyType(endpoint, api.entities, api.enums, names.get(endpoint) as string),
-      `export type ${names.get(endpoint)}Response = ${responseType(endpoint, api.entities, api.enums)};`,
+      inputType(endpoint, names.get(endpoint) as string),
+      bodyType(endpoint, names.get(endpoint) as string),
+      `export type ${names.get(endpoint)}Response = ${responseType(endpoint)};`,
     ]);
     const apiBaseUrl =
       framework.conventions.publicApiBaseUrlExpression ??
@@ -254,11 +123,11 @@ export const typedFetchApiPlugin: FrontendGeneratorPlugin = {
         "    else url.searchParams.set(key, String(value));",
         "  }",
       ].join("\n");
-      const body = endpoint.requestBody ? "body: JSON.stringify(input.body)," : "";
+      const body = endpoint.body.kind !== "none" ? "body: JSON.stringify(input.body)," : "";
       const inputRequired =
         endpoint.pathParams.length > 0 ||
         endpoint.queryParams.some((parameter) => parameter.required) ||
-        endpoint.requestBody !== undefined;
+        endpoint.body.kind !== "none";
       return `export async function ${name}(input: ${name}Input${inputRequired ? "" : " = {}"}): Promise<${name}Response> {\n  const path = \`${path}\`;\n  if (typeof window === "undefined" && !API_BASE_URL) throw new Error("Configure the public API base URL for server-side requests.");\n  const url = new URL(path, API_BASE_URL || window.location.origin);\n${search}\n  return request<${name}Response>(url, { method: ${JSON.stringify(endpoint.method)}, ${body} });\n}`;
     });
     const explorerMetadata = endpoints.map((endpoint) => ({
@@ -270,14 +139,22 @@ export const typedFetchApiPlugin: FrontendGeneratorPlugin = {
       authRequired: endpoint.authRequired,
       roles: endpoint.roles,
       permissions: endpoint.permissions,
-      pathParams: endpoint.pathParams.map((parameter) =>
-        explorerParameter(parameter, api.entities, api.enums),
-      ),
-      queryParams: endpoint.queryParams.map((parameter) =>
-        explorerParameter(parameter, api.entities, api.enums),
-      ),
-      requestBody: endpoint.requestBody ?? null,
-      bodyExample: bodyExample(endpoint, api.entities, api.enums),
+      pathParams: endpoint.pathParams.map((parameter) => explorerParameter(parameter)),
+      queryParams: endpoint.queryParams.map((parameter) => explorerParameter(parameter)),
+      requestBody:
+        endpoint.body.kind === "none"
+          ? null
+          : Object.fromEntries(
+              Object.values(endpoint.body.fields).map((input) => [
+                input.name,
+                {
+                  type: input.definition.type,
+                  required: !input.optional,
+                  nullable: input.nullable,
+                },
+              ]),
+            ),
+      bodyExample: bodyExample(endpoint),
       pagination: endpoint.pagination ?? null,
     }));
     const explorerDispatch = endpoints.map((endpoint) => {

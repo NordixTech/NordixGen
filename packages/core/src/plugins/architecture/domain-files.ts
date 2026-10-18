@@ -1,24 +1,9 @@
 import { posix } from "node:path";
-import type { FieldDefinition } from "../../configuration/schema.js";
+import type { ResolvedField } from "../../project/types.js";
 import type { DomainModelContext, GeneratedFile, PluginContributionContext } from "../contracts.js";
-import { entityFieldsWithRelationKeys } from "../entity-fields.js";
 
-function typeForField(field: FieldDefinition): string {
-  switch (field.type) {
-    case "string":
-    case "uuid":
-      return "string";
-    case "number":
-      return "number";
-    case "boolean":
-      return "boolean";
-    case "date":
-      return "Date";
-    case "json":
-      return "unknown";
-    case "enum":
-      return field.enumName;
-  }
+function typeForField(field: ResolvedField): string {
+  return field.type === "enum" ? field.enumName : field.value.applicationType;
 }
 
 function relativeImport(fromDirectory: string, targetPath: string): string {
@@ -28,36 +13,21 @@ function relativeImport(fromDirectory: string, targetPath: string): string {
 
 function entityFile(name: string, model: DomainModelContext): string {
   const entity = model.entities[name];
-  if (!entity) throw new Error(`Domain model is missing entity "${name}".`);
-  const declaredFields = entityFieldsWithRelationKeys(entity);
+  const declaredFields = entity.fields;
   const fields = Object.entries(declaredFields).map(([fieldName, field]) => {
-    const nullable = fieldName !== "id" && field.required === false ? " | null" : "";
+    const nullable = field.nullable ? " | null" : "";
     return `  ${JSON.stringify(fieldName)}: ${typeForField(field)}${nullable};`;
   });
-  const generatedFields = [
-    "id",
-    ...(entity.timestamps.createdAt ? ["createdAt"] : []),
-    ...(entity.timestamps.updatedAt ? ["updatedAt"] : []),
-    ...(entity.softDelete === "boolean" ? ["isDeleted"] : []),
-    ...(entity.softDelete === "timestamp" ? ["deletedAt"] : []),
-  ];
+  const generatedFields = entity.generatedFields;
   const optionalCreateFields = Object.entries(declaredFields)
-    .filter(
-      ([fieldName, field]) =>
-        !generatedFields.includes(fieldName) &&
-        (field.required === false || field.default !== undefined),
-    )
+    .filter(([fieldName, field]) => !generatedFields.includes(fieldName) && field.createOptional)
     .map(([fieldName]) => fieldName);
-  const timestampFields = [
-    ...(entity.timestamps.createdAt ? ["createdAt"] : []),
-    ...(entity.timestamps.updatedAt ? ["updatedAt"] : []),
-  ];
-  const omittedOnCreate = [
-    "id",
-    ...(entity.softDelete === "boolean" ? ["isDeleted"] : []),
-    ...(entity.softDelete === "timestamp" ? ["deletedAt"] : []),
-    ...optionalCreateFields,
-  ];
+  const timestampFields = generatedFields.filter(
+    (name) =>
+      entity.fields[name].generated === "created-at" ||
+      entity.fields[name].generated === "updated-at",
+  );
+  const omittedOnCreate = [...generatedFields, ...optionalCreateFields];
   const optionalCreateInputFields = [...optionalCreateFields, ...timestampFields];
   const enumNames = [
     ...new Set(

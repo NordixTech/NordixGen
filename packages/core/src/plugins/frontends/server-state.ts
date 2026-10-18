@@ -1,10 +1,8 @@
 import type { FrontendGeneratorPlugin } from "../frontend-contracts.js";
-import { getFrontendOperationNames } from "../frontend-operation-names.js";
 import { frontendRootShellFiles } from "./root-shell.js";
 
 function namesFor(context: Parameters<FrontendGeneratorPlugin["contribute"]>[0]) {
-  const names = getFrontendOperationNames(context.api.endpoints);
-  return context.api.endpoints.map((endpoint) => names.get(endpoint) as string);
+  return context.api.endpoints.map((endpoint) => context.api.operationNames[endpoint.id]);
 }
 
 function inputRequired(
@@ -13,23 +11,6 @@ function inputRequired(
   return (
     endpoint.pathParams.length > 0 || endpoint.queryParams.some((parameter) => parameter.required)
   );
-}
-
-function affectedEntities(
-  context: Parameters<FrontendGeneratorPlugin["contribute"]>[0],
-  entity: string,
-): string[] {
-  return [
-    ...new Set([
-      entity,
-      ...context.api.endpoints
-        .filter(
-          (endpoint) =>
-            endpoint.method === "GET" && endpoint.joins.some((join) => join.entity === entity),
-        )
-        .map((endpoint) => endpoint.entity),
-    ]),
-  ].sort();
 }
 
 function tanStackHooks(context: Parameters<FrontendGeneratorPlugin["contribute"]>[0]) {
@@ -47,22 +28,13 @@ function tanStackHooks(context: Parameters<FrontendGeneratorPlugin["contribute"]
     const optimistic =
       typeof context.frontend.stateManagement === "object" &&
       context.frontend.stateManagement.optimisticUpdates;
-    const idParameter =
-      endpoint.pathParams.find(
-        (parameter) => parameter.field?.entity === entity && parameter.field.field === "id",
-      ) ??
-      endpoint.pathParams.find((parameter) => parameter.name === "id") ??
-      (endpoint.pathParams.length === 1 && endpoint.pathParams[0]?.type === "uuid"
-        ? endpoint.pathParams[0]
-        : undefined);
+    const idParameter = endpoint.recordIdParameter;
     const enableOptimism =
-      optimistic &&
-      idParameter !== undefined &&
-      ["PATCH", "PUT", "DELETE"].includes(endpoint.method);
+      optimistic && idParameter !== undefined && ["update", "delete"].includes(endpoint.action);
     const details = enableOptimism
-      ? `\n      onMutate: async (input: ${name}Input) => {\n        const queryKey = [${JSON.stringify(entity)}] as const;\n        await queryClient.cancelQueries({ queryKey });\n        const previous = queryClient.getQueriesData({ queryKey });\n        for (const [key, data] of previous) queryClient.setQueryData(key, applyOptimisticChange(data, ${JSON.stringify(endpoint.method)}, ${endpoint.requestBody ? "input.body" : "undefined"}, input.path?.[${JSON.stringify(idParameter?.name)}]));\n        return { queryKey, previous };\n      },\n      onError: (_error, _input, context) => { for (const [key, data] of context?.previous ?? []) queryClient.setQueryData(key, data); },`
+      ? `\n      onMutate: async (input: ${name}Input) => {\n        const queryKey = [${JSON.stringify(entity)}] as const;\n        await queryClient.cancelQueries({ queryKey });\n        const previous = queryClient.getQueriesData({ queryKey });\n        for (const [key, data] of previous) queryClient.setQueryData(key, applyOptimisticChange(data, ${JSON.stringify(endpoint.method)}, ${endpoint.body.kind !== "none" ? "input.body" : "undefined"}, input.path?.[${JSON.stringify(idParameter)}]));\n        return { queryKey, previous };\n      },\n      onError: (_error, _input, context) => { for (const [key, data] of context?.previous ?? []) queryClient.setQueryData(key, data); },`
       : "";
-    const invalidationKeys = affectedEntities(context, entity);
+    const invalidationKeys = endpoint.invalidates;
     return `export function use${name[0]?.toUpperCase()}${name.slice(1)}() {\n  const queryClient = useQueryClient();\n  return useMutation({ mutationFn: (input: ${name}Input) => ${name}(input),${details}\n    onSettled: () => Promise.all(${JSON.stringify(invalidationKeys)}.map((affectedEntity) => queryClient.invalidateQueries({ queryKey: [affectedEntity] }))),\n  });\n}`;
   });
   const optimistic =
@@ -82,7 +54,7 @@ function swrHooks(context: Parameters<FrontendGeneratorPlugin["contribute"]>[0])
   ]);
   const hooks = context.api.endpoints.map((endpoint, index) => {
     const name = names[index] as string;
-    const affected = affectedEntities(context, endpoint.entity);
+    const affected = endpoint.invalidates;
     if (endpoint.method === "GET")
       return `export function use${name[0]?.toUpperCase()}${name.slice(1)}(input: ${name}Input${inputRequired(endpoint) ? "" : " = {}"}) {\n  return useSWR([${JSON.stringify(endpoint.entity)}, ${JSON.stringify(name)}, input], () => ${name}(input));\n}`;
     return `export function use${name[0]?.toUpperCase()}${name.slice(1)}() {\n  const { mutate } = useSWRConfig();\n  return useSWRMutation([${JSON.stringify(endpoint.entity)}, ${JSON.stringify(name)}], (_key, { arg }: { arg: ${name}Input }) => ${name}(arg), { onSuccess: () => mutate((key) => Array.isArray(key) && ${JSON.stringify(affected)}.includes(String(key[0]))) });\n}`;

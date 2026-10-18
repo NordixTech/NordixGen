@@ -6,6 +6,7 @@ import { generateHonoFiles } from "../src/plugins/frameworks/hono-files.js";
 import { honoFrameworkPlugin } from "../src/plugins/frameworks/hono.js";
 import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
 import { PluginRegistry } from "../src/plugins/registry.js";
+import { resolvedFixture } from "./fixtures.js";
 import { createValidConfig } from "./fixtures.js";
 
 function composeHono(applicationRoot: string) {
@@ -176,7 +177,11 @@ describe("Hono framework plugin", () => {
     registry.register(cleanArchitecturePlugin);
     registry.register(drizzleOrmPlugin);
 
-    const result = composeBackendPlugins(NordixConfigSchema.parse(config), "core-api", registry);
+    const result = composeBackendPlugins(
+      resolvedFixture(NordixConfigSchema.parse(config)),
+      "core-api",
+      registry,
+    );
 
     expect(result.success).toBe(true);
     if (!result.success) return;

@@ -52,7 +52,7 @@ export const rbacPbacPlugin: GeneratorPlugin = {
           "): boolean {",
           '  const role = principal.role ?? "";',
           "  if (requirements.roles.length > 0 && !requirements.roles.includes(role)) return false;",
-          "  const grants = rolePermissions[role] ?? [];",
+          "  const grants = Object.hasOwn(rolePermissions, role) ? rolePermissions[role] : [];",
           '  return requirements.permissions.every((permission) => grants.includes(permission) || grants.includes("*"));',
           "}",
           "",
