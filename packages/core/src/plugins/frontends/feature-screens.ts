@@ -145,7 +145,11 @@ function generateFeatureView(
   };
   const formFields = bodyFields;
   const permissionStart = (endpoint: TransportOperation | undefined) => {
-    if (!hasAuth || !endpoint || (!endpoint.roles.length && !endpoint.permissions.length))
+    if (
+      !hasAuth ||
+      !endpoint ||
+      (!endpoint.authRequired && !endpoint.roles.length && !endpoint.permissions.length)
+    )
       return "";
     const roleCheck = endpoint.roles.length
       ? `(${JSON.stringify(endpoint.roles)} as readonly string[]).some((role) => hasRole(role))`
@@ -153,7 +157,7 @@ function generateFeatureView(
     const permissionCheck = endpoint.permissions.length
       ? `(${JSON.stringify(endpoint.permissions)} as readonly string[]).every((permission) => hasPermission(permission))`
       : "true";
-    return `{${roleCheck} && ${permissionCheck} && (`;
+    return `{!isSessionPending && ${endpoint.authRequired ? "Boolean(user)" : "true"} && ${roleCheck} && ${permissionCheck} && (`;
   };
   const permissionEnd = (endpoint: TransportOperation | undefined) =>
     permissionStart(endpoint) ? ")}" : "";
@@ -294,7 +298,9 @@ ${fieldInputs(formFields, enums)}
     "  const [mutationError, setMutationError] = useState<string | null>(null);",
     "  const [isSubmitting, setIsSubmitting] = useState(false);",
     "  const featureForm = useForm<Record<string, unknown>>({ resolver: zodResolver(editingItem ? updateSchema : createSchema) as never });",
-    hasAuth ? "  const { hasPermission, hasRole } = useSessionView();" : "",
+    hasAuth
+      ? "  const { user,isPending:isSessionPending,hasPermission, hasRole } = useSessionView();"
+      : "",
     "",
     ...hookCalls,
     "",

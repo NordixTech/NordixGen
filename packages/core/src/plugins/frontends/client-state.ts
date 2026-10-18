@@ -40,33 +40,6 @@ function zustandUiStore(): string {
   ]);
 }
 
-function zustandAuthStore(): string {
-  return source([
-    '"use client";',
-    "",
-    'import { create } from "zustand";',
-    'import { hasPermission, hasRole, type SessionUser } from "@/lib/auth/permissions";',
-    "",
-    "// Presentation-only session view. Never persist tokens, cookies, or secrets here.",
-    "// Backend authorization remains the access-control boundary.",
-    "export interface AuthViewState {",
-    "  user: SessionUser | null;",
-    "  isPending: boolean;",
-    "  setSessionView: (user: SessionUser | null, isPending: boolean) => void;",
-    "  hasPermission: (permission: string) => boolean;",
-    "  hasRole: (role: string) => boolean;",
-    "}",
-    "",
-    "export const useAuthStore = create<AuthViewState>((set, get) => ({",
-    "  user: null,",
-    "  isPending: true,",
-    "  setSessionView: (user, isPending) => set({ user, isPending }),",
-    "  hasPermission: (permission) => hasPermission(get().user, permission),",
-    "  hasRole: (role) => hasRole(get().user, role),",
-    "}));",
-  ]);
-}
-
 function zustandToaster(): string {
   return source([
     '"use client";',
@@ -96,8 +69,5 @@ export function generateClientStateFiles(context: FrontendRenderContext): readon
     { path: `${root}/stores/ui-store.ts`, content: zustandUiStore() },
     { path: `${root}/components/ui/toaster.tsx`, content: zustandToaster() },
   ];
-  if (context.api.authentication) {
-    files.push({ path: `${root}/stores/auth-store.ts`, content: zustandAuthStore() });
-  }
   return files;
 }

@@ -12,6 +12,7 @@ import { generateTailwindFiles } from "../plugins/styling/tailwind.js";
 import type { ResolvedProject } from "../project/types.js";
 import { frontendView } from "../project/views.js";
 import { collectFiles } from "./files.js";
+import { generateFrontendAccess, protectFrontendPage } from "./frontend-access.js";
 export const FRONTEND_STACK = {
   runtime: {
     "@tanstack/react-query": "^5.80.7",
@@ -51,13 +52,20 @@ export function generateFrontend(project: ResolvedProject, name: string) {
     { owner: "queries", files: generateQueryFiles(context) },
     { owner: "ui-state", files: generateClientStateFiles(context) },
     { owner: "screens", files: generateFeatureScreenFiles(context) },
+    { owner: "page-access", files: generateFrontendAccess(context) },
     ...(context.api.authentication
       ? [{ owner: "identity", files: generateFrontendAuthFiles(context) }]
       : []),
   ];
   return {
     success: true as const,
-    virtualFileSystem: collectFiles(context.frontend.path, contributions),
+    virtualFileSystem: collectFiles(
+      context.frontend.path,
+      contributions.map((contribution) => ({
+        ...contribution,
+        files: contribution.files.map((file) => protectFrontendPage(context, file)),
+      })),
+    ),
     frameworkContext: context.framework,
     runtimeDependencies: {
       ...FRONTEND_STACK.runtime,
