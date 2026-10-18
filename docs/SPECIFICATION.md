@@ -12,7 +12,7 @@ NordixGen is a generator, not a runtime dependency of the generated application.
 
 A project may contain one or more frontend and backend applications, placed in configured repositories and paths. Frontends declare which backends they consume. A backend is a modular monolith: its business modules execute in one process and share the backend's runtime and platform services.
 
-Each business module selects one of three internal architecture families: Clean, Hexagonal, or Onion. Different modules in the same backend may use different families. The selected family defines dependency direction and the organization of the module's domain, application operations, and adapters. It does not change the public contract another module uses to call that module.
+Clean is the implemented module architecture. Hexagonal and Onion are recognized future families and fail generation readiness until their renderers are implemented. The selected family defines dependency direction and the organization of the module's domain, application operations, and adapters. It does not change the public contract another module uses to call that module.
 
 Modules communicate through explicit, typed application contracts and direct in-process calls. A module publishes only declared application operations. A consuming module names the public operations it imports. Contracts use application-level input/output types and errors; they do not expose Hono request objects, Drizzle tables, repositories, or private domain types. The backend composition root wires module implementations together. Internal communication is not an HTTP call to the same backend and does not imply a generic event bus or distributed transaction system.
 
@@ -36,7 +36,7 @@ Fixed implementation technologies are implicit and are not selectors in project 
 
 The YAML schema must reject unknown values and invalid references with actionable diagnostics. A generated editor schema should be derived from the same canonical configuration definitions so editor assistance agrees with CLI validation.
 
-The detailed target syntax, defaults, ownership, module contracts and access rules are specified in the [YAML v2 design](configuration/YAML_V2.md). The approved contract is accepted by the runtime validator and editor schema. The [shared resolved project model](configuration/RESOLVED_MODEL.md) is implemented. Modular generation remains explicitly blocked pending integration; see [validation behavior](configuration/VALIDATION.md).
+The [YAML v2 reference](configuration/YAML_V2.md) specifies syntax, defaults, ownership, module contracts and access rules. Runtime validation, editor schema and the [shared resolved project model](configuration/RESOLVED_MODEL.md) implement that contract. Multiple Clean modules generate and pass integrated database/browser verification; see [validation behavior](configuration/VALIDATION.md).
 
 ## 4. Parsing, validation, and generation requirements
 
@@ -129,4 +129,7 @@ The use of an upstream Hono scaffold that targets Cloudflare Workers does not it
 
 The runtime accepts YAML v2 only: architecture belongs to each explicit business module and technology selectors have been removed. The shared immutable model resolves ownership, public application signatures, effective policy, transport contracts and separate module/entity graphs once. Both CLI commands require the same resolution and readiness checks.
 
-Modular generation remains blocked before output or external commands until the direct pipeline and Clean module generator are integrated. Hexagonal/Onion and many-to-many emission have explicit unsupported-generation diagnostics. Existing fixed renderer adapters support focused executable checks; they do not establish generated modular boundaries, complete authentication journeys or browser/database acceptance. Business HTTP routes come only from declared endpoints; declaring an entity does not expose CRUD routes. See [current evidence and limitations](configuration/VALIDATION.md).
+Clean modular generation is implemented. Hexagonal/Onion and many-to-many emission have explicit unsupported-generation diagnostics. Business operations come exclusively from declared endpoints: entities never acquire implicit CRUD use cases, repository adapters, HTTP routes or screens. The maintained commerce example verifies the connected local product after fresh generation. Optional provider enrollment/recovery flows, cloud deployment and automatic transactions remain outside that evidence. See [current evidence and limitations](configuration/VALIDATION.md).
+## Refactor decisions retained in the implementation
+
+The separate baseline-preservation proposal was discarded. The former RF-06 planning proposal contributed only small file-ownership/collection checks and backend dependency manifests to the direct pipeline; it did not introduce a planning engine or a separate prerequisite. RF-18 conversion was rejected: previous YAML is diagnosed, not migrated or archived as another supported format. RF-19 established the integrated commerce example; RF-20 repeats that verification after cleanup. Future Hexagonal/Onion work does not block supported Clean generation.

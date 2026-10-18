@@ -18,7 +18,7 @@ describe("configuration design documentation", () => {
       const source = await readFile(resolve(examples, file), "utf8");
       const document = parseDocument(source, { uniqueKeys: true });
       expect(document.errors.map((error) => `${file}: ${error.message}`)).toEqual([]);
-      // This is a versioned design fixture, not validation against the v1 CLI schema.
+      // Samples describe YAML v2; semantic validation is covered separately.
       expect(document.get("schemaVersion")).toBe(2);
       expect(text).toContain(`samples/${file}`);
     }
@@ -30,7 +30,16 @@ describe("configuration design documentation", () => {
   });
 
   it("resolves local specification, example and communication links", async () => {
-    for (const file of [specification, resolve(documentation, "../SPECIFICATION.md")]) {
+    const root = resolve(documentation, "../..");
+    const docs = await readdir(resolve(root, "docs"), { recursive: true });
+    const files = [
+      ...docs.filter((file) => file.endsWith(".md")).map((file) => resolve(root, "docs", file)),
+      resolve(root, "README.md"),
+      resolve(root, "packages/core/README.md"),
+      resolve(root, "packages/cli/README.md"),
+      resolve(root, "examples/full-stack-commerce/README.md"),
+    ];
+    for (const file of files) {
       const source = await readFile(file, "utf8");
       for (const [, link] of source.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
         if (!link || /^(?:https?:|#)/.test(link)) continue;

@@ -39,6 +39,12 @@ pnpm test
 pnpm generate:schema
 ```
 
-The editor schema comes from the authoritative Zod definitions; a test checks exact equality. Concrete renderer tests execute generated Hono handlers and compile generated application/client contracts. They do not establish database or browser acceptance. Backend and frontend generation use direct typed functions over resolved views. See [backend](../../docs/generation/DIRECT_BACKEND.md) and [frontend](../../docs/generation/DIRECT_FRONTEND.md) scope, ownership and verification; [public application wiring](../../docs/generation/PUBLIC_MODULES.md) is integrated.
+The editor schema comes from the authoritative Zod definitions; a test checks exact equality. Concrete renderer tests execute generated Hono handlers and compile generated application/client contracts. The maintained [commerce example](../../examples/full-stack-commerce/README.md) additionally runs fresh CLI generation, PostgreSQL and browser verification with `pnpm example:commerce`. Backend and frontend generation use direct typed functions over resolved views. See [backend](../../docs/generation/DIRECT_BACKEND.md) and [frontend](../../docs/generation/DIRECT_FRONTEND.md) scope, ownership and verification; [public application wiring](../../docs/generation/PUBLIC_MODULES.md) is integrated.
 
 See the [contract](../../docs/configuration/YAML_V2.md) and [validation/evidence guide](../../docs/configuration/VALIDATION.md). Keep credentials in environment configuration, never YAML.
+
+## Supported package boundary
+
+Public exports cover configuration parsing/validation and JSON Schema, immutable project resolution/views/types, `generationReadiness`, `generateBackend`/`generateFrontend`, diagnostics, VFS collection/emission and the scaffold/tooling records used by the CLI. Generation returns files and dependencies in memory; the CLI owns external commands and publication. Concrete architecture, HTTP, ORM, authentication, styling and UI renderers and their contexts are internal implementation details, not supported extension points. No registry/composer or alternate-stack API is exported.
+
+This is an initializer for new/empty projects. It does not regenerate edited applications, convert previous schemas, provision cloud resources or coordinate cross-module transactions. Clean is executable; Hexagonal/Onion and many-to-many generation fail readiness explicitly.

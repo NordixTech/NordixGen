@@ -1,12 +1,6 @@
 import { createDiagnostic } from "../diagnostics.js";
 import type { ResolvedEntity, ResolvedModule, ResolvedProject } from "../project/types.js";
 
-/** Concrete internal implementation status; no configurable capability registry. */
-export const MODULE_GENERATION_SUPPORT = {
-  clean: "implemented",
-  hexagonal: "not-implemented",
-  onion: "not-implemented",
-} as const;
 export function resolveGenerationReadiness(
   modules: readonly ResolvedModule[],
   entities: Readonly<Record<string, ResolvedEntity>>,

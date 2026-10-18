@@ -17,38 +17,25 @@ export function getCoreInfo(): NordixCoreInfo {
   };
 }
 
-export * from "./configuration/readiness.js";
-export * from "./diagnostics.js";
+// Supported configuration, resolved-model and generation entry points.
+export { generationReadiness } from "./configuration/readiness.js";
+export type { ConfigDiagnostic, DiagnosticSeverity } from "./diagnostics.js";
+export { formatDiagnostic } from "./diagnostics.js";
 export * from "./project/types.js";
 export * from "./project/resolve.js";
 export * from "./project/views.js";
-export * from "./json-schema.js";
-export * from "./generation/backend.js";
-export * from "./generation/frontend.js";
-export * from "./generation/files.js";
-export * from "./generation/dependencies.js";
-export * from "./plugins/contracts.js";
-export * from "./plugins/frontend-contracts.js";
-export * from "./plugins/frontend-api-contract.js";
-
-export * from "./plugins/architecture/clean.js";
-export * from "./plugins/architecture/domain-files.js";
-export * from "./plugins/architecture/application-files.js";
-export * from "./plugins/authentication/better-auth.js";
-export * from "./plugins/authorization/roles-permissions.js";
-export * from "./plugins/frameworks/hono.js";
-export * from "./plugins/frameworks/hono-files.js";
-export * from "./plugins/frontends/better-auth-client.js";
-export * from "./plugins/frontends/feature-screens.js";
-export * from "./plugins/frontends/client-state.js";
-export * from "./plugins/frontends/native-ui.js";
-export * from "./plugins/frontends/nextjs.js";
-export * from "./plugins/frontends/root-shell.js";
-export * from "./plugins/frontends/server-state.js";
-export * from "./plugins/frontends/typed-api-client.js";
-export * from "./plugins/orms/drizzle.js";
-export * from "./plugins/orms/drizzle-files.js";
-export * from "./plugins/styling/tailwind.js";
-export * from "./configuration/schema.js";
-export * from "./configuration/validate.js";
+export { createNordixJsonSchema } from "./json-schema.js";
+export { generateBackend } from "./generation/backend.js";
+export { generateFrontend, FRONTEND_SCAFFOLD_OVERLAYS } from "./generation/frontend.js";
+export { collectFiles, BACKEND_SCAFFOLD_OVERLAYS } from "./generation/files.js";
+export { WORKSPACE_TOOLING } from "./generation/dependencies.js";
+export type { GeneratedFile, UpstreamScaffoldPlan } from "./plugins/contracts.js";
+export { NordixConfigSchema } from "./configuration/schema.js";
+export type { NordixConfig } from "./configuration/schema.js";
+export type { ConfigValidationResult } from "./configuration/validate.js";
+export {
+  parseNordixYaml,
+  validateNordixConfig,
+  stringifyNordixYaml,
+} from "./configuration/validate.js";
 export * from "./virtual-file-system.js";

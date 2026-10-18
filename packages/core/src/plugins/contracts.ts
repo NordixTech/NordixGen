@@ -12,7 +12,6 @@ export interface UpstreamScaffoldPlan {
 export type ArchitectureFileRole =
   | "domainEntity"
   | "useCase"
-  | "inboundPort"
   | "outboundPort"
   | "adapter"
   | "controller"
@@ -24,7 +23,6 @@ export interface BackendPaths {
   readonly scaffold: UpstreamScaffoldPlan;
 }
 export interface CleanLayout {
-  readonly codeRoot: string;
   readonly directories: Readonly<Record<ArchitectureFileRole, string>>;
 }
 export type DomainModelContext = BackendModelView;

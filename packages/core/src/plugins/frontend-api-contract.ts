@@ -2,7 +2,7 @@ import type { ResolvedProject } from "../project/types.js";
 import { frontendView } from "../project/views.js";
 import type { FrontendApiContract } from "./frontend-contracts.js";
 
-/** Temporary concrete renderer adapter; all business interpretation belongs to resolution. */
+/** Select resolved transport data for frontend renderers without reinterpreting YAML. */
 export function buildFrontendApiContract(
   project: ResolvedProject,
   name: string,

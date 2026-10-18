@@ -34,8 +34,8 @@ export function generateDrizzleFiles(context: BackendRenderContext) {
   };
 
   const schemaFiles = generateDrizzleSchemaFiles(context, persistence);
-  const databaseFile = generateDrizzleDatabaseFile(context, persistence);
-  const migrationFiles = generateDrizzleMigrationFiles(context, persistence);
+  const databaseFile = generateDrizzleDatabaseFile(persistence);
+  const migrationFiles = generateDrizzleMigrationFiles(persistence);
   const seedFiles = generateDrizzleSeedFiles(context, persistence);
 
   return [configFile, ...schemaFiles, databaseFile, ...migrationFiles, ...seedFiles];

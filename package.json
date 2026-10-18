@@ -1,7 +1,7 @@
 {
   "name": "nordixgen-monorepo",
   "private": true,
-  "description": "Enterprise Declarative Architecture & Scaffolding Platform for Full-Stack Projects",
+  "description": "Initialize Nordix full-stack projects from strict YAML v2",
   "engines": {
     "node": ">=24.0.0",
     "pnpm": ">=10.0.0"

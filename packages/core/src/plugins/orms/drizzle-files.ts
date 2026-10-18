@@ -1,5 +1,4 @@
 import { posix } from "node:path";
-import type { RelationDefinition } from "../../configuration/schema.js";
 import type { ResolvedField } from "../../project/types.js";
 import type {
   BackendRenderContext,
@@ -516,11 +515,8 @@ export function generateDrizzleAdapterFiles(
 }
 
 export function generateDrizzleMigrationFiles(
-  context: BackendRenderContext,
   persistence: NonNullable<BackendRenderContext["persistence"]>,
 ): readonly GeneratedFile[] {
-  const model = context.domainModel;
-
   const infrastructureDir = persistence.directories.infrastructure;
   const dbDir = posix.join(infrastructureDir, "database");
   const migratePath = posix.join(dbDir, "migrate.ts");
@@ -715,7 +711,7 @@ export function generateDrizzleSeedFiles(
     }
 
     // Assign foreign keys from previously seeded parent entities
-    for (const [relName, rel] of Object.entries(entity.relations)) {
+    for (const rel of Object.values(entity.relations)) {
       if (rel.type === "many-to-one" || rel.type === "one-to-one") {
         const foreignKeyCol = rel.foreignKey as string;
         fieldAssignments.push(
@@ -784,10 +780,7 @@ ${fieldAssignments.join("\n")}
   return [{ path: seedPath, content: seedContent }];
 }
 
-export function generateDrizzleDatabaseFile(
-  context: BackendRenderContext,
-  persistence: PersistenceContext,
-): GeneratedFile {
+export function generateDrizzleDatabaseFile(persistence: PersistenceContext): GeneratedFile {
   const dbClientPath = posix.join(persistence.directories.adapter, "drizzle-database.ts");
   const schemaIndexPath = posix.join(
     persistence.directories.infrastructure,
