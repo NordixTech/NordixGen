@@ -1,3 +1,4 @@
+import { identityBaseUrl } from "../../generation/frontend-access.js";
 import { ACCOUNT_POLICY } from "../../project/account-policy.js";
 import type { GeneratedFile } from "../contracts.js";
 import type {
@@ -16,7 +17,7 @@ function authentication(context: FrontendRenderContext): FrontendAuthenticationC
 }
 function authClientContent(context: FrontendRenderContext): string {
   const config = authentication(context);
-  const apiBaseUrl = 'process.env.NEXT_PUBLIC_API_BASE_URL ?? ""';
+  const apiBaseUrl = identityBaseUrl(context);
   const pluginImports: string[] = [];
   const pluginInits: string[] = [];
   if (config.methods.includes("username-password")) {
@@ -105,24 +106,6 @@ function sessionViewContent(): string {
     "}",
   ]);
 }
-function sessionSyncContent(): string {
-  return source([
-    '"use client";',
-    "",
-    'import { useEffect } from "react";',
-    'import { useSessionView } from "@/lib/auth/use-session-view";',
-    'import { useAuthStore } from "@/stores/auth-store";',
-    "",
-    "export function SessionViewSync() {",
-    "  const { user, isPending } = useSessionView();",
-    "  const setSessionView = useAuthStore((state) => state.setSessionView);",
-    "  useEffect(() => {",
-    "    setSessionView(user, isPending);",
-    "  }, [user, isPending, setSessionView]);",
-    "  return null;",
-    "}",
-  ]);
-}
 function signOutButtonContent(): string {
   return source([
     '"use client";',
@@ -131,18 +114,21 @@ function signOutButtonContent(): string {
     'import { useState } from "react";',
     'import { Button } from "@/components/ui/button";',
     'import { authClient } from "@/lib/auth/client";',
+    'import {useUIStore} from "@/stores/ui-store";',
     "",
     "export function SignOutButton() {",
     "  const router = useRouter();",
+    "  const notify=useUIStore(state=>state.notify);",
     "  const [pending, setPending] = useState(false);",
     "  return (",
     "    <Button",
     "      disabled={pending}",
     "      onClick={async () => {",
     "        setPending(true);",
-    "        await authClient.signOut();",
+    "        try {const result=await authClient.signOut();if(result.error){notify(result.error.message ?? 'Sign-out failed.','alert');return;}",
     '        router.replace("/sign-in");',
     "        router.refresh();",
+    "        }catch{notify('Could not reach the authentication server. Please try signing out again.','alert');}finally{setPending(false);}",
     "      }}",
     '      type="button"',
     '      variant="secondary"',
@@ -215,7 +201,7 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
     '      router.replace("/");',
     "      router.refresh();",
     "    } catch {",
-    '      setError("Could not reach the authentication server. Check that the backend is running and that NEXT_PUBLIC_API_BASE_URL points to it.");',
+    '      setError("Could not reach the authentication server. Check that the backend is running and that NEXT_PUBLIC_AUTH_BASE_URL points to it.");',
     "    } finally {",
     "      setPending(false);",
     "    }",
@@ -285,7 +271,7 @@ function signUpFormContent(): string {
     '      router.replace("/");',
     "      router.refresh();",
     "    } catch {",
-    '      setError("Could not reach the authentication server. Check that the backend is running and that NEXT_PUBLIC_API_BASE_URL points to it.");',
+    '      setError("Could not reach the authentication server. Check that the backend is running and that NEXT_PUBLIC_AUTH_BASE_URL points to it.");',
     "    } finally {",
     "      setPending(false);",
     "    }",
@@ -357,7 +343,9 @@ function authReadme(config: FrontendAuthenticationContract): string {
     "- New accounts receive the backend's default role; role assignment is server-controlled.",
     "- The browser stores the session in HttpOnly cookies. Do not copy tokens into Zustand, React state, or localStorage.",
     "- Add this frontend origin to the backend `AUTH_TRUSTED_ORIGINS` list so credentialed requests and CSRF origin checks succeed.",
-    "- Set `NEXT_PUBLIC_API_BASE_URL` to the absolute backend URL.",
+    "- Set `NEXT_PUBLIC_AUTH_BASE_URL` to the selected backend authority URL. A single-backend frontend may use `NEXT_PUBLIC_API_BASE_URL` as a fallback.",
+    "- Page guards forward the requesting cookie only to that configured authority, without redirects or caching. Identity failures render an unavailable error; invalid sessions redirect to the local sign-in page.",
+    "- Supported local topology: Next.js at http://localhost:3000 and Hono at http://localhost:8787. Use localhost consistently, set BETTER_AUTH_URL=http://localhost:8787 and AUTH_TRUSTED_ORIGINS=http://localhost:3000. Host-only HttpOnly cookies are shared across these ports, so both browser requests and Next.js server checks receive the session. Distinct hostnames require deliberate cookie-domain configuration; it is not generated or assumed.",
     "- `hasPermission` / `hasRole` are presentation helpers. Backend policies remain authoritative.",
   ]);
 }
@@ -373,10 +361,6 @@ export function generateFrontendAuthFiles(
     { path: `${root}/lib/auth/README.md`, content: authReadme(config) },
     { path: `${root}/components/auth/sign-out-button.tsx`, content: signOutButtonContent() },
   ];
-  files.push({
-    path: `${root}/components/auth/session-view-sync.tsx`,
-    content: sessionSyncContent(),
-  });
   if (context.api.authentication) {
     files.push(
       { path: `${root}/components/auth/auth-controls.tsx`, content: authControlsContent() },

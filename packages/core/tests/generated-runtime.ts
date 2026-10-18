@@ -4,10 +4,16 @@ import ts from "typescript";
 export function generatedRuntime(
   files: Readonly<Record<string, string>>,
   external: Readonly<Record<string, unknown>> = {},
+  globals: Readonly<Record<string, unknown>> = {},
 ) {
   const cache = new Map<string, Record<string, unknown>>();
-  function load(path: string): Record<string, unknown> {
+  function load(request: string): Record<string, unknown> {
+    let path = request;
     if (Object.hasOwn(external, path)) return external[path] as Record<string, unknown>;
+    if (!Object.hasOwn(files, path)) {
+      if (Object.hasOwn(files, `${path}.ts`)) path += ".ts";
+      else if (Object.hasOwn(files, `${path}.tsx`)) path += ".tsx";
+    }
     const existing = cache.get(path);
     if (existing) return existing;
     const source = files[path];
@@ -19,7 +25,7 @@ export function generatedRuntime(
         compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
       })
       .outputText.replaceAll("import.meta.url", JSON.stringify(`file:///${path}`));
-    new Function("module", "exports", "require", compiled)(
+    new Function("module", "exports", "require", ...Object.keys(globals), compiled)(
       module,
       module.exports,
       (specifier: string) =>
@@ -28,6 +34,7 @@ export function generatedRuntime(
             ? posix.normalize(posix.join(posix.dirname(path), specifier)).replace(/\.js$/, ".ts")
             : specifier,
         ),
+      ...Object.values(globals),
     );
     return module.exports;
   }

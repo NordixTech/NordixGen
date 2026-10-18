@@ -188,7 +188,8 @@ describe("fixed UI assembly and declared features", () => {
       const providers = files[`${root}/app/providers.tsx`];
       expect(providers.split("function Providers")).toHaveLength(2);
       expect(providers).toContain("QueryClientProvider");
-      expect(providers).toContain("SessionViewSync");
+      expect(providers).not.toContain("SessionViewSync");
+      expect(files[`${root}/stores/auth-store.ts`]).toBeUndefined();
       expect(files[`${root}/stores/ui-store.ts`]).toContain("zustand");
       expect(files[`${root}/components/auth/sign-in-form.tsx`]).toContain("signIn");
       const all = Object.values(files).join("\n");
