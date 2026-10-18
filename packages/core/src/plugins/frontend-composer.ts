@@ -1,7 +1,7 @@
-import type { FrontendRenderSettings } from "../configuration/schema.js";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
 import { VirtualFileSystem, normalizeVirtualPath } from "../virtual-file-system.js";
 import type { GeneratedFile } from "./contracts.js";
+import type { FrontendRenderSettings } from "./frontend-contracts.js";
 import type { FrontendFrameworkContext, FrontendGeneratorPlugin } from "./frontend-contracts.js";
 import type { FrontendApiContract } from "./frontend-contracts.js";
 import type { FrontendPluginRegistry } from "./frontend-registry.js";
@@ -137,7 +137,13 @@ export function composeFrontendPlugins(
   projectName: string,
   frontend: FrontendRenderSettings,
   registry: FrontendPluginRegistry,
-  api: FrontendApiContract = { endpoints: [], entities: {}, enums: {} },
+  api: FrontendApiContract = {
+    endpoints: [],
+    operationNames: {},
+    features: {},
+    entities: {},
+    enums: {},
+  },
 ): FrontendPluginCompositionResult {
   const { plugins, diagnostics } = selectedPlugins(frontend, registry, api);
   if (frontend.authUI && !api.authentication) {

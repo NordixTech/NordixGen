@@ -1,11 +1,10 @@
-import type { FieldDefinition, NormalizedEndpointDefinition } from "../../configuration/schema.js";
+import type { TransportField, TransportOperation } from "../../project/types.js";
 import type { GeneratedFile } from "../contracts.js";
 import type {
   FrontendApiEntity,
   FrontendGeneratorPlugin,
   FrontendPluginContributionContext,
 } from "../frontend-contracts.js";
-import { getFrontendOperationNames } from "../frontend-operation-names.js";
 
 function escapeText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -17,58 +16,27 @@ function source(lines: readonly string[]): string {
 
 export interface EntityEndpointsGroup {
   readonly entityName: string;
-  readonly listEndpoint?: NormalizedEndpointDefinition;
-  readonly getEndpoint?: NormalizedEndpointDefinition;
-  readonly createEndpoint?: NormalizedEndpointDefinition;
-  readonly updateEndpoint?: NormalizedEndpointDefinition;
-  readonly deleteEndpoint?: NormalizedEndpointDefinition;
-  readonly customEndpoints: readonly NormalizedEndpointDefinition[];
+  readonly listEndpoint?: TransportOperation;
+  readonly getEndpoint?: TransportOperation;
+  readonly createEndpoint?: TransportOperation;
+  readonly updateEndpoint?: TransportOperation;
+  readonly deleteEndpoint?: TransportOperation;
+  readonly customEndpoints: readonly TransportOperation[];
 }
 
 function endpointBodyFields(
-  endpoint: NormalizedEndpointDefinition | undefined,
-  entities: Readonly<Record<string, FrontendApiEntity>>,
-): Readonly<Record<string, FieldDefinition>> {
-  if (!endpoint?.requestBody) return {};
-  const useCase = (
-    endpoint.requestBody as { useCase?: { entity: string; operation: "create" | "update" } }
-  ).useCase;
-  if (useCase) {
-    return Object.fromEntries(
-      Object.entries(entities[useCase.entity]?.fields ?? {})
-        .filter(
-          ([name]) => !["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"].includes(name),
-        )
-        .map(([name, field]) => [
-          name,
-          {
-            ...field,
-            required:
-              useCase.operation === "create" && field.required && field.default === undefined,
-          },
-        ]),
-    );
-  }
+  endpoint: TransportOperation | undefined,
+): Readonly<Record<string, TransportField>> {
   return Object.fromEntries(
-    Object.entries(endpoint.requestBody).flatMap(([name, definition]) => {
-      const descriptor = definition as {
-        field?: { entity: string; field: string };
-        required?: boolean;
-      };
-      const field = descriptor.field
-        ? entities[descriptor.field.entity]?.fields[descriptor.field.field]
-        : (definition as FieldDefinition);
-      if (!field)
-        return [
-          [name, { type: "json", required: descriptor.required ?? false } as FieldDefinition],
-        ];
-      return [[name, { ...field, required: descriptor.required ?? field.required }]];
-    }),
+    Object.entries(endpoint?.body.fields ?? {}).map(([name, input]) => [
+      name,
+      { ...input.definition, required: !input.optional },
+    ]),
   );
 }
 
 function zodField(
-  field: FieldDefinition,
+  field: TransportField,
   enums: Readonly<Record<string, readonly string[]>>,
 ): string {
   const required = field.required && field.default === undefined;
@@ -78,13 +46,11 @@ function zodField(
       schema = `z.preprocess((value) => value === "" || Number.isNaN(value) ? undefined : value, z.number()${required ? "" : ".optional()"})`;
       break;
     case "boolean":
-      schema = "z.boolean()";
+      schema = `z.boolean()${required ? "" : ".optional()"}`;
       break;
     case "enum": {
-      const values = enums[field.enumName ?? ""] ?? [];
-      schema = values.length
-        ? `z.enum([${values.map((value) => JSON.stringify(value)).join(", ")}])`
-        : "z.string()";
+      const values = field.value.enumValues as readonly string[];
+      schema = `z.enum([${values.map((value) => JSON.stringify(value)).join(", ")}])${required ? "" : ".optional()"}`;
       break;
     }
     case "json":
@@ -93,68 +59,22 @@ function zodField(
     default:
       schema = `z.string()${required ? '.min(1, "Required")' : ".optional()"}`;
   }
+  if (field.nullable) schema += ".nullable()";
   if (field.default !== undefined) schema += `.default(${JSON.stringify(field.default)})`;
   return schema;
 }
 
 function bodySchemaSource(
-  endpoint: NormalizedEndpointDefinition | undefined,
-  fallbackFields: Readonly<Record<string, FieldDefinition>>,
+  endpoint: TransportOperation | undefined,
+  fallbackFields: Readonly<Record<string, TransportField>>,
   entities: Readonly<Record<string, FrontendApiEntity>>,
   enums: Readonly<Record<string, readonly string[]>>,
 ): string {
-  const fields = endpoint ? endpointBodyFields(endpoint, entities) : fallbackFields;
+  const fields = endpoint ? endpointBodyFields(endpoint) : fallbackFields;
   const entries = Object.entries(fields).map(
     ([name, field]) => `  ${JSON.stringify(name)}: ${zodField(field, enums)},`,
   );
   return `z.object({\n${entries.join("\n")}\n})`;
-}
-
-export function groupEndpointsByEntity(
-  endpoints: readonly NormalizedEndpointDefinition[],
-): ReadonlyMap<string, EntityEndpointsGroup> {
-  const groups = new Map<
-    string,
-    {
-      entityName: string;
-      listEndpoint?: NormalizedEndpointDefinition;
-      getEndpoint?: NormalizedEndpointDefinition;
-      createEndpoint?: NormalizedEndpointDefinition;
-      updateEndpoint?: NormalizedEndpointDefinition;
-      deleteEndpoint?: NormalizedEndpointDefinition;
-      customEndpoints: NormalizedEndpointDefinition[];
-    }
-  >();
-
-  for (const endpoint of endpoints) {
-    let group = groups.get(endpoint.entity);
-    if (!group) {
-      group = {
-        entityName: endpoint.entity,
-        customEndpoints: [],
-      };
-      groups.set(endpoint.entity, group);
-    }
-
-    if (endpoint.method === "GET" && endpoint.pathParams.length === 0 && !group.listEndpoint) {
-      group.listEndpoint = endpoint;
-    } else if (endpoint.method === "GET" && endpoint.pathParams.length > 0 && !group.getEndpoint) {
-      group.getEndpoint = endpoint;
-    } else if (endpoint.method === "POST" && !group.createEndpoint) {
-      group.createEndpoint = endpoint;
-    } else if (
-      (endpoint.method === "PATCH" || endpoint.method === "PUT") &&
-      !group.updateEndpoint
-    ) {
-      group.updateEndpoint = endpoint;
-    } else if (endpoint.method === "DELETE" && !group.deleteEndpoint) {
-      group.deleteEndpoint = endpoint;
-    } else {
-      group.customEndpoints.push(endpoint);
-    }
-  }
-
-  return groups;
 }
 
 function slugify(name: string): string {
@@ -162,18 +82,17 @@ function slugify(name: string): string {
 }
 
 function fieldInputs(
-  fields: Readonly<Record<string, FieldDefinition>>,
+  fields: Readonly<Record<string, TransportField>>,
   enums: Readonly<Record<string, readonly string[]>>,
 ): string {
-  const generatedFields = new Set(["id", "createdAt", "updatedAt", "isDeleted", "deletedAt"]);
-  const entries = Object.entries(fields).filter(([name]) => !generatedFields.has(name));
+  const entries = Object.entries(fields).filter(([, field]) => !field.generated);
 
   return entries
     .map(([name, field]) => {
       const required = field.required && field.default === undefined;
       const defaultValue = `{String(editingItem?.entity?.[${JSON.stringify(name)}] ?? editingItem?.[${JSON.stringify(name)}] ?? "")}`;
-      if (field.type === "enum" && field.enumName && enums[field.enumName]) {
-        const options = enums[field.enumName]
+      if (field.type === "enum") {
+        const options = (field.value.enumValues as readonly string[])
           .map(
             (opt) => `            <option value=${JSON.stringify(opt)}>${escapeText(opt)}</option>`,
           )
@@ -216,37 +135,39 @@ ${options}
 
 function generateFeatureView(
   group: EntityEndpointsGroup,
-  entity: FrontendApiEntity | undefined,
+  entity: FrontendApiEntity,
   entities: Readonly<Record<string, FrontendApiEntity>>,
   enums: Readonly<Record<string, readonly string[]>>,
-  operationNames: ReadonlyMap<NormalizedEndpointDefinition, string>,
+  operationNames: ReadonlyMap<TransportOperation, string>,
   serverState: "tanstack-query" | "swr" | "native-fetch",
   hasAuth: boolean,
 ): string {
   const entityName = group.entityName;
   const listOp = group.listEndpoint ? operationNames.get(group.listEndpoint) : undefined;
-  const createOp = group.createEndpoint?.requestBody
-    ? operationNames.get(group.createEndpoint)
-    : undefined;
-  const updateOp = group.updateEndpoint?.requestBody
-    ? operationNames.get(group.updateEndpoint)
-    : undefined;
+  const createOp =
+    group.createEndpoint && group.createEndpoint.body.kind !== "none"
+      ? operationNames.get(group.createEndpoint)
+      : undefined;
+  const updateOp =
+    group.updateEndpoint && group.updateEndpoint.body.kind !== "none"
+      ? operationNames.get(group.updateEndpoint)
+      : undefined;
   const deleteOp = group.deleteEndpoint ? operationNames.get(group.deleteEndpoint) : undefined;
   const updatePathParam = group.updateEndpoint?.pathParams[0]?.name ?? "id";
   const deletePathParam = group.deleteEndpoint?.pathParams[0]?.name ?? "id";
-  const entityFields = entity?.fields ?? {};
+  const entityFields = entity.fields;
   const deleteMessage =
-    entity?.softDelete === "boolean"
+    entity.softDelete === "boolean"
       ? "This record will be marked inactive and hidden from active lists."
-      : entity?.softDelete === "timestamp"
+      : entity.softDelete === "timestamp"
         ? "This record will be archived using the backend soft-delete policy."
         : "This action permanently removes this record.";
   const bodyFields = {
-    ...endpointBodyFields(createOp ? group.createEndpoint : undefined, entities),
-    ...endpointBodyFields(updateOp ? group.updateEndpoint : undefined, entities),
+    ...endpointBodyFields(createOp ? group.createEndpoint : undefined),
+    ...endpointBodyFields(updateOp ? group.updateEndpoint : undefined),
   };
-  const formFields = Object.keys(bodyFields).length ? bodyFields : entityFields;
-  const permissionStart = (endpoint: NormalizedEndpointDefinition | undefined) => {
+  const formFields = bodyFields;
+  const permissionStart = (endpoint: TransportOperation | undefined) => {
     if (!hasAuth || !endpoint || (!endpoint.roles.length && !endpoint.permissions.length))
       return "";
     const roleCheck = endpoint.roles.length
@@ -257,7 +178,7 @@ function generateFeatureView(
       : "true";
     return `{${roleCheck} && ${permissionCheck} && (`;
   };
-  const permissionEnd = (endpoint: NormalizedEndpointDefinition | undefined) =>
+  const permissionEnd = (endpoint: TransportOperation | undefined) =>
     permissionStart(endpoint) ? ")}" : "";
   const filterParams = group.listEndpoint?.queryParams ?? [];
   const searchParam = filterParams.find((parameter) => parameter.name === "search");
@@ -596,8 +517,24 @@ export function generateFeatureScreenFiles(
   const endpoints = context.api.endpoints;
   if (!endpoints || endpoints.length === 0) return [];
 
-  const groups = groupEndpointsByEntity(endpoints);
-  const operationNames = getFrontendOperationNames(endpoints);
+  const byId = Object.fromEntries(endpoints.map((endpoint) => [endpoint.id, endpoint]));
+  const groups = new Map(
+    Object.entries(context.api.features).map(([entityName, feature]) => [
+      entityName,
+      {
+        entityName,
+        listEndpoint: feature.list ? byId[feature.list] : undefined,
+        getEndpoint: feature.get ? byId[feature.get] : undefined,
+        createEndpoint: feature.create ? byId[feature.create] : undefined,
+        updateEndpoint: feature.update ? byId[feature.update] : undefined,
+        deleteEndpoint: feature.delete ? byId[feature.delete] : undefined,
+        customEndpoints: feature.custom.map((id) => byId[id]),
+      },
+    ]),
+  );
+  const operationNames = new Map(
+    endpoints.map((endpoint) => [endpoint, context.api.operationNames[endpoint.id]]),
+  );
   const serverState =
     typeof context.frontend.stateManagement === "object" &&
     context.frontend.stateManagement.generateHooks

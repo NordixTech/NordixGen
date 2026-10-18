@@ -1,6 +1,6 @@
-import { type NordixConfig, normalizeBackends } from "../configuration/schema.js";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
-import { buildBackendDomainModel } from "../intermediate-representation.js";
+import type { ResolvedProject } from "../project/types.js";
+import { backendView } from "../project/views.js";
 import { VirtualFileSystem, normalizeVirtualPath } from "../virtual-file-system.js";
 import { ARCHITECTURE_FILE_ROLES } from "./contracts.js";
 import type {
@@ -416,78 +416,69 @@ export function composePlugins(options: ComposePluginsOptions): PluginCompositio
   };
 }
 
-/** Resolves the plugin IDs and database capabilities declared by one backend's YAML config. */
+/** Temporary adapter for exercising concrete single-Clean-module renderers.
+ * RF-07 replaces composition; this never declares a project generation-ready. */
 export function composeBackendPlugins(
-  inputConfig: NordixConfig,
+  project: ResolvedProject,
   backendName: string,
   registry: PluginRegistry,
 ): PluginCompositionResult {
-  const config = inputConfig;
-  const backend = normalizeBackends(config).find((candidate) => candidate.name === backendName);
-  if (!backend) {
+  const backend = project.backends[backendName];
+  if (!backend)
     return fail([
       createDiagnostic(
-        "UNKNOWN_BACKEND_PLUGIN_TARGET",
-        `backends.${backendName}`,
-        `Backend "${backendName}" is not configured.`,
+        "UNKNOWN_BACKEND_TARGET",
+        "backends",
+        `Backend "${backendName}" is not resolved. Select an existing backend.`,
       ),
     ]);
-  }
-
+  const view = backendView(project, backendName);
+  const relationPaths = new Set(
+    Object.values(view.entities).flatMap((entity) =>
+      Object.values(entity.relations).map((relation) => relation.origin.path),
+    ),
+  );
+  const mappingProblems = project.readiness.filter(
+    (diagnostic) =>
+      diagnostic.code === "RELATION_MAPPING_UNIMPLEMENTED" && relationPaths.has(diagnostic.path),
+  );
+  if (mappingProblems.length) return fail(mappingProblems);
+  if (view.modules.length !== 1 || view.modules[0].architecture !== "clean")
+    return fail([
+      createDiagnostic(
+        "BACKEND_RENDERER_SCOPE_UNSUPPORTED",
+        backend.origin.path,
+        "The temporary renderer adapter supports one Clean module only. Use the direct modular pipeline once integrated; no global-layout or architecture fallback is allowed.",
+      ),
+    ]);
   const selections: PluginSelection[] = [
-    { pluginId: backend.framework, configuration: { applicationRoot: backend.path } },
-    { pluginId: backend.architecture },
+    { pluginId: "hono", configuration: { applicationRoot: backend.path } },
+    { pluginId: "clean" },
   ];
-  if (backend.authentication) {
+  if (backend.identity) {
     selections.push({
-      pluginId: backend.authentication.plugin,
+      pluginId: "better-auth",
       configuration: {
         applicationRoot: backend.path,
-        projectName: config.name,
-        authentication: backend.authentication,
-        authorization: backend.authorization,
+        projectName: project.project.name,
+        authentication: backend.identity,
+        authorization: backend.identity,
       },
     });
-  }
-  const hasAuthorizationPolicies =
-    backend.authorization.roles.length > 0 ||
-    Object.values(backend.authorization.rolePermissions).some(
-      (permissions) => permissions.length > 0,
-    );
-  if (hasAuthorizationPolicies) {
     selections.push({
-      pluginId: backend.authorization.plugin,
-      configuration: {
-        applicationRoot: backend.path,
-        authorization: backend.authorization,
-      },
+      pluginId: "rbac-pbac",
+      configuration: { applicationRoot: backend.path, authorization: backend.identity },
     });
   }
-  const externalCapabilities: string[] = [];
-  const domainModel = buildBackendDomainModel(config, backendName);
-  let persistence: Omit<PersistenceContext, "directories"> | undefined;
-  if (backend.persistence) {
-    const database = config.databases[backend.persistence.database];
-    if (!database) {
-      return fail([
-        createDiagnostic(
-          "UNKNOWN_BACKEND_DATABASE",
-          `backends.${backend.name}.persistence.database`,
-          `Database "${backend.persistence.database}" is not configured under databases.`,
-        ),
-      ]);
-    }
-    selections.push({ pluginId: backend.persistence.orm });
-    externalCapabilities.push("database:postgres", "provider:neon");
-    persistence = {
-      database: {
-        name: backend.persistence.database,
-        engine: "postgres",
-        provider: "neon",
-      },
-      connectionStringEnvironmentVariable: "DATABASE_URL",
-    };
-  }
-
-  return composePlugins({ selections, registry, externalCapabilities, persistence, domainModel });
+  if (backend.database) selections.push({ pluginId: "drizzle" });
+  const persistence = backend.database
+    ? { database: backend.database, connectionStringEnvironmentVariable: "DATABASE_URL" }
+    : undefined;
+  return composePlugins({
+    selections,
+    registry,
+    domainModel: view,
+    persistence,
+    externalCapabilities: backend.database ? ["database:postgres", "provider:neon"] : [],
+  });
 }

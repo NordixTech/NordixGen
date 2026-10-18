@@ -1,8 +1,9 @@
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import * as prompts from "@clack/prompts";
-import { parseNordixYaml } from "@nordixgen/core";
+import { parseNordixYaml, stringifyNordixYaml } from "@nordixgen/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProgram } from "./index.js";
 import { createStarterConfiguration, runGenerate, runInit } from "./orchestrator.js";
@@ -37,6 +38,46 @@ afterEach(async () => {
 });
 
 describe("canonical configuration initialization and command preflight", () => {
+  it.each([
+    ["clean", "MODULE_GENERATION_UNAVAILABLE"],
+    ["hexagonal", "MODULE_ARCHITECTURE_UNIMPLEMENTED"],
+    ["onion", "MODULE_ARCHITECTURE_UNIMPLEMENTED"],
+    ["cycle", "RELATION_CYCLE"],
+    ["association", "RELATION_MAPPING_UNIMPLEMENTED"],
+  ])(
+    "uses identical located resolution diagnostics in validate/generate for %s",
+    async (kind, code) => {
+      const parsed = parseNordixYaml(createStarterConfiguration("client-app", false));
+      if (!parsed.success) throw new Error("Invalid initialization fixture");
+      if (kind === "cycle" || kind === "association")
+        parsed.config.entities.Example.relations.related = {
+          type: kind === "cycle" ? "many-to-one" : "many-to-many",
+          target: "Example",
+          required: false,
+        };
+      else
+        parsed.config.backends[0].modules.examples.architecture = kind as
+          | "clean"
+          | "hexagonal"
+          | "onion";
+      const directory = await temporary();
+      const file = join(directory, "configuration.yaml");
+      const output = join(directory, "output");
+      await writeFile(file, stringifyNordixYaml(parsed.config));
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      await createProgram().parseAsync(["node", "nordixgen", "validate", "-f", file]);
+      const validation = stripVTControlCharacters(error.mock.calls.flat().join("\n"));
+      expect(process.exitCode).toBe(1);
+      expect(validation).toContain(code);
+      expect(validation).toContain("configuration.yaml:");
+      error.mockClear();
+      process.exitCode = undefined;
+      await createProgram().parseAsync(["node", "nordixgen", "generate", "-f", file, "-o", output]);
+      expect(process.exitCode).toBe(1);
+      expect(stripVTControlCharacters(error.mock.calls.flat().join("\n"))).toBe(validation);
+      await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
   it.each([0, 1, 2])(
     "cancels initialization at prompt %s without writing a file",
     async (stage) => {

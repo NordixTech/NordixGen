@@ -13,19 +13,20 @@ export interface NordixCoreInfo {
 export function getCoreInfo(): NordixCoreInfo {
   return {
     version: CORE_VERSION,
-    engine: "NordixGen Deterministic Intermediate Representation Engine",
+    engine: "NordixGen Resolved Project Engine",
   };
 }
 
 export * from "./configuration/readiness.js";
 export * from "./diagnostics.js";
-export * from "./intermediate-representation.js";
+export * from "./project/types.js";
+export * from "./project/resolve.js";
+export * from "./project/views.js";
 export * from "./json-schema.js";
 export * from "./plugins/composer.js";
 export * from "./plugins/contracts.js";
 export * from "./plugins/frontend-contracts.js";
 export * from "./plugins/frontend-api-contract.js";
-export * from "./plugins/frontend-operation-names.js";
 export * from "./plugins/frontend-composer.js";
 export * from "./plugins/frontend-registry.js";
 export * from "./plugins/registry.js";

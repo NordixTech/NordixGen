@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { NordixConfigSchema } from "../src/configuration/schema.js";
-import { buildIntermediateRepresentation } from "../src/intermediate-representation.js";
 import {
   cleanArchitecturePlugin,
   resolveCleanArchitectureLayout,
 } from "../src/plugins/architecture/clean.js";
+import { betterAuthPlugin } from "../src/plugins/authentication/better-auth.js";
+import { rbacPbacPlugin } from "../src/plugins/authorization/rbac-pbac.js";
 import { composeBackendPlugins } from "../src/plugins/composer.js";
 import type {
   ArchitectureLayout,
@@ -21,13 +22,17 @@ import {
 } from "../src/plugins/orms/drizzle-files.js";
 import { drizzleOrmPlugin } from "../src/plugins/orms/drizzle.js";
 import { PluginRegistry } from "../src/plugins/registry.js";
-import { createValidConfig } from "./fixtures.js";
+import { backendView } from "../src/project/views.js";
+import { resolvedFixture } from "./fixtures.js";
+import { createSecuredConfig, createValidConfig } from "./fixtures.js";
 
 function createRegistry(framework: GeneratorPlugin = honoFrameworkPlugin) {
   const registry = new PluginRegistry();
   registry.register(framework);
   registry.register(cleanArchitecturePlugin);
   registry.register(drizzleOrmPlugin);
+  registry.register(betterAuthPlugin);
+  registry.register(rbacPbacPlugin);
   return registry;
 }
 
@@ -62,44 +67,6 @@ function createValidPersistenceContext(): NonNullable<PluginContributionContext[
 }
 
 describe("Drizzle ORM plugin", () => {
-  it("uses stable fallback ordering and endpoint names for sparse domain models", () => {
-    const representation = buildIntermediateRepresentation(createValidConfig());
-    const context = createDrizzleContext();
-    context.domainModel = {
-      enums: representation.enums,
-      entities: representation.entities,
-      endpoints: [
-        {
-          backend: "core-api",
-          path: "/",
-          method: "GET",
-          operationId: "getRoot",
-          entity: "Order",
-          authRequired: false,
-          roles: [],
-          permissions: [],
-          queryParams: [],
-          pathParams: [],
-          joins: [{ entity: "User", type: "inner", fields: ["email"] }],
-        },
-      ],
-    };
-
-    const persistence = createValidPersistenceContext();
-    const schemaFiles = generateDrizzleSchemaFiles(context, persistence);
-    const adapterFiles = generateDrizzleAdapterFiles(context, persistence);
-    expect(schemaFiles[0]?.content).toContain("export const OrderTable = pgTable(");
-    expect(
-      adapterFiles.some((file) => file.path.endsWith("GetRoot.drizzle.query.adapter.ts")),
-    ).toBe(true);
-
-    context.domainModel = {
-      ...context.domainModel,
-      entityOrder: [...Object.keys(representation.entities), "MissingEntity"],
-    };
-    expect(() => generateDrizzleSchemaFiles(context, persistence)).not.toThrow();
-  });
-
   it("declares framework-agnostic language, runtime, database, and driver capabilities", () => {
     expect(drizzleOrmPlugin.descriptor).toMatchObject({
       id: "drizzle",
@@ -144,7 +111,7 @@ describe("Drizzle ORM plugin", () => {
 
   it("generates Drizzle Kit configuration from the selected backend persistence context", () => {
     const config = NordixConfigSchema.parse(createValidConfig());
-    const result = composeBackendPlugins(config, "core-api", createRegistry());
+    const result = composeBackendPlugins(resolvedFixture(config), "core-api", createRegistry());
 
     expect(result.success).toBe(true);
     if (!result.success) return;
@@ -160,7 +127,7 @@ describe("Drizzle ORM plugin", () => {
       "export const OrderTable = pgTable(",
     );
     expect(files["apps/api-core/src/infrastructure/database/schema/index.ts"]).toContain(
-      "export const UserTable = pgTable(",
+      "export const CustomerTable = pgTable(",
     );
     expect(files["apps/api-core/src/infrastructure/database/schema/index.ts"]).toContain(
       "export const OrderStatusPgEnum = pgEnum(",
@@ -168,9 +135,9 @@ describe("Drizzle ORM plugin", () => {
     expect(
       files["apps/api-core/src/infrastructure/adapters/Order.drizzle.repository.ts"],
     ).toContain("class DrizzleOrderRepository implements OrderRepository");
-    expect(files["apps/api-core/src/infrastructure/adapters/User.drizzle.repository.ts"]).toContain(
-      "class DrizzleUserRepository implements UserRepository",
-    );
+    expect(
+      files["apps/api-core/src/infrastructure/adapters/Customer.drizzle.repository.ts"],
+    ).toContain("class DrizzleCustomerRepository implements CustomerRepository");
     expect(files["apps/api-core/src/infrastructure/adapters/drizzle-database.ts"]).toContain(
       "createDrizzleDatabase",
     );
@@ -189,12 +156,12 @@ describe("Drizzle ORM plugin", () => {
     const orderItemJoin = summaryEndpoint.joins[1];
     if (!orderItemJoin) throw new Error("OrderItem join fixture is missing.");
     orderItemJoin.fields.push("unitPrice");
-    config.entities.User.timestamps = { createdAt: false, updatedAt: false };
-    config.entities.User.fields.verifiedAt = { type: "date", default: "2026-01-01T00:00:00Z" };
-    config.entities.User.fields.lastSeenAt = { type: "date", default: { kind: "now" } };
-    config.entities.User.fields.credit = { type: "number", format: "decimal" };
+    config.entities.Customer.timestamps = { createdAt: false, updatedAt: false };
+    config.entities.Customer.fields.verifiedAt = { type: "date", default: "2026-01-01T00:00:00Z" };
+    config.entities.Customer.fields.lastSeenAt = { type: "date", default: { kind: "now" } };
+    config.entities.Customer.fields.credit = { type: "number", format: "decimal" };
     const userJoin = summaryEndpoint.joins[0];
-    if (!userJoin) throw new Error("User join fixture is missing.");
+    if (!userJoin) throw new Error("Customer join fixture is missing.");
     userJoin.fields.push("credit");
     summaryEndpoint.queryParams.push({
       name: "quantity",
@@ -218,10 +185,10 @@ describe("Drizzle ORM plugin", () => {
           required: false,
         },
       },
-      joins: [{ entity: "User", type: "inner", fields: ["email"] }],
+      joins: [{ entity: "Customer", type: "inner", fields: ["email"] }],
     });
     const result = composeBackendPlugins(
-      NordixConfigSchema.parse(config),
+      resolvedFixture(NordixConfigSchema.parse(config)),
       "core-api",
       createRegistry(),
     );
@@ -252,8 +219,8 @@ describe("Drizzle ORM plugin", () => {
     ).not.toContain("CreateOrderUseCase");
 
     const userAdapter =
-      files["apps/api-core/src/infrastructure/adapters/User.drizzle.repository.ts"];
-    expect(userAdapter).toContain("class DrizzleUserRepository implements UserRepository");
+      files["apps/api-core/src/infrastructure/adapters/Customer.drizzle.repository.ts"];
+    expect(userAdapter).toContain("class DrizzleCustomerRepository implements CustomerRepository");
     expect(userAdapter).toContain("deletedAt");
 
     const orderItemAdapter =
@@ -268,7 +235,7 @@ describe("Drizzle ORM plugin", () => {
       files["apps/api-core/src/infrastructure/adapters/GetOrderSummary.drizzle.query.adapter.ts"];
     expect(
       files["apps/api-core/src/application/use-cases/dtos/endpoints/GetOrderSummary.dto.ts"],
-    ).toContain('"quantity": z.coerce.number().optional()');
+    ).toContain('"quantity": z.preprocess');
     expect(queryAdapter).toBeDefined();
     expect(queryAdapter).toContain(
       "class DrizzleGetOrderSummaryQueryAdapter implements GetOrderSummaryQueryPort",
@@ -276,14 +243,14 @@ describe("Drizzle ORM plugin", () => {
     expect(queryAdapter).toContain("execute(input: QueryExecution): Promise<Response>");
     expect(queryAdapter).toContain("entity:  { ...row, total: Number(row.total) }");
     expect(queryAdapter).toContain(
-      "OrderItem: Array.isArray(row.items) ? row.items.map((value: any) => ({ ...value, unitPrice: Number(value.unitPrice) })) : row.items ?? null",
+      "OrderItem: Array.isArray(row.items) ? row.items.map((value: any) => ({ ...value, unitPrice: Number(value.unitPrice) })) : row.items ?? []",
     );
     expect(queryAdapter).toContain(
       "conditions.push(inArray(schema.OrderTable.customer_id, matchingRows));",
     );
     expect(queryAdapter).toContain("conditions.push(inArray(schema.OrderTable.id, matchingRows));");
     expect(queryAdapter).toContain(
-      "User: row.customer == null ? null : { ...row.customer, credit: Number(row.customer.credit) },",
+      "Customer: row.customer == null ? null : { ...row.customer, credit: Number(row.customer.credit) },",
     );
     expect(queryAdapter).toContain(
       "from(schema.OrderTable).where(conditions.length > 0 ? and(...conditions) : undefined)",
@@ -295,8 +262,8 @@ describe("Drizzle ORM plugin", () => {
 
   it("covers custom unpaginated query adapter and diverse field types", () => {
     const config = createValidConfig();
-    config.entities.User.fields = {
-      ...config.entities.User.fields,
+    config.entities.Customer.fields = {
+      ...config.entities.Customer.fields,
       bio: { type: "string", maxLength: 200, required: false },
       age: { type: "number", format: "integer", default: 18 },
       rating: { type: "number", format: "decimal", precision: 5, scale: 2 },
@@ -317,11 +284,11 @@ describe("Drizzle ORM plugin", () => {
       permissions: [],
       queryParams: [],
       pathParams: [],
-      joins: [{ entity: "User", type: "inner", fields: ["id", "email"] }],
+      joins: [{ entity: "Customer", type: "inner", fields: ["id", "email"] }],
     });
 
     const result = composeBackendPlugins(
-      NordixConfigSchema.parse(config),
+      resolvedFixture(NordixConfigSchema.parse(config)),
       "core-api",
       createRegistry(),
     );
@@ -349,7 +316,7 @@ describe("Drizzle ORM plugin", () => {
   });
 
   it("wires custom CRUD endpoint adapters without joins", () => {
-    const config = createValidConfig();
+    const config = createSecuredConfig();
     config.endpoints = [
       {
         backend: "core-api",
@@ -389,7 +356,7 @@ describe("Drizzle ORM plugin", () => {
         queryParams: [],
         pathParams: [
           { name: "orderId", field: { entity: "Order", field: "id" } },
-          { name: "customerId", field: { entity: "User", field: "id" } },
+          { name: "customerId", field: { entity: "Order", field: "customer_id" } },
         ],
         requestBody: { useCase: { entity: "Order", operation: "update" } },
       },
@@ -408,7 +375,7 @@ describe("Drizzle ORM plugin", () => {
     ];
 
     const result = composeBackendPlugins(
-      NordixConfigSchema.parse(config),
+      resolvedFixture(NordixConfigSchema.parse(config)),
       "core-api",
       createRegistry(),
     );
@@ -448,12 +415,12 @@ describe("Drizzle ORM plugin", () => {
       files[
         "apps/api-core/src/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
       ],
-    ).toContain('input.request.path["orderId"]');
+    ).toContain('input.request["orderId"]');
     expect(
       files[
         "apps/api-core/src/infrastructure/adapters/UpdateOrderEndpoint.drizzle.query.adapter.ts"
       ],
-    ).not.toContain('input.request.path["customerId"]');
+    ).toContain('eq(schema.OrderTable.customer_id, input.request["customerId"])');
     expect(
       files[
         "apps/api-core/src/infrastructure/adapters/DeleteOrderEndpoint.drizzle.query.adapter.ts"
@@ -463,13 +430,18 @@ describe("Drizzle ORM plugin", () => {
 
   it("handles entities without soft delete and timestamp soft delete query adapters", () => {
     const userSummaryConfig = createValidConfig();
-    userSummaryConfig.entities.User.softDelete = "timestamp";
+    userSummaryConfig.entities.Customer.softDelete = "timestamp";
+    userSummaryConfig.entities.Customer.relations.orders = {
+      type: "one-to-many",
+      target: "Order",
+      foreignKey: "customer_id",
+    };
     userSummaryConfig.endpoints.push({
       path: "/api/user/summary",
       method: "GET",
-      operationId: "getUserSummary",
+      operationId: "getCustomerSummary",
       backend: "core-api",
-      entity: "User",
+      entity: "Customer",
       authRequired: false,
       roles: [],
       permissions: [],
@@ -478,7 +450,7 @@ describe("Drizzle ORM plugin", () => {
       joins: [{ entity: "Order", type: "left", fields: ["total"] }],
     });
     const userSummaryResult = composeBackendPlugins(
-      NordixConfigSchema.parse(userSummaryConfig),
+      resolvedFixture(NordixConfigSchema.parse(userSummaryConfig)),
       "core-api",
       createRegistry(),
     );
@@ -487,7 +459,7 @@ describe("Drizzle ORM plugin", () => {
     const userSummaryFiles = userSummaryResult.virtualFileSystem.snapshot();
     expect(
       userSummaryFiles[
-        "apps/api-core/src/infrastructure/adapters/GetUserSummary.drizzle.query.adapter.ts"
+        "apps/api-core/src/infrastructure/adapters/GetCustomerSummary.drizzle.query.adapter.ts"
       ],
     ).toContain("deletedAt");
 
@@ -505,11 +477,11 @@ describe("Drizzle ORM plugin", () => {
         permissions: [],
         queryParams: [],
         pathParams: [],
-        joins: [{ entity: "User", type: "left", fields: ["id"] }],
+        joins: [{ entity: "Customer", type: "left", fields: ["id"] }],
       },
     ];
     const falseDeleteResult = composeBackendPlugins(
-      NordixConfigSchema.parse(falseDeleteConfig),
+      resolvedFixture(NordixConfigSchema.parse(falseDeleteConfig)),
       "core-api",
       createRegistry(),
     );
@@ -525,16 +497,12 @@ describe("Drizzle ORM plugin", () => {
 
   it("covers schemas without relations, one-to-one relations, and findPage filtering", () => {
     const config = createValidConfig();
-    config.entities.User.fields.weight = { type: "number", precision: 6 };
-    config.entities.User.fields.balance = { type: "number", format: "decimal", scale: 4 };
-    config.entities.User.relations.profile = {
-      type: "one-to-one",
-      target: "User",
-    };
-    config.entities.Order.relations.author = {
-      type: "many-to-one",
-      target: "User",
-    };
+    config.entities.Customer.fields.weight = { type: "number", precision: 6 };
+    config.entities.Customer.fields.balance = { type: "number", format: "decimal", scale: 4 };
+    config.entities.Customer.relations.profile = { type: "one-to-one", target: "Profile" };
+    config.entities.Profile = { backend: "core-api", fields: { label: { type: "string" } } };
+    config.backends[0].modules.commerce.entities.push("Profile");
+
     config.entities.OrderItem.softDelete = false;
     config.pagination.compact = {
       strategy: "offset",
@@ -556,7 +524,7 @@ describe("Drizzle ORM plugin", () => {
       joins: [],
     });
     const resultWithOne = composeBackendPlugins(
-      NordixConfigSchema.parse(config),
+      resolvedFixture(NordixConfigSchema.parse(config)),
       "core-api",
       createRegistry(),
     );
@@ -568,14 +536,14 @@ describe("Drizzle ORM plugin", () => {
     ).toContain("findPage");
 
     config.enums = {};
-    config.entities.User.fields.role = { type: "string" };
+    config.entities.Customer.fields.role = { type: "string" };
     config.entities.Order.fields.status = { type: "string" };
-    config.entities.User.relations = {};
+    config.entities.Customer.relations = {};
     config.entities.Order.relations = {};
     config.entities.OrderItem.relations = {};
     config.endpoints = [];
     const result = composeBackendPlugins(
-      NordixConfigSchema.parse(config),
+      resolvedFixture(NordixConfigSchema.parse(config)),
       "core-api",
       createRegistry(),
     );
@@ -597,116 +565,23 @@ describe("Drizzle ORM plugin", () => {
     expect(generateDrizzleSeedFiles(context, persistence)).toEqual([]);
   });
 
-  it("skips query adapter generation when endpoint entity is not in domain model", () => {
-    const context = createDrizzleContext();
-    const representation = buildIntermediateRepresentation(createValidConfig());
-    context.domainModel = {
-      enums: representation.enums,
-      entities: representation.entities,
-      endpoints: [
-        {
-          entity: "MissingEntity",
-          path: "/missing",
-          method: "GET",
-          operationId: "getMissing",
-          description: "Missing",
-          params: [],
-          query: [],
-          headers: [],
-          requestBody: {},
-          body: null,
-          responses: {},
-          joins: [{ entity: "Other", fields: ["name"] }],
-        },
-        {
-          entity: "Order",
-          path: "/unrelated",
-          method: "GET",
-          operationId: "getUnrelated",
-          description: "Unrelated join target",
-          params: [],
-          query: [],
-          headers: [],
-          body: null,
-          responses: {},
-          joins: [{ entity: "Unrelated", fields: ["name"] }],
-        },
-      ],
-    };
-    const persistence = createValidPersistenceContext();
-    const files = generateDrizzleAdapterFiles(context, persistence);
-    expect(
-      files.find((f) => f.path.includes("getMissing.drizzle.query.adapter.ts")),
-    ).toBeUndefined();
-    expect(
-      files.find((f) => f.path.includes("GetUnrelated.drizzle.query.adapter.ts")),
-    ).toBeDefined();
-  });
-
-  it.each([null, {}])(
-    "does not require a clock for unsupported date default %s",
-    (defaultValue) => {
-      const context = createDrizzleContext();
-      const baseUser = buildIntermediateRepresentation(createValidConfig()).entities.User;
-      if (!baseUser) throw new Error("User fixture entity is missing.");
-      context.domainModel = {
-        enums: {},
-        entities: {
-          User: {
-            ...baseUser,
-            fields: {
-              observedAt: { type: "date", required: true, unique: false, default: defaultValue },
-            },
-            relations: {},
-            timestamps: { createdAt: false, updatedAt: false },
-          },
-        },
-        endpoints: [],
-      };
-
-      const files = generateDrizzleAdapterFiles(context, createValidPersistenceContext());
-      const dependencies = files.find((file) => file.path.endsWith("create-route-dependencies.ts"));
-      expect(dependencies?.content).not.toContain("SystemClock");
-    },
-  );
-
   it("creates a related-entity subquery for one-to-many filters", () => {
-    const representation = buildIntermediateRepresentation(createValidConfig());
-    const order = representation.entities.Order;
-    if (!order) throw new Error("Order fixture entity is missing.");
-    expect(order.relations.items?.type).toBe("one-to-many");
-    order.relations.items = {
-      type: "one-to-many",
-      target: "OrderItem",
-      required: false,
-    };
+    const config = createValidConfig();
+    config.endpoints = [
+      {
+        backend: "core-api",
+        path: "/api/orders/by-quantity",
+        method: "GET",
+        operationId: "getOrdersByQuantity",
+        entity: "Order",
+        queryParams: [
+          { name: "quantity", field: { entity: "OrderItem", field: "quantity" }, required: false },
+        ],
+        joins: [{ entity: "OrderItem", type: "left", fields: ["quantity"] }],
+      },
+    ];
     const context = createDrizzleContext();
-    context.domainModel = {
-      enums: representation.enums,
-      entities: representation.entities,
-      endpoints: [
-        {
-          backend: "core-api",
-          path: "/api/orders/by-quantity",
-          method: "GET",
-          operationId: "getOrdersByQuantity",
-          entity: "Order",
-          authRequired: false,
-          roles: [],
-          permissions: [],
-          queryParams: [
-            {
-              name: "quantity",
-              field: { entity: "OrderItem", field: "quantity" },
-              required: false,
-            },
-          ],
-          pathParams: [],
-          joins: [{ entity: "OrderItem", type: "left", fields: ["quantity"] }],
-        },
-      ],
-    };
-
+    context.domainModel = backendView(resolvedFixture(config), "core-api");
     const adapter = generateDrizzleAdapterFiles(context, createValidPersistenceContext()).find(
       (file) => file.path.endsWith("GetOrdersByQuantity.drizzle.query.adapter.ts"),
     );
@@ -717,20 +592,20 @@ describe("Drizzle ORM plugin", () => {
 
   it("generates migration runner, README, and deterministic topological seeders", () => {
     const config = createValidConfig();
-    config.entities.User.fields.name = { type: "string" };
-    config.entities.User.fields.shortCode = { type: "string", maxLength: 10 };
-    config.entities.User.fields.externalReference = { type: "string", maxLength: 32 };
-    config.entities.User.fields.bio = { type: "string", maxLength: 200 };
-    config.entities.User.fields.age = { type: "number", format: "integer" };
-    config.entities.User.fields.score = { type: "number", format: "float" };
-    config.entities.User.fields.isActive = { type: "boolean" };
-    config.entities.User.fields.birthDate = { type: "date" };
-    config.entities.User.fields.externalId = { type: "uuid" };
-    config.entities.User.fields.metadata = { type: "json" };
-    config.entities.User.fields.optionalNotes = { type: "string", required: false };
+    config.entities.Customer.fields.name = { type: "string" };
+    config.entities.Customer.fields.shortCode = { type: "string", maxLength: 10 };
+    config.entities.Customer.fields.externalReference = { type: "string", maxLength: 32 };
+    config.entities.Customer.fields.bio = { type: "string", maxLength: 200 };
+    config.entities.Customer.fields.age = { type: "number", format: "integer" };
+    config.entities.Customer.fields.score = { type: "number", format: "float" };
+    config.entities.Customer.fields.isActive = { type: "boolean" };
+    config.entities.Customer.fields.birthDate = { type: "date" };
+    config.entities.Customer.fields.externalId = { type: "uuid" };
+    config.entities.Customer.fields.metadata = { type: "json" };
+    config.entities.Customer.fields.optionalNotes = { type: "string", required: false };
 
     const result = composeBackendPlugins(
-      NordixConfigSchema.parse(config),
+      resolvedFixture(NordixConfigSchema.parse(config)),
       "core-api",
       createRegistry(),
     );
@@ -764,25 +639,12 @@ describe("Drizzle ORM plugin", () => {
     expect(seedFile).toContain("faker.helpers.arrayElement");
     expect(seedFile).toContain("pathToFileURL(resolve(process.argv[1])).href");
 
-    // Verify topological order in seeder: User before Order before OrderItem
-    const userIndex = seedFile.indexOf("// Seed User");
+    // Verify topological order in seeder: Customer before Order before OrderItem
+    const userIndex = seedFile.indexOf("// Seed Customer");
     const orderIndex = seedFile.indexOf("// Seed Order");
     const orderItemIndex = seedFile.indexOf("// Seed OrderItem");
     expect(userIndex).toBeGreaterThan(-1);
     expect(orderIndex).toBeGreaterThan(userIndex);
     expect(orderItemIndex).toBeGreaterThan(orderIndex);
-  });
-
-  it("handles empty entities and fallback order in seed generation", () => {
-    const context = createDrizzleContext();
-    context.domainModel = {
-      enums: {},
-      entities: {},
-      endpoints: [],
-    };
-    const persistence = createValidPersistenceContext();
-    const files = generateDrizzleSeedFiles(context, persistence);
-    expect(files).toHaveLength(1);
-    expect(files[0]?.content).toContain("export async function seedDatabase");
   });
 });

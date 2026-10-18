@@ -8,7 +8,7 @@ import {
   validateNordixConfig,
 } from "../src/configuration/validate.js";
 import { formatDiagnostic } from "../src/diagnostics.js";
-import { createValidConfig, targetConfig } from "./fixtures.js";
+import { resolvedFixture, targetConfig } from "./fixtures.js";
 
 const diagnostics = (input: unknown) => validateNordixConfig(input).diagnostics;
 describe("YAML structure, references and descriptive diagnostics", () => {
@@ -17,9 +17,9 @@ describe("YAML structure, references and descriptive diagnostics", () => {
     (name) => {
       const config = targetConfig(name);
       expect(validateNordixConfig(config)).toMatchObject({ success: true, diagnostics: [] });
-      expect(generationReadiness(config).length).toBeGreaterThan(0);
+      expect(generationReadiness(resolvedFixture(config)).length).toBeGreaterThan(0);
       if (name === "mixed-modules")
-        expect(generationReadiness(config).map((d) => d.code)).toContain(
+        expect(generationReadiness(resolvedFixture(config)).map((d) => d.code)).toContain(
           "MODULE_ARCHITECTURE_UNIMPLEMENTED",
         );
     },
@@ -32,16 +32,12 @@ describe("YAML structure, references and descriptive diagnostics", () => {
     if (!result.success) return;
     expect(result.config).toEqual(config);
     expect(
-      result.normalizedConfig.endpoints.find((e) => e.operationId === "getCustomer")?.authRequired,
-    ).toBe(true);
+      result.config.endpoints.find((e) => e.operationId === "getCustomer")?.authRequired,
+    ).toBeUndefined();
     expect(
-      result.normalizedConfig.endpoints.find((e) => e.operationId === "listCustomers")
-        ?.authRequired,
+      result.config.endpoints.find((e) => e.operationId === "listCustomers")?.authRequired,
     ).toBe(false);
-    expect(result.normalizedConfig.endpoints[0]?.pagination).toMatchObject({
-      defaultPageSize: 20,
-      maxPageSize: 80,
-    });
+    expect(result.config.endpoints[0]?.pagination).toBe("standard");
     expect(() => stringifyNordixYaml({ secret: "never-print" })).toThrow(/schemaVersion/);
   });
 

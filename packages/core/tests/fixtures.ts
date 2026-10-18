@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { stringify } from "yaml";
 import { parseNordixYaml } from "../src/configuration/validate.js";
+import { formatDiagnostic } from "../src/diagnostics.js";
+import { resolveProject } from "../src/project/resolve.js";
 
 export function createValidConfig() {
   return {
@@ -42,7 +44,7 @@ export function createValidConfig() {
         modules: {
           commerce: {
             architecture: "clean",
-            entities: ["User", "Order", "OrderItem"],
+            entities: ["Customer", "Order", "OrderItem"],
           },
         },
       },
@@ -52,10 +54,10 @@ export function createValidConfig() {
     },
     enums: {
       OrderStatus: ["PENDING", "PAID"],
-      UserRole: ["ADMIN", "CUSTOMER"],
+      CustomerRole: ["ADMIN", "CUSTOMER"],
     },
     entities: {
-      User: {
+      Customer: {
         backend: "core-api",
         fields: {
           email: {
@@ -64,7 +66,7 @@ export function createValidConfig() {
           },
           role: {
             type: "enum",
-            enumName: "UserRole",
+            enumName: "CustomerRole",
             default: "CUSTOMER",
           },
         },
@@ -91,7 +93,7 @@ export function createValidConfig() {
         relations: {
           customer: {
             type: "many-to-one",
-            target: "User",
+            target: "Customer",
             foreignKey: "customer_id",
             onDelete: "restrict",
           },
@@ -156,7 +158,7 @@ export function createValidConfig() {
         pagination: "standard",
         joins: [
           {
-            entity: "User",
+            entity: "Customer",
             type: "inner",
             fields: ["id", "email"],
           },
@@ -189,4 +191,23 @@ export function targetConfig(name = "clean-modules") {
   );
   if (!result.success) throw new Error(JSON.stringify(result.diagnostics));
   return result.config;
+}
+
+export function resolvedFixture(input: unknown = createValidConfig()) {
+  const result = resolveProject(input);
+  if (!result.success) throw new Error(result.diagnostics.map(formatDiagnostic).join("\n"));
+  return result.project;
+}
+
+export function createSecuredConfig() {
+  const config = createValidConfig();
+  Object.assign(config.backends[0], {
+    authentication: {},
+    authorization: {
+      roles: ["admin", "viewer"],
+      defaultRole: "viewer",
+      rolePermissions: { admin: ["orders:create", "orders:update", "orders:delete"], viewer: [] },
+    },
+  });
+  return config;
 }

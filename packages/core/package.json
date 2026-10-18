@@ -1,7 +1,7 @@
 {
   "name": "@nordixgen/core",
   "version": "0.1.0",
-  "description": "Configuration validation, normalized intermediate representation, and deterministic virtual file system for NordixGen",
+  "description": "Configuration validation, shared resolved project model, and deterministic virtual file system for NordixGen",
   "repository": {
     "type": "git",
     "url": "https://github.com/NordixTech/NordixGen.git",

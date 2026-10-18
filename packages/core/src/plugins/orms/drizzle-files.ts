@@ -1,44 +1,23 @@
 import { posix } from "node:path";
-import type { FieldDefinition, RelationDefinition } from "../../configuration/schema.js";
+import type { RelationDefinition } from "../../configuration/schema.js";
+import type { ResolvedField } from "../../project/types.js";
 import type { DomainModelContext, GeneratedFile, PluginContributionContext } from "../contracts.js";
-import { entityFieldsWithRelationKeys } from "../entity-fields.js";
 
 function importPath(fromFile: string, targetFile: string): string {
   const path = posix.relative(posix.dirname(fromFile), targetFile.replace(/\.ts$/, ".js"));
   return path.startsWith(".") ? path : `./${path}`;
 }
 
-function pgEnumName(enumName: string): string {
-  return `${enumName.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase()}_enum`;
-}
-
-function pgTableName(entityName: string): string {
-  return entityName.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-}
-
-function pgColumnName(fieldName: string): string {
-  return fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-}
-
 function endpointTypeName(endpoint: DomainModelContext["endpoints"][number]): string {
-  return endpoint.operationId.charAt(0).toUpperCase() + endpoint.operationId.slice(1);
+  return endpoint.typeName;
 }
 
 function lowerFirst(value: string): string {
   return value.charAt(0).toLowerCase() + value.slice(1);
 }
 
-function hasNowDefault(field: FieldDefinition): boolean {
-  return (
-    typeof field.default === "object" &&
-    field.default !== null &&
-    "kind" in field.default &&
-    field.default.kind === "now"
-  );
-}
-
-function drizzleColumnBuilder(fieldName: string, field: FieldDefinition): string {
-  const colName = pgColumnName(fieldName);
+function drizzleColumnBuilder(fieldName: string, field: ResolvedField): string {
+  const colName = field.column;
   let builder: string;
 
   if (fieldName === "id") {
@@ -59,8 +38,8 @@ function drizzleColumnBuilder(fieldName: string, field: FieldDefinition): string
     case "number":
       if (field.format === "integer") {
         builder = `integer(${JSON.stringify(colName)})`;
-      } else if (field.format === "decimal" || field.precision !== undefined) {
-        builder = `numeric(${JSON.stringify(colName)}, { precision: ${field.precision ?? 10}, scale: ${field.scale ?? 2} })`;
+      } else if (field.format === "decimal") {
+        builder = `numeric(${JSON.stringify(colName)}, { precision: ${field.precision}, scale: ${field.scale} })`;
       } else {
         builder = `doublePrecision(${JSON.stringify(colName)})`;
       }
@@ -87,21 +66,21 @@ function drizzleColumnBuilder(fieldName: string, field: FieldDefinition): string
     builder += ".unique()";
   }
 
-  if (field.default !== undefined) {
+  if (field.default !== undefined && field.default !== null) {
     if (field.type === "date") {
-      if (
-        typeof field.default === "object" &&
-        field.default !== null &&
-        "kind" in field.default &&
-        field.default.kind === "now"
-      ) {
+      if (field.defaultValue.kind === "clock") {
         builder += ".defaultNow()";
       } else {
         builder += `.default(sql\`\${new Date(${JSON.stringify(field.default)}).toISOString()}::timestamptz\`)`;
       }
     } else if (field.type === "boolean" || field.type === "number") {
       builder += `.default(${JSON.stringify(field.default)})`;
-    } else if (field.type === "string" || field.type === "enum") {
+    } else if (
+      field.type === "string" ||
+      field.type === "enum" ||
+      field.type === "uuid" ||
+      field.type === "json"
+    ) {
       builder += `.default(${JSON.stringify(field.default)})`;
     }
   }
@@ -125,7 +104,7 @@ export function generateDrizzleSchemaFiles(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(
       ([enumName, values]) =>
-        `export const ${enumName}PgEnum = pgEnum(${JSON.stringify(pgEnumName(enumName))}, [${values.map((v) => JSON.stringify(v)).join(", ")}]);`,
+        `export const ${enumName}PgEnum = pgEnum(${JSON.stringify(model.enumSqlNames[enumName])}, [${values.map((v) => JSON.stringify(v)).join(", ")}]);`,
     );
 
   const tableImports = new Set<string>([
@@ -143,23 +122,20 @@ export function generateDrizzleSchemaFiles(
   ]);
 
   const tableDefinitions: string[] = [];
-  const orderedEntities = (model.entityOrder ?? Object.keys(model.entities)).flatMap((name) => {
-    const entity = model.entities[name];
-    return entity ? [[name, entity] as const] : [];
-  });
+  const orderedEntities = model.entityOrder.map((name) => [name, model.entities[name]] as const);
 
   for (const [entityName, entity] of orderedEntities) {
-    const tableName = pgTableName(entityName);
+    const tableName = entity.table;
     const varName = `${entityName}Table`;
 
     const columnDefs: string[] = [];
-    const fields = entityFieldsWithRelationKeys(entity);
+    const fields = entity.fields;
     for (const [fieldName, field] of Object.entries(fields)) {
       let builder = drizzleColumnBuilder(fieldName, field);
       const relation = Object.values(entity.relations).find(
         (candidate) =>
           (candidate.type === "many-to-one" || candidate.type === "one-to-one") &&
-          (candidate.foreignKey ?? `${candidate.target.toLowerCase()}_id`) === fieldName,
+          candidate.foreignKey === fieldName,
       );
       if (relation) {
         const onDelete =
@@ -167,7 +143,7 @@ export function generateDrizzleSchemaFiles(
             ? "set null"
             : relation.onDelete === "no-action"
               ? "no action"
-              : (relation.onDelete ?? "no-action");
+              : relation.onDelete;
         builder += `.references(() => ${relation.target}Table.id, { onDelete: ${JSON.stringify(onDelete)} })`;
       }
       columnDefs.push(`  ${fieldName}: ${builder},`);
@@ -188,14 +164,14 @@ export function generateDrizzleSchemaFiles(
     for (const [relName, rel] of Object.entries(entity.relations)) {
       const targetTable = `${rel.target}Table`;
       if (rel.type === "many-to-one") {
-        const foreignKeyCol = rel.foreignKey ?? `${rel.target.toLowerCase()}_id`;
+        const foreignKeyCol = rel.foreignKey as string;
         relFields.push(
           `  ${relName}: one(${targetTable}, { fields: [${varName}.${foreignKeyCol}], references: [${targetTable}.id] }),`,
         );
       } else if (rel.type === "one-to-many") {
         relFields.push(`  ${relName}: many(${targetTable}),`);
       } else if (rel.type === "one-to-one") {
-        const foreignKeyCol = rel.foreignKey ?? `${rel.target.toLowerCase()}_id`;
+        const foreignKeyCol = rel.foreignKey as string;
         relFields.push(
           `  ${relName}: one(${targetTable}, { fields: [${varName}.${foreignKeyCol}], references: [${targetTable}.id] }),`,
         );
@@ -260,10 +236,7 @@ export function generateDrizzleAdapterFiles(
   ];
   const needsSystemClock = model.endpoints.some(
     (endpoint) =>
-      endpoint.requestBody !== undefined &&
-      Object.values(model.entities[endpoint.entity]?.fields ?? {}).some(
-        (field) => field.type === "date" && hasNowDefault(field),
-      ),
+      endpoint.body.dynamicDefaults.length > 0 || endpoint.body.serverDefaults.length > 0,
   );
   if (needsSystemClock) {
     const clockAdapterPath = posix.join(adapterDirectory, "system-clock.adapter.ts");
@@ -321,11 +294,8 @@ export function generateDrizzleAdapterFiles(
     const supportsPagination = model.endpoints.some(
       (endpoint) => endpoint.entity === entityName && endpoint.pagination !== undefined,
     );
-    const decimalFields = Object.entries(entityFieldsWithRelationKeys(entity))
-      .filter(
-        ([, field]) =>
-          field.type === "number" && (field.format === "decimal" || field.precision !== undefined),
-      )
+    const decimalFields = Object.entries(entity.fields)
+      .filter(([, field]) => field.type === "number" && field.format === "decimal")
       .map(([fieldName]) => fieldName);
 
     const adapterContent = [
@@ -429,7 +399,6 @@ export function generateDrizzleAdapterFiles(
   // Generate query port adapters for custom endpoints with joins
   for (const endpoint of model.endpoints) {
     const mainEntity = model.entities[endpoint.entity];
-    if (!mainEntity) continue;
     const operationName = endpointTypeName(endpoint);
     const adapterPath = posix.join(adapterDirectory, `${operationName}.drizzle.query.adapter.ts`);
     const portPath = posix.join(outboundPortDirectory, `${operationName}.query.port.ts`);
@@ -456,10 +425,7 @@ export function generateDrizzleAdapterFiles(
     );
     dependencyLines.push(`  const ${adapterVariable} = new ${adapterClass}(db);`);
     const endpointDynamicDefaults =
-      endpoint.requestBody !== undefined &&
-      Object.values(mainEntity.fields).some(
-        (field) => field.type === "date" && hasNowDefault(field),
-      );
+      endpoint.body.dynamicDefaults.length > 0 || endpoint.body.serverDefaults.length > 0;
     const endpointUseCaseArgs = `${adapterVariable}${endpointDynamicDefaults ? ", clock" : ""}`;
     dependencyLines.push(
       `  const ${lowerFirst(operationName)}UseCase = new ${endpointUseCase}(${endpointUseCaseArgs});`,
@@ -467,11 +433,7 @@ export function generateDrizzleAdapterFiles(
 
     const decimalFields = (entityName: string) =>
       Object.entries(model.entities[entityName]?.fields ?? {})
-        .filter(
-          ([, field]) =>
-            field.type === "number" &&
-            (field.format === "decimal" || field.precision !== undefined),
-        )
+        .filter(([, field]) => field.type === "number" && field.format === "decimal")
         .map(([fieldName]) => fieldName);
     const mainDecimalFields = decimalFields(endpoint.entity);
     const softDeleteCondition =
@@ -480,13 +442,6 @@ export function generateDrizzleAdapterFiles(
         : mainEntity.softDelete === "timestamp"
           ? `isNull(schema.${endpoint.entity}Table.deletedAt)`
           : undefined;
-
-    const resolveJoinRelName = (targetEntity: string) => {
-      for (const [relName, rel] of Object.entries(mainEntity.relations)) {
-        if (rel.target === targetEntity) return relName;
-      }
-      return targetEntity.toLowerCase();
-    };
 
     const joinsQueryConfig: string[] = [];
     const joinResultMappings: string[] = [];
@@ -509,16 +464,14 @@ export function generateDrizzleAdapterFiles(
       "      }",
     ];
     for (const join of endpoint.joins) {
-      const relName = resolveJoinRelName(join.entity);
+      const relName = join.relation.name;
       const fieldsSelection = Object.fromEntries(join.fields.map((f) => [f, true]));
       joinsQueryConfig.push(`        ${relName}: { columns: ${JSON.stringify(fieldsSelection)} },`);
       const joinDecimalFields = decimalFields(join.entity).filter((field) =>
         join.fields.includes(field),
       );
-      const relationType = Object.values(mainEntity.relations).find(
-        (relation) => relation.target === join.entity,
-      )?.type;
-      const joinValue = `row.${relName} ?? null`;
+      const relationType = join.relation.type;
+      const joinValue = `row.${relName} ?? ${join.cardinality === "many" ? "[]" : "null"}`;
       const mappedDecimals =
         joinDecimalFields.length > 0
           ? joinDecimalFields.map((field) => `${field}: Number(value.${field})`).join(", ")
@@ -532,11 +485,9 @@ export function generateDrizzleAdapterFiles(
             ? `row.${relName} == null ? null : { ...row.${relName}, ${joinDecimalFields.map((field) => `${field}: Number(row.${relName}.${field})`).join(", ")} }`
             : joinValue;
       joinResultMappings.push(`        ${join.entity}: ${joinResult},`);
-      const relation = Object.values(mainEntity.relations).find(
-        (candidate) => candidate.target === join.entity,
-      );
+      const relation = join.relation;
       if (relation && (relation.type === "many-to-one" || relation.type === "one-to-one")) {
-        const foreignKey = relation.foreignKey ?? `${relation.target.toLowerCase()}_id`;
+        const foreignKey = relation.foreignKey as string;
         filterBranches.push(
           `      else if (filter.entity === ${JSON.stringify(join.entity)}) {`,
           `        const table = schema.${join.entity}Table as any;`,
@@ -547,7 +498,7 @@ export function generateDrizzleAdapterFiles(
           "      }",
         );
       } else if (relation && relation.type === "one-to-many") {
-        const foreignKey = relation.foreignKey ?? `${endpoint.entity.toLowerCase()}_id`;
+        const foreignKey = relation.foreignKey as string;
         filterBranches.push(
           `      else if (filter.entity === ${JSON.stringify(join.entity)}) {`,
           `        const table = schema.${join.entity}Table as any;`,
@@ -569,27 +520,20 @@ export function generateDrizzleAdapterFiles(
       const field = parameter.field;
       if (!field || field.entity !== endpoint.entity) return [];
       return [
-        `    if (input.request.path[${JSON.stringify(parameter.name)}] !== undefined) {`,
-        `      conditions.push(eq(schema.${endpoint.entity}Table.${field.field}, input.request.path[${JSON.stringify(parameter.name)}]));`,
+        `    if (input.request[${JSON.stringify(parameter.name)}] !== undefined) {`,
+        `      conditions.push(eq(schema.${endpoint.entity}Table.${field.field}, input.request[${JSON.stringify(parameter.name)}]));`,
         "    }",
       ];
     });
-    const requestBodyUseCase =
-      endpoint.requestBody && "useCase" in endpoint.requestBody
-        ? endpoint.requestBody.useCase
+    const requestBodyOperation =
+      endpoint.body.kind === "create" || endpoint.body.kind === "update"
+        ? endpoint.body.kind
         : undefined;
-    const mutation =
-      requestBodyUseCase &&
-      "operation" in requestBodyUseCase &&
-      (requestBodyUseCase.operation === "create" || requestBodyUseCase.operation === "update")
-        ? requestBodyUseCase.operation
-        : endpoint.method === "DELETE"
-          ? "delete"
-          : undefined;
+    const mutation = requestBodyOperation ?? (endpoint.method === "DELETE" ? "delete" : undefined);
     const executeQuery =
       mutation === "create"
         ? [
-            `    const rows = await this.db.insert(schema.${endpoint.entity}Table).values(input.request.body as any).returning();`,
+            `    const rows = await this.db.insert(schema.${endpoint.entity}Table).values(Object.fromEntries(${JSON.stringify(endpoint.body.writeFields)}.filter(key => Object.hasOwn(input.request, key)).map(key => [key, input.request[key as keyof typeof input.request]]))).returning();`,
             "    return rows.map((row: any) => ({",
             `      entity: ${mainEntityResult},`,
             "      joins: {},",
@@ -598,7 +542,7 @@ export function generateDrizzleAdapterFiles(
         : mutation === "update"
           ? [
               '    if (conditions.length === 0) throw new Error("Update endpoint requires a path or filter condition.");',
-              `    const rows = await this.db.update(schema.${endpoint.entity}Table).set(input.request.body as any).where(and(...conditions)).returning();`,
+              `    const rows = await this.db.update(schema.${endpoint.entity}Table).set(Object.fromEntries(${JSON.stringify(endpoint.body.writeFields)}.filter(key => Object.hasOwn(input.request, key)).map(key => [key, input.request[key as keyof typeof input.request]]))).where(and(...conditions)).returning();`,
               "    return rows.map((row: any) => ({",
               `      entity: ${mainEntityResult},`,
               "      joins: {},",
@@ -782,9 +726,7 @@ export function generateDrizzleSeedFiles(
   const adapterDirectory = persistence.directories.adapter;
   const dbClientPath = posix.join(adapterDirectory, "drizzle-database.ts");
 
-  const orderedEntityNames = (model.entityOrder ?? Object.keys(model.entities)).filter(
-    (name) => name in model.entities,
-  );
+  const orderedEntityNames = model.entityOrder;
 
   const entitySeeders: string[] = [];
   for (const entityName of orderedEntityNames) {
@@ -865,7 +807,7 @@ export function generateDrizzleSeedFiles(
     // Assign foreign keys from previously seeded parent entities
     for (const [relName, rel] of Object.entries(entity.relations)) {
       if (rel.type === "many-to-one" || rel.type === "one-to-one") {
-        const foreignKeyCol = rel.foreignKey ?? `${rel.target.toLowerCase()}_id`;
+        const foreignKeyCol = rel.foreignKey as string;
         fieldAssignments.push(
           `        ${foreignKeyCol}: seeded.${rel.target}.length > 0 ? faker.helpers.arrayElement(seeded.${rel.target}).id : null,`,
         );

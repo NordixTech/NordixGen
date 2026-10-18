@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { intro, outro, spinner } from "@clack/prompts";
-import { formatDiagnostic, getCoreInfo, parseNordixYaml } from "@nordixgen/core";
+import { formatDiagnostic, getCoreInfo, resolveProjectYaml } from "@nordixgen/core";
 import { Command } from "commander";
 import pc from "picocolors";
 import { runGenerate, runInit } from "./orchestrator.js";
@@ -43,7 +44,8 @@ export function createProgram(): Command {
       const task = spinner();
       task.start(`Validating ${file}`);
       try {
-        const result = parseNordixYaml(await readFile(file, "utf8"), file, {
+        const filename = resolve(file);
+        const result = resolveProjectYaml(await readFile(filename, "utf8"), filename, {
           requireGeneration: true,
         });
         if (!result.success) {
@@ -63,9 +65,9 @@ export function createProgram(): Command {
           return;
         }
         task.stop("Configuration is valid");
-        console.log(`Project: ${result.config.name} v${result.config.version}`);
+        console.log(`Project: ${result.project.project.name} v${result.project.project.version}`);
         console.log(
-          `Repositories: ${result.config.repositories.length}; frontends: ${result.config.frontends.length}; backends: ${result.config.backends.length}; entities: ${Object.keys(result.config.entities).length}; endpoints: ${result.config.endpoints.length}`,
+          `Repositories: ${result.project.repositories.length}; frontends: ${Object.keys(result.project.frontends).length}; backends: ${Object.keys(result.project.backends).length}; entities: ${Object.keys(result.project.entities).length}; endpoints: ${Object.keys(result.project.operations).length}`,
         );
         for (const diagnostic of result.diagnostics) {
           console.warn(pc.yellow(formatDiagnostic(diagnostic)));

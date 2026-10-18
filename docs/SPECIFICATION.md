@@ -36,7 +36,7 @@ Fixed implementation technologies are implicit and are not selectors in project 
 
 The YAML schema must reject unknown values and invalid references with actionable diagnostics. A generated editor schema should be derived from the same canonical configuration definitions so editor assistance agrees with CLI validation.
 
-The detailed target syntax, defaults, ownership, module contracts and access rules are specified in the [YAML v2 design](configuration/YAML_V2.md). The approved contract is accepted by the runtime validator and editor schema. Modular generation remains explicitly blocked pending integration; see [validation behavior](configuration/VALIDATION.md).
+The detailed target syntax, defaults, ownership, module contracts and access rules are specified in the [YAML v2 design](configuration/YAML_V2.md). The approved contract is accepted by the runtime validator and editor schema. The [shared resolved project model](configuration/RESOLVED_MODEL.md) is implemented. Modular generation remains explicitly blocked pending integration; see [validation behavior](configuration/VALIDATION.md).
 
 ## 4. Parsing, validation, and generation requirements
 
@@ -127,6 +127,6 @@ The use of an upstream Hono scaffold that targets Cloudflare Workers does not it
 
 ## 13. Current implementation note
 
-The repository is still transitioning from its original generic design. Its current YAML selects architecture at backend level; current generation registers Clean, and the schema's `modular` value has no matching generator. The current generated backend does not yet enforce business-module ownership or typed intermodule contracts. Architecture selection per business module and the modular-monolith contract above state what NordixGen is intended to generate as the fixed product evolves.
+The runtime accepts YAML v2 only: architecture belongs to each explicit business module and technology selectors have been removed. The shared immutable model resolves ownership, public application signatures, effective policy, transport contracts and separate module/entity graphs once. Both CLI commands require the same resolution and readiness checks.
 
-`authUI` in the current generator adds login/signup UI and account controls, but it does not protect pages. Business HTTP routes are generated only from declared endpoints; declaring an entity alone does not expose CRUD routes. Health checks and enabled Better Auth handlers remain platform routes. These current implementation details are included only to clarify the relationship between the existing generator and the product requirements; they are not architecture decisions or issue tracking.
+Modular generation remains blocked before output or external commands until the direct pipeline and Clean module generator are integrated. Hexagonal/Onion and many-to-many emission have explicit unsupported-generation diagnostics. Existing fixed renderer adapters support focused executable checks; they do not establish generated modular boundaries, complete authentication journeys or browser/database acceptance. Business HTTP routes come only from declared endpoints; declaring an entity does not expose CRUD routes. See [current evidence and limitations](configuration/VALIDATION.md).

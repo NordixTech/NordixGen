@@ -261,45 +261,6 @@ export type EndpointDefinition = z.infer<typeof EndpointSchema>;
 export type OrganizationDefinition = z.infer<typeof OrganizationSchema>;
 export type RepositoryDefinition = z.infer<typeof RepositorySchema>;
 export type NordixConfig = z.infer<typeof NordixConfigSchema>;
-export type NormalizedEndpointDefinition = Omit<
-  EndpointDefinition,
-  "pagination" | "authRequired"
-> & { pagination?: PaginationDefinition; authRequired: boolean };
-export type NormalizedNordixConfig = Omit<NordixConfig, "endpoints"> & {
-  endpoints: NormalizedEndpointDefinition[];
-};
-
-// Temporary concrete inputs for the existing renderers. These are NOT accepted YAML
-// selectors. Direct generation/resolved-model work removes these internal views.
-export type FrontendRenderSettings = FrontendDefinition & {
-  framework: string;
-  type: "web";
-  styling: string;
-  ui: string;
-  authUI: boolean;
-  stateManagement?: {
-    client: "zustand" | "context" | "none";
-    server: "tanstack-query" | "swr" | "native-fetch";
-    generateHooks: boolean;
-    optimisticUpdates: boolean;
-  };
-};
-export function frontendRenderSettings(frontend: FrontendDefinition): FrontendRenderSettings {
-  return {
-    ...frontend,
-    framework: "nextjs",
-    type: "web",
-    styling: "tailwind",
-    ui: "native",
-    authUI: frontend.access.backend !== undefined,
-    stateManagement: {
-      client: "zustand",
-      server: "tanstack-query",
-      generateHooks: true,
-      optimisticUpdates: false,
-    },
-  };
-}
 export function effectiveAuthorization(backend: BackendDefinition) {
   return (
     backend.authorization ?? {
@@ -308,33 +269,4 @@ export function effectiveAuthorization(backend: BackendDefinition) {
       rolePermissions: {} as Record<string, string[]>,
     }
   );
-}
-export function normalizeFrontends(config: NordixConfig): FrontendRenderSettings[] {
-  return config.frontends
-    .map((frontend) => {
-      const authorities = config.backends.filter(
-        (b) => frontend.connectsTo.includes(b.name) && b.authentication,
-      );
-      const selected =
-        frontend.access.backend ?? (authorities.length === 1 ? authorities[0]?.name : undefined);
-      return frontendRenderSettings({
-        ...frontend,
-        access: { ...frontend.access, backend: selected },
-      });
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-export function normalizeBackends(config: NordixConfig) {
-  return config.backends
-    .map((b) => ({
-      ...b,
-      framework: "hono" as const,
-      architecture: Object.values(b.modules)[0]?.architecture ?? "clean",
-      persistence: b.persistence ? { ...b.persistence, orm: "drizzle" as const } : undefined,
-      authentication: b.authentication
-        ? { ...b.authentication, plugin: "better-auth" as const }
-        : undefined,
-      authorization: { ...effectiveAuthorization(b), plugin: "rbac-pbac" as const },
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
 }

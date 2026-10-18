@@ -1,27 +1,18 @@
 import { posix } from "node:path";
-import type { EndpointDefinition, FieldDefinition } from "../../configuration/schema.js";
+import type { FieldDefinition } from "../../configuration/schema.js";
+import type { ResolvedField, ResolvedInput } from "../../project/types.js";
 import type { DomainModelContext, GeneratedFile, PluginContributionContext } from "../contracts.js";
-import { entityFieldsWithRelationKeys } from "../entity-fields.js";
 
 function importPath(fromFile: string, targetFile: string): string {
   const path = posix.relative(posix.dirname(fromFile), targetFile.replace(/\.ts$/, ".js"));
   return path.startsWith(".") ? path : `./${path}`;
 }
 
-function isNowDefault(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "kind" in value &&
-    value.kind === "now"
-  );
-}
-
 function fieldSchema(
-  field: FieldDefinition,
+  field: ResolvedField,
   model: DomainModelContext,
   applyDefaults = true,
+  transport = false,
 ): string {
   let schema: string;
   switch (field.type) {
@@ -29,13 +20,15 @@ function fieldSchema(
       schema = `z.string()${field.minLength === undefined ? "" : `.min(${field.minLength})`}${field.maxLength === undefined ? "" : `.max(${field.maxLength})`}`;
       break;
     case "number":
-      schema = field.format === "integer" ? "z.number().int()" : "z.number()";
+      schema = field.format === "integer" ? "z.number().finite().int()" : "z.number().finite()";
       break;
     case "boolean":
       schema = "z.boolean()";
       break;
     case "date":
-      schema = "z.coerce.date()";
+      schema = transport
+        ? "z.string().datetime({ offset: true }).transform(value => new Date(value))"
+        : "z.date()";
       break;
     case "uuid":
       schema = "z.string().uuid()";
@@ -44,109 +37,55 @@ function fieldSchema(
       schema = "z.unknown()";
       break;
     case "enum": {
-      const values = model.enums[field.enumName];
-      if (!values) throw new Error(`Domain model is missing enum "${field.enumName}".`);
+      const values = field.value.enumValues as readonly string[];
       schema = `z.enum([${values.map((value) => JSON.stringify(value)).join(", ")}])`;
       break;
     }
   }
-  if (!applyDefaults) return field.required === false ? `${schema}.nullable().optional()` : schema;
-  if (field.type === "date" && isNowDefault(field.default)) return `${schema}.optional()`;
+  if (field.required === false) schema += ".nullable()";
+  if (!applyDefaults) return field.required === false ? `${schema}.default(null)` : schema;
+  if (field.type === "date" && field.defaultValue.kind === "clock") return `${schema}.optional()`;
   if (field.default !== undefined) {
-    if (field.type === "date") {
+    if (field.type === "date" && field.default !== null && !transport) {
       return `${schema}.default(() => new Date(${JSON.stringify(field.default)}))`;
     }
     return `${schema}.default(${JSON.stringify(field.default)})`;
   }
-  return field.required === false ? `${schema}.nullable().optional()` : schema;
+  return field.required === false ? `${schema}.optional()` : schema;
 }
 
-function referencedField(
-  parameter: DomainModelContext["endpoints"][number]["queryParams"][number],
+function inputSchema(
+  input: ResolvedInput,
   model: DomainModelContext,
-): FieldDefinition | undefined {
-  if (!parameter.field) return undefined;
-  return model.entities[parameter.field.entity]?.fields[parameter.field.field];
-}
-
-function queryFieldSchema(field: FieldDefinition, model: DomainModelContext): string {
-  const schema = fieldSchema(
-    { ...field, required: true, default: undefined } as FieldDefinition,
-    model,
-    false,
-  );
-  if (field.type === "number") return schema.replace("z.number()", "z.coerce.number()");
-  if (field.type === "boolean") {
-    return 'z.enum(["true", "false"]).transform((value) => value === "true")';
-  }
-  return schema;
-}
-
-function requestBodyUseCase(body: EndpointDefinition["requestBody"]):
-  | {
-      entity: string;
-      operation: "create" | "update";
-    }
-  | undefined {
-  if (!body || !("useCase" in body)) return undefined;
-  const reference: unknown = body.useCase;
-  if (
-    typeof reference !== "object" ||
-    reference === null ||
-    !("entity" in reference) ||
-    !("operation" in reference) ||
-    typeof reference.entity !== "string" ||
-    (reference.operation !== "create" && reference.operation !== "update")
-  ) {
-    return undefined;
-  }
-  return { entity: reference.entity, operation: reference.operation };
-}
-
-function requestBodyFields(
-  body: EndpointDefinition["requestBody"],
-  model: DomainModelContext,
-): Readonly<Record<string, FieldDefinition>> | undefined {
-  if (!body || "useCase" in body) return undefined;
-  return Object.fromEntries(
-    Object.entries(body).map(([name, definition]) => {
-      if ("field" in definition) {
-        const source = model.entities[definition.field.entity]?.fields[definition.field.field];
-        if (!source) {
-          throw new Error(
-            `Domain model is missing field "${definition.field.entity}.${definition.field.field}".`,
-          );
-        }
-        return [name, { ...source, required: definition.required ?? source.required }];
-      }
-      return [name, definition];
-    }),
-  );
-}
-
-function parameterSchema(
-  parameter: DomainModelContext["endpoints"][number]["queryParams"][number],
-  model: DomainModelContext,
+  transport: "parameter" | "body" | false = false,
 ): string {
-  const sourceField = referencedField(parameter, model);
-  if (sourceField) {
-    return `${queryFieldSchema(sourceField, model)}${parameter.required ? "" : ".optional()"}`;
+  const definition = { ...input.definition, required: true, default: undefined } as ResolvedField;
+  let schema = fieldSchema(definition, model, false, Boolean(transport));
+  if (transport === "parameter") {
+    if (definition.type === "number")
+      schema = `z.preprocess(value => typeof value === "string" && value.trim() !== "" ? Number(value) : Number.NaN, ${schema})`;
+    if (definition.type === "boolean")
+      schema = 'z.enum(["true", "false"]).transform(value => value === "true")';
+    if (definition.type === "json")
+      schema =
+        'z.string().transform((value, context) => { try { return JSON.parse(value) as unknown; } catch { context.addIssue({ code: "custom", message: "Expected valid JSON text" }); return z.NEVER; } })';
   }
-  if (parameter.type === "enum") {
-    const values = parameter.enumName ? model.enums[parameter.enumName] : undefined;
-    if (!values) throw new Error(`Domain model is missing enum "${parameter.enumName}".`);
-    return `z.enum([${values.map((value) => JSON.stringify(value)).join(", ")}])${parameter.required ? "" : ".optional()"}`;
+  if (input.nullable) schema += ".nullable()";
+  if (input.array)
+    schema =
+      transport === "parameter"
+        ? `z.preprocess(value => typeof value === "string" ? [value] : value, z.array(${schema}).min(1))`
+        : `z.array(${schema}).min(1)`;
+  if (!input.optional) return schema;
+  if (input.definition.defaultValue.kind === "literal") {
+    const value = input.definition.defaultValue.value;
+    return `${schema}.default(${input.definition.type === "date" && value !== null && !transport ? `() => new Date(${JSON.stringify(value)})` : JSON.stringify(value)})`;
   }
-  const field: FieldDefinition = {
-    type: parameter.type,
-    required: true,
-    unique: false,
-  } as FieldDefinition;
-  return `${queryFieldSchema(field, model)}${parameter.required ? "" : ".optional()"}`;
+  return `${schema}.optional()`;
 }
 
 function objectShape(
-  fields: Readonly<Record<string, FieldDefinition>>,
+  fields: Readonly<Record<string, ResolvedField>>,
   model: DomainModelContext,
   excluded: ReadonlySet<string> = new Set(),
   applyDefaults = true,
@@ -163,21 +102,15 @@ function entityDtoFile(
   entity: DomainModelContext["entities"][string],
   model: DomainModelContext,
 ): string {
-  const generated = new Set([
-    "id",
-    ...(entity.timestamps.createdAt ? ["createdAt"] : []),
-    ...(entity.timestamps.updatedAt ? ["updatedAt"] : []),
-    ...(entity.softDelete === "boolean" ? ["isDeleted"] : []),
-    ...(entity.softDelete === "timestamp" ? ["deletedAt"] : []),
-  ]);
-  const declaredFields = entityFieldsWithRelationKeys(entity);
+  const generated = new Set(entity.generatedFields);
+  const declaredFields = entity.fields;
   const fields = objectShape(declaredFields, model, new Set(), false);
   const createFields = objectShape(declaredFields, model, generated);
   const filterFields = Object.entries(declaredFields)
     .filter(([name]) => !generated.has(name))
     .map(
       ([name, field]) =>
-        `  ${JSON.stringify(name)}: ${fieldSchema({ ...field, required: true, default: undefined } as FieldDefinition, model)}.optional(),`,
+        `  ${JSON.stringify(name)}: ${fieldSchema({ ...field, required: true, default: undefined } as ResolvedField, model)}.optional(),`,
     );
   return [
     'import { z } from "zod";',
@@ -280,7 +213,7 @@ function crudUseCaseFiles(
 }
 
 function endpointTypeName(endpoint: DomainModelContext["endpoints"][number]): string {
-  return endpoint.operationId.charAt(0).toUpperCase() + endpoint.operationId.slice(1);
+  return endpoint.typeName;
 }
 
 function endpointDtoFiles(
@@ -291,65 +224,50 @@ function endpointDtoFiles(
   useCaseDirectory: string,
 ): GeneratedFile[] {
   const name = endpointTypeName(endpoint);
-  const entity = model.entities[endpoint.entity];
-  if (!entity) throw new Error(`Domain model is missing endpoint entity "${endpoint.entity}".`);
   const endpointDtoDirectory = posix.join(dtoDirectory, "endpoints");
   const dtoPath = posix.join(endpointDtoDirectory, `${name}.dto.ts`);
   const portPath = posix.join(portDirectory, `${name}.query.port.ts`);
   const useCasePath = posix.join(useCaseDirectory, `${name}.use-case.ts`);
-  const joinedEntities = endpoint.joins.map((join) => {
-    const joinedEntity = model.entities[join.entity];
-    if (!joinedEntity) throw new Error(`Domain model is missing join entity "${join.entity}".`);
-    const fields = Object.fromEntries(
-      join.fields.map((fieldName) => {
-        const field = joinedEntity.fields[fieldName];
-        if (!field) throw new Error(`Domain model is missing field "${join.entity}.${fieldName}".`);
-        return [fieldName, field];
-      }),
-    );
-    const many = Object.values(entity.relations).some(
-      (relation) =>
-        relation.target === join.entity && ["one-to-many", "many-to-many"].includes(relation.type),
-    );
-    return { ...join, fields, many };
-  });
+  const joinedEntities = endpoint.joins.map((join) => ({
+    ...join,
+    fields: join.projection,
+    many: join.cardinality === "many",
+  }));
   const parameterShape = (parameters: typeof endpoint.queryParams) =>
     parameters.map(
-      (parameter) => `  ${JSON.stringify(parameter.name)}: ${parameterSchema(parameter, model)},`,
+      (parameter) =>
+        `  ${JSON.stringify(parameter.name)}: ${inputSchema(parameter.input, model, "parameter")},`,
     );
-  const requestBodyReference = requestBodyUseCase(endpoint.requestBody);
-  const requestBodyFieldDefinitions = requestBodyFields(endpoint.requestBody, model);
-  const requestBodyFieldsContent = requestBodyFieldDefinitions
-    ? objectShape(requestBodyFieldDefinitions, model)
-    : [];
-  const requestBodySchemaName = requestBodyReference
-    ? requestBodyReference.operation === "create"
-      ? `Create${requestBodyReference.entity}Schema`
-      : `Update${requestBodyReference.entity}Schema`
-    : undefined;
+  const requestBodyFieldsContent = Object.values(endpoint.body.fields).map(
+    (input) => `  ${JSON.stringify(input.name)}: ${inputSchema(input, model, "body")},`,
+  );
+  const requestBodyDynamicDefaults = [
+    ...endpoint.body.dynamicDefaults,
+    ...endpoint.body.serverDefaults,
+  ];
   const pagination = endpoint.pagination;
-  const requestBodyDynamicDefaults =
-    requestBodyReference?.operation === "create"
-      ? Object.entries(model.entities[requestBodyReference.entity]?.fields ?? {})
-          .filter(([, field]) => field.type === "date" && isNowDefault(field.default))
-          .map(([fieldName]) => fieldName)
-      : Object.entries(requestBodyFieldDefinitions ?? {})
-          .filter(([, field]) => field.type === "date" && isNowDefault(field.default))
-          .map(([fieldName]) => fieldName);
   const paginationFields = pagination
     ? [
         `  ${JSON.stringify(pagination.pageParam)}: z.coerce.number().int().positive().default(1),`,
         `  ${JSON.stringify(pagination.pageSizeParam)}: z.coerce.number().int().positive().max(${pagination.maxPageSize}).default(${pagination.defaultPageSize}),`,
       ]
     : [];
-  const filterBindings = endpoint.queryParams.filter((parameter) => parameter.field);
-  const filterBindingContent = filterBindings.map(
-    (parameter) =>
-      `  { parameter: ${JSON.stringify(parameter.name)}, entity: ${JSON.stringify(parameter.field?.entity)}, field: ${JSON.stringify(parameter.field?.field)}, operator: ${JSON.stringify(parameter.operator ?? "eq")} },`,
+  const filterBindings = endpoint.queryParams.flatMap((parameter) =>
+    parameter.input.binding
+      ? [
+          {
+            parameter: parameter.name,
+            entity: parameter.input.binding.entity,
+            field: parameter.input.binding.field,
+            operator: parameter.operator,
+          },
+        ]
+      : [],
   );
+  const filterBindingContent = filterBindings.map((binding) => `  ${JSON.stringify(binding)},`);
   const filterConditions = filterBindings.map(
-    (parameter) =>
-      `      ...(input.query[${JSON.stringify(parameter.name)}] === undefined ? [] : [{ entity: ${JSON.stringify(parameter.field?.entity)}, field: ${JSON.stringify(parameter.field?.field)}, operator: ${JSON.stringify(parameter.operator ?? "eq")}, value: input.query[${JSON.stringify(parameter.name)}] }]),`,
+    (binding) =>
+      `      ...(input[${JSON.stringify(binding.parameter)}] === undefined ? [] : [{ entity: ${JSON.stringify(binding.entity)}, field: ${JSON.stringify(binding.field)}, operator: ${JSON.stringify(binding.operator)}, value: input[${JSON.stringify(binding.parameter)}] }]),`,
   );
   const joinImports = joinedEntities.map(
     (join) => `import { ${join.entity}ResponseSchema } from "../${join.entity}.dto.js";`,
@@ -361,40 +279,40 @@ function endpointDtoFiles(
           `${JSON.stringify(fieldName)}: ${join.entity}ResponseSchema.shape[${JSON.stringify(fieldName)}]`,
       )
       .join(", ")} })`;
-    return `    ${JSON.stringify(join.entity)}: ${join.many ? `z.array(${schema})` : schema}${join.type === "left" ? ".nullable()" : ""},`;
+    return `    ${JSON.stringify(join.entity)}: ${join.many ? `z.array(${schema})` : schema}${join.nullable ? ".nullable()" : ""},`;
   });
   const dtoContent = [
     'import { z } from "zod";',
     `import { ${endpoint.entity}ResponseSchema } from "../${endpoint.entity}.dto.js";`,
-    ...(requestBodySchemaName
-      ? [`import { ${requestBodySchemaName} } from "../${requestBodyReference?.entity}.dto.js";`]
-      : []),
     ...joinImports,
     "",
     "export const PathParamsSchema = z.object({",
     ...parameterShape(endpoint.pathParams),
-    "});",
+    "}).strict();",
     "export const QueryParamsSchema = z.object({",
     ...parameterShape(endpoint.queryParams),
     ...paginationFields,
-    "});",
-    ...(endpoint.requestBody
-      ? requestBodySchemaName
-        ? [`export const RequestBodySchema = ${requestBodySchemaName};`]
-        : ["export const RequestBodySchema = z.object({", ...requestBodyFieldsContent, "});"]
+    "}).strict();",
+    ...(endpoint.body.kind !== "none"
+      ? [
+          "export const RequestBodySchema = z.object({",
+          ...requestBodyFieldsContent,
+          `}).strict()${endpoint.body.kind === "update" ? '.refine(value => Object.keys(value).length > 0, { message: "At least one field must be updated." })' : ""};`,
+        ]
       : []),
     "export const InputSchema = z.object({",
-    `  path: PathParamsSchema${endpoint.pathParams.length === 0 ? ".default({})" : ""},`,
-    `  query: QueryParamsSchema${endpoint.queryParams.length === 0 ? ".default({})" : ""},`,
-    ...(endpoint.requestBody ? ["  body: RequestBodySchema,"] : []),
-    "});",
+    ...Object.values(endpoint.input).map(
+      (input) =>
+        `  ${JSON.stringify(input.name)}: ${input.from === "pagination" ? `z.number().int().positive()${input.name === pagination?.pageSizeParam ? `.max(${pagination.maxPageSize})` : ""}.default(${input.definition.default})` : inputSchema(input, model)},`,
+    ),
+    `}).strict()${endpoint.body.kind === "update" ? `.refine(value => ${JSON.stringify(Object.keys(endpoint.body.fields))}.some(key => Object.hasOwn(value, key)), { message: "At least one field must be updated." })` : ""};`,
     "export type Input = z.infer<typeof InputSchema>;",
     ...(filterBindingContent.length > 0
       ? ["export const QueryFilterBindings = [", ...filterBindingContent, "] as const;"]
       : ["export const QueryFilterBindings = [] as const;"]),
     "export interface FilterCondition { entity: string; field: string; operator: string; value: unknown; }",
     "export interface QueryExecution {",
-    "  request: Input;",
+    `  request: Input${requestBodyDynamicDefaults.length ? ` & { ${requestBodyDynamicDefaults.map((name) => `${JSON.stringify(name)}: Date${endpoint.body.fields[name]?.nullable ? " | null" : ""}`).join("; ")} }` : ""};`,
     "  filters: readonly FilterCondition[];",
     ...(pagination ? ["  pagination: { offset: number; limit: number };"] : []),
     "}",
@@ -451,18 +369,19 @@ function endpointDtoFiles(
     "    const input = InputSchema.parse(rawInput);",
     ...(requestBodyDynamicDefaults.length > 0
       ? [
-          "    const request = { ...input, body: {",
-          "      ...input.body,",
+          "    const request = {",
+          "      ...input,",
           ...requestBodyDynamicDefaults.map(
-            (field) => `      ${field}: input.body.${field} ?? this.clock.now(),`,
+            (field) =>
+              `      ${field}: ${endpoint.body.serverDefaults.includes(field) ? "this.clock.now()" : `input.${field} === undefined ? this.clock.now() : input.${field}`},`,
           ),
-          "    } };",
+          "    };",
         ]
       : ["    const request = input;"]),
     "    const filters: { entity: string; field: string; operator: string; value: unknown }[] = [",
     ...filterConditions,
     "    ];",
-    `    const result = await this.query.execute({ request, filters${pagination ? `, pagination: { offset: (input.query[${JSON.stringify(pagination.pageParam)}] - 1) * input.query[${JSON.stringify(pagination.pageSizeParam)}], limit: input.query[${JSON.stringify(pagination.pageSizeParam)}] }` : ""} });`,
+    `    const result = await this.query.execute({ request, filters${pagination ? `, pagination: { offset: (input[${JSON.stringify(pagination.pageParam)}] - 1) * input[${JSON.stringify(pagination.pageSizeParam)}], limit: input[${JSON.stringify(pagination.pageSizeParam)}] }` : ""} });`,
     "    return ResponseSchema.parse(result);",
     "  }",
     "}",
@@ -501,15 +420,13 @@ export function generateApplicationFiles(
         (entity.timestamps.createdAt ||
           entity.timestamps.updatedAt ||
           Object.values(entity.fields).some(
-            (field) => field.type === "date" && isNowDefault(field.default),
+            (field) => field.type === "date" && field.defaultValue.kind === "clock",
           )),
     ) ||
-    model.endpoints.some((endpoint) => {
-      if (!endpoint.requestBody || requestBodyUseCase(endpoint.requestBody)) return false;
-      return Object.values(requestBodyFields(endpoint.requestBody, model) ?? {}).some(
-        (field) => field.type === "date" && isNowDefault(field.default),
-      );
-    });
+    model.endpoints.some(
+      (endpoint) =>
+        endpoint.body.dynamicDefaults.length > 0 || endpoint.body.serverDefaults.length > 0,
+    );
   const files: GeneratedFile[] = [];
   if (hasDynamicDefaults) {
     const clockPortPath = posix.join(portDirectory, "clock.port.ts");
@@ -534,9 +451,8 @@ export function generateApplicationFiles(
   }
   for (const name of Object.keys(model.entities).sort((left, right) => left.localeCompare(right))) {
     const entity = model.entities[name];
-    if (!entity) throw new Error(`Domain model is missing entity "${name}".`);
     const dynamicDefaults = Object.entries(entity.fields)
-      .filter(([, field]) => field.type === "date" && isNowDefault(field.default))
+      .filter(([, field]) => field.type === "date" && field.defaultValue.kind === "clock")
       .map(([fieldName]) => fieldName);
     files.push({
       path: posix.join(dtoDirectory, `${name}.dto.ts`),

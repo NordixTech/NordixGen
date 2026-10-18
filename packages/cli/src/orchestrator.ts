@@ -1,7 +1,12 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { intro, isCancel, outro, select, text } from "@clack/prompts";
-import { formatDiagnostic, parseNordixYaml, stringifyNordixYaml } from "@nordixgen/core";
+import {
+  formatDiagnostic,
+  parseNordixYaml,
+  resolveProjectYaml,
+  stringifyNordixYaml,
+} from "@nordixgen/core";
 import { type CommandRunner, runCommand } from "./process.js";
 
 export function createStarterConfiguration(name: string, includeFrontend: boolean): string {
@@ -103,7 +108,7 @@ export async function runGenerate(
   _runner: CommandRunner = runCommand,
 ): Promise<void> {
   const filename = resolve(file);
-  const result = parseNordixYaml(await readFile(filename, "utf8"), filename, {
+  const result = resolveProjectYaml(await readFile(filename, "utf8"), filename, {
     requireGeneration: true,
   });
   if (!result.success) throw new Error(result.diagnostics.map(formatDiagnostic).join("\n"));

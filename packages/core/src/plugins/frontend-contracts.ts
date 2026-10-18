@@ -1,5 +1,5 @@
-import type { FrontendRenderSettings } from "../configuration/schema.js";
-import type { FieldDefinition, NormalizedEndpointDefinition } from "../configuration/schema.js";
+import type { FrontendDefinition } from "../configuration/schema.js";
+import type { ResolvedFrontend, TransportOperation } from "../project/types.js";
 import type { GeneratedFile, UpstreamScaffoldPlan } from "./contracts.js";
 
 export const FRONTEND_PLUGIN_ROLES = [
@@ -50,11 +50,7 @@ export interface FrontendPluginContributionContext {
   readonly api: FrontendApiContract;
 }
 
-export interface FrontendApiEntity {
-  readonly fields: Readonly<Record<string, FieldDefinition>>;
-  readonly relations: Readonly<Record<string, { readonly target: string; readonly type: string }>>;
-  readonly softDelete?: false | "boolean" | "timestamp";
-}
+export type FrontendApiEntity = ResolvedFrontend["entities"][string];
 
 export interface FrontendAuthenticationContract {
   readonly plugin: string;
@@ -68,7 +64,9 @@ export interface FrontendAuthenticationContract {
 }
 
 export interface FrontendApiContract {
-  readonly endpoints: readonly NormalizedEndpointDefinition[];
+  readonly endpoints: readonly TransportOperation[];
+  readonly operationNames: Readonly<Record<string, string>>;
+  readonly features: ResolvedFrontend["features"];
   readonly entities: Readonly<Record<string, FrontendApiEntity>>;
   readonly enums: Readonly<Record<string, readonly string[]>>;
   readonly authentication?: FrontendAuthenticationContract;
@@ -79,3 +77,19 @@ export interface FrontendGeneratorPlugin {
   createFrameworkContext?: (frontend: FrontendRenderSettings) => FrontendFrameworkContext;
   contribute: (context: FrontendPluginContributionContext) => readonly GeneratedFile[];
 }
+
+// Temporary concrete renderer settings. RF-08 removes these composition options;
+// the resolved project model contains none of these configurable library selectors.
+export type FrontendRenderSettings = FrontendDefinition & {
+  framework: string;
+  type: "web";
+  styling: string;
+  ui: string;
+  authUI: boolean;
+  stateManagement?: {
+    client: "zustand" | "context" | "none";
+    server: "tanstack-query" | "swr" | "native-fetch";
+    generateHooks: boolean;
+    optimisticUpdates: boolean;
+  };
+};
