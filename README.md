@@ -10,9 +10,9 @@ The runtime and editor schema now accept strict YAML v2, including module owners
 
 **Independent Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Hexagonal/Onion remain unsupported. Focused persistence, identity, browser access, forms and cache-isolation checks pass. A maintained fresh full-stack acceptance check now exercises the connected product; final repository cleanup remains separate work.
 
-## Verify a freshly generated application
+## Generate and explore the commerce example
 
-Run `pnpm exec playwright install chromium` once, then `pnpm acceptance` with Docker Engine available. The maintained [acceptance scenario and walkthrough](acceptance/README.md) generate and build a new two-module application, migrate/seed an isolated database and exercise real HTTP/browser sessions, policies, contracts and mutations. Missing prerequisites and failed stages fail the command. `pnpm acceptance --keep` retains a successful local demo; its report includes the URLs and cleanup command. The [canonical YAML](acceptance/project.yaml) is the configuration used by CI and local review.
+The [full-stack commerce example](examples/full-stack-commerce/README.md) shows a complete two-module application you can generate from its [YAML configuration](examples/full-stack-commerce/project.yaml). Follow its quick start to generate, verify and explore a running local demo with `pnpm example:commerce --keep`, or use the public CLI directly with that YAML. The same example runs in CI as a fresh-generation database/HTTP/browser check. Its README maps the demonstrated features, explains the example helpers, and provides the cleanup command.
 
 ## Target generated project
 

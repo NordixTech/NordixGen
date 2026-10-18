@@ -82,7 +82,7 @@ jobs:
       - name: Install isolated acceptance browser
         run: pnpm exec playwright install --with-deps chromium
       - name: Generate, build and verify a fresh connected application
-        run: pnpm acceptance
+        run: pnpm example:commerce
       - name: Retain acceptance results
         if: always()
         uses: actions/upload-artifact@v4
@@ -90,8 +90,8 @@ jobs:
           name: generated-application-acceptance
           if-no-files-found: ignore
           path: |
-            tmp/acceptance/*/report.json
-            tmp/acceptance/*/behaviors.json
-            tmp/acceptance/*/operation-artifacts.json
-            tmp/acceptance/*/*.png
-            tmp/acceptance/*/*.log
+            tmp/examples/full-stack-commerce/*/report.json
+            tmp/examples/full-stack-commerce/*/behaviors.json
+            tmp/examples/full-stack-commerce/*/operation-artifacts.json
+            tmp/examples/full-stack-commerce/*/*.png
+            tmp/examples/full-stack-commerce/*/*.log

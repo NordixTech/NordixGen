@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { cleanup, command, freePort, images, names, ready, start } from "./resources.mjs";
 import { verifyApplication } from "./verify.mjs";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const parent = join(root, "tmp", "acceptance");
+const exampleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const root = resolve(exampleRoot, "../..");
+const parent = join(root, "tmp", "examples", "full-stack-commerce");
 const cleanupId = process.argv[2] === "--cleanup" ? process.argv[3] : undefined;
 if (cleanupId) {
   assert.match(cleanupId, /^[a-f0-9]{16}$/);
@@ -15,11 +16,11 @@ if (cleanupId) {
   assert.equal(state.id, cleanupId);
   assert.equal(state.output, join(parent, cleanupId, "project"));
   await cleanup(state, root);
-  console.log(`Acceptance ${cleanupId} resources stopped.`);
+  console.log(`Commerce example ${cleanupId} resources stopped.`);
 } else {
   assert.ok(
     process.argv.slice(2).every((arg) => arg === "--keep"),
-    "Use pnpm acceptance [--keep] or --cleanup <run-id>.",
+    "Use pnpm example:commerce [--keep] or --cleanup <run-id>.",
   );
   assert.ok(Number(process.versions.node.split(".")[0]) >= 24, "Node.js 24+ is required.");
   assert.ok(
@@ -29,7 +30,7 @@ if (cleanupId) {
   const pnpm = process.env.npm_execpath;
   assert.ok(
     pnpm && /pnpm\.(c?js)$/.test(pnpm),
-    "Run through pnpm 10.5.2: pnpm acceptance [--keep].",
+    "Run through pnpm 10.5.2: pnpm example:commerce [--keep].",
   );
   const id = randomBytes(8).toString("hex");
   const directory = join(parent, id);
@@ -77,7 +78,7 @@ if (cleanupId) {
   const pnpmCommand = (args, cwd = root) => command(process.execPath, [pnpm, ...args], cwd, env);
   const runStage = async (name, action) => {
     stage = name;
-    console.log(`Acceptance: ${name}`);
+    console.log(`Commerce example: ${name}`);
     const output = await action();
     if (typeof output === "string")
       await writeFile(
@@ -121,7 +122,7 @@ if (cleanupId) {
         [
           "packages/core/dist/index.js",
           "packages/cli/dist/index.js",
-          "acceptance/project.yaml",
+          "examples/full-stack-commerce/project.yaml",
         ].map(async (file) => [
           file,
           createHash("sha256")
@@ -132,7 +133,7 @@ if (cleanupId) {
     );
     await runStage("validate-generate", async () => {
       const cli = join(root, "packages/cli/dist/index.js");
-      const fixture = join(root, "acceptance/project.yaml");
+      const fixture = join(root, "examples/full-stack-commerce/project.yaml");
       const validated = await command(
         process.execPath,
         [cli, "validate", "-f", fixture],
@@ -150,9 +151,11 @@ if (cleanupId) {
     const api = join(state.output, "apps/api");
     const web = join(state.output, "apps/web");
     await runStage("declared-operation-artifacts", async () => {
-      const { resolveProjectYaml } = await import("../packages/core/dist/index.js");
+      const { resolveProjectYaml } = await import(
+        pathToFileURL(join(root, "packages/core/dist/index.js")).href
+      );
       const resolved = resolveProjectYaml(
-        await readFile(join(root, "acceptance/project.yaml"), "utf8"),
+        await readFile(join(root, "examples/full-stack-commerce/project.yaml"), "utf8"),
       );
       assert.ok(resolved.success);
       const paths = (await readdir(join(api, "src/modules"), { recursive: true })).map((path) =>
@@ -204,10 +207,10 @@ if (cleanupId) {
     });
     await runStage("authored-contract-and-boundaries", async () => {
       await copyFile(
-        join(root, "acceptance/preview-customer.ts"),
+        join(exampleRoot, "extensions/preview-customer.ts"),
         join(api, "src/modules/billing/application/preview-customer.ts"),
       );
-      await copyFile(join(root, "acceptance/runtime.ts"), join(api, "acceptance-runtime.ts"));
+      await copyFile(join(exampleRoot, "scripts/runtime.ts"), join(api, "acceptance-runtime.ts"));
       const check = () => pnpmCommand(["run", "check:boundaries"], api);
       await check();
       const probe = join(api, "src/modules/billing/application/forbidden-acceptance-probe.ts");
@@ -372,7 +375,7 @@ if (cleanupId) {
     report.result = "failed";
     report.failedStage = stage;
     report.error = String(error?.stack ?? error).replaceAll(state.secret, "[redacted]");
-    console.error(`Acceptance failed at ${stage}. ${report.error}`);
+    console.error(`Commerce example failed at ${stage}. ${report.error}`);
     process.exitCode = 1;
   } finally {
     if (!(success && process.argv.includes("--keep"))) {
@@ -387,8 +390,8 @@ if (cleanupId) {
     } else report.resources = "kept-for-local-review";
     report.finishedAt = new Date().toISOString();
     await writeFile(join(directory, "report.json"), JSON.stringify(report, null, 2));
-    console.log(`Acceptance ${report.result}: ${join(directory, "report.json")}`);
+    console.log(`Commerce example ${report.result}: ${join(directory, "report.json")}`);
     if (report.resources === "kept-for-local-review")
-      console.log(`Review ${report.frontend} — stop with pnpm acceptance --cleanup ${id}`);
+      console.log(`Review ${report.frontend} — stop with pnpm example:commerce --cleanup ${id}`);
   }
 }

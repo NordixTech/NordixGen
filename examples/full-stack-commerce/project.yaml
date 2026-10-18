@@ -1,6 +1,6 @@
-# Maintained YAML v2 acceptance scenario. Remote creation is deliberately disabled.
+# Full-stack commerce example. Generate it locally; remote repository creation is disabled.
 schemaVersion: 2
-name: nordix-commerce-acceptance
+name: nordix-commerce
 version: 1.0.0
 repositories:
   - name: app

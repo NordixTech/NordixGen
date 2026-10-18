@@ -40,4 +40,5 @@ coverage/
 # Generated sandbox/examples during tests
 sandbox/
 tmp/
-examples/
+examples/*
+!examples/full-stack-commerce/

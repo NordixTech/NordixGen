@@ -8,13 +8,13 @@
   },
   "packageManager": "pnpm@10.5.2",
   "scripts": {
-    "acceptance": "node acceptance/run.mjs",
     "build": "pnpm --filter \"./packages/*\" build",
     "test": "pnpm --filter \"./packages/*\" test",
     "generate:schema": "pnpm --filter @nordixgen/core generate:schema",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "tsc --build"
+    "typecheck": "tsc --build",
+    "example:commerce": "node examples/full-stack-commerce/scripts/run.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
