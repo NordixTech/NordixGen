@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FrontendThemeSchema } from "./theme.js";
 
 export const IdentifierSchema = z
   .string()
@@ -135,6 +136,7 @@ export const FrontendSchema = z
     path: z.string().min(1),
     connectsTo: unique(SlugSchema).default([]),
     access: FrontendAccessSchema.default({}),
+    theme: FrontendThemeSchema.optional(),
   })
   .strict();
 export const DatabaseSchema = z.object({}).strict();

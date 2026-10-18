@@ -3,6 +3,7 @@ import type { z } from "zod";
 import { type ConfigDiagnostic, createDiagnostic } from "../diagnostics.js";
 import { isolateConfigurationDictionaries } from "./dictionaries.js";
 import { type NordixConfig, NordixConfigSchema } from "./schema.js";
+import { THEME_MAIN_COLORS } from "./theme.js";
 import { validateAccess } from "./validation/access.js";
 import { validateApplications } from "./validation/applications.js";
 import { validateEndpoints } from "./validation/endpoints.js";
@@ -42,6 +43,18 @@ function removed(path: string): string | undefined {
 function structuralDiagnostics(error: z.ZodError): ConfigDiagnostic[] {
   return error.issues.flatMap((issue) => {
     const path = configurationPath(issue.path);
+    if (
+      issue.code === "unrecognized_keys" &&
+      /^frontends\[\d+\]\.theme\.(light|dark)$/.test(path) &&
+      issue.keys.some((key) => (THEME_MAIN_COLORS as readonly string[]).includes(key))
+    )
+      return [
+        createDiagnostic(
+          "CONFIG_FIELD_INVALID",
+          path,
+          "Declare all seven main palette colors (primary, secondary, background, surface, foreground, muted, border), or omit them all. Status colors are individually optional.",
+        ),
+      ];
     if (issue.code === "unrecognized_keys")
       return issue.keys.map((key) => {
         const at = configurationPath([...issue.path, key]);
@@ -76,9 +89,11 @@ function structuralDiagnostics(error: z.ZodError): ConfigDiagnostic[] {
         createDiagnostic(
           "CONFIG_FIELD_INVALID",
           path,
-          path.endsWith(".softDelete")
-            ? "Use false to disable soft deletion, or select boolean or timestamp. Correct this softDelete declaration."
-            : "Use the documented field definition/reference, or the strict requestBody useCase entity/create-or-update form. Do not mix forms or add unknown properties.",
+          /^frontends\[\d+\]\.theme\.(light|dark)$/.test(path)
+            ? "Declare all seven main palette colors (primary, secondary, background, surface, foreground, muted, border), or omit them all. Status colors are individually optional. Use only documented palette fields and literal colors."
+            : path.endsWith(".softDelete")
+              ? "Use false to disable soft deletion, or select boolean or timestamp. Correct this softDelete declaration."
+              : "Use the documented field definition/reference, or the strict requestBody useCase entity/create-or-update form. Do not mix forms or add unknown properties.",
         ),
       ];
     if (issue.code === "invalid_type")
@@ -104,7 +119,9 @@ function structuralDiagnostics(error: z.ZodError): ConfigDiagnostic[] {
         issue.code === "custom"
           ? issue.message
           : issue.code === "invalid_string"
-            ? "Use the documented identifier, version or path format; names start with a letter and use their permitted characters."
+            ? path.includes(".theme.")
+              ? issue.message
+              : "Use the documented identifier, version or path format; names start with a letter and use their permitted characters."
             : issue.code === "too_small"
               ? "Supply a nonempty value/list or a number meeting the documented minimum."
               : "Correct the value to satisfy the documented limits and type.",

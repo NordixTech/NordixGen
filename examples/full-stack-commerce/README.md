@@ -4,6 +4,8 @@ Generate and explore a working commerce application from [project.yaml](project.
 
 The same example is our maintained end-to-end check: every run generates a new project and verifies the resulting application with a real database and browser. The generated project is kept outside this source folder; you can inspect it, change it and use the YAML as a starting point for your own project.
 
+The shared topbar includes Light/Dark/System theme controls, also available on forms, authentication, Explorer and IAM screens. The YAML demonstrates a complete custom light main palette with omitted semantic statuses, and a dark semantic override with the default main palette. Main colors must be all specified or all omitted independently in each mode. [Theme configuration and default colors](../../docs/configuration/YAML_V2.md#frontend-design-tokens-and-theme) explains the contract. The browser check exercises keyboard selection, persistence, system changes, cross-tab sync, unavailable storage and dark initialization before hydration; `verified-theme-light.png` and `verified-theme-dark.png` capture the generated result.
+
 ## What you will build
 
 The application has two Clean modules in one backend:
@@ -109,6 +111,7 @@ To adapt the example, copy `project.yaml`, change the modules/entities/endpoints
 | Authentication | Actual credential signup/login and HttpOnly session cookies, with server-owned default roles. |
 | Authorization | Public exceptions, successful permitted requests, missing identity 401, insufficient permissions 403, trusted-origin enforcement and rejected forged/expired/revoked identity. |
 | Module communication | A clearly authored workflow uses generated public contracts and direct in-process calls, including caller/callee authorization and error propagation. |
+| Theme | Light/Dark/System, persisted preferences, OS changes, cross-tab sync, keyboard access, blocked storage and pre-hydration initialization. |
 | Frontend | Workspace navigation, public/private page boundaries, forms and Explorer on desktop/mobile, readable errors and permission feedback. |
 | Account isolation | A denied account cannot see private records left by a previous account; session-scoped query caches are exercised. |
 | Build and runtime | Strict generated TypeScript, production Next.js build, local Hono execution and a local bundle of the original Worker entry. |
@@ -132,6 +135,7 @@ The source folder separates the configuration from its execution and verificatio
 | [project.yaml](project.yaml) | User-editable configuration to generate the commerce application. |
 | [scripts/run.mjs](scripts/run.mjs) | Builds NordixGen, invokes its public CLI, inventories output and coordinates the example checks. |
 | [scripts/resources.mjs](scripts/resources.mjs) | Manages isolated ports, processes, Docker resources and ownership-checked cleanup. |
+| [scripts/theme.mjs](scripts/theme.mjs) | Verifies the generated theme engine in Chromium, including pre-hydration initialization. |
 | [scripts/verify.mjs](scripts/verify.mjs) | Exercises the real HTTP application and Chromium browser. |
 | [scripts/runtime.ts](scripts/runtime.ts) | Example-only Node adapter and database/demo-account setup, copied beside the generated backend package. |
 | [extensions/preview-customer.ts](extensions/preview-customer.ts) | Explicitly authored Billing workflow used to demonstrate the generated Customers public dependency. |
