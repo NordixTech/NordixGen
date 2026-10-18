@@ -8,7 +8,11 @@ A generated backend is a modular monolith: business modules run together in one 
 
 The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
 
-**Independent Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Hexagonal/Onion remain unsupported. Focused persistence, identity, browser access, forms and cache-isolation checks pass. Full milestone acceptance remains separate work.
+**Independent Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Hexagonal/Onion remain unsupported. Focused persistence, identity, browser access, forms and cache-isolation checks pass. A maintained fresh full-stack acceptance check now exercises the connected product; final repository cleanup remains separate work.
+
+## Generate and explore the commerce example
+
+The [full-stack commerce example](examples/full-stack-commerce/README.md) shows a complete two-module application you can generate from its [YAML configuration](examples/full-stack-commerce/project.yaml). Follow its quick start to generate, verify and explore a running local demo with `pnpm example:commerce --keep`, or use the public CLI directly with that YAML. The same example runs in CI as a fresh-generation database/HTTP/browser check. Its README maps the demonstrated features, explains the example helpers, and provides the cleanup command.
 
 ## Target generated project
 

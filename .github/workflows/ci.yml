@@ -60,3 +60,38 @@ jobs:
 
       - name: Run automated unit tests (Vitest)
         run: pnpm test
+
+  generated-application:
+    name: Generated full-stack application acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install verification dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install isolated acceptance browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Generate, build and verify a fresh connected application
+        run: pnpm example:commerce
+      - name: Retain acceptance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-application-acceptance
+          if-no-files-found: ignore
+          path: |
+            tmp/examples/full-stack-commerce/*/report.json
+            tmp/examples/full-stack-commerce/*/behaviors.json
+            tmp/examples/full-stack-commerce/*/operation-artifacts.json
+            tmp/examples/full-stack-commerce/*/*.png
+            tmp/examples/full-stack-commerce/*/*.log

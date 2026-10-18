@@ -6,120 +6,42 @@ function typeForField(field: ResolvedField): string {
   return field.type === "enum" ? field.enumName : field.value.applicationType;
 }
 
-function relativeImport(fromDirectory: string, targetPath: string): string {
-  const relativePath = posix.relative(fromDirectory, targetPath);
-  return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
-}
-
 function entityFile(name: string, model: DomainModelContext): string {
-  const entity = model.entities[name];
-  const declaredFields = entity.fields;
-  const fields = Object.entries(declaredFields).map(([fieldName, field]) => {
-    const nullable = field.nullable ? " | null" : "";
-    return `  ${JSON.stringify(fieldName)}: ${typeForField(field)}${nullable};`;
-  });
-  const generatedFields = entity.generatedFields;
-  const optionalCreateFields = Object.entries(declaredFields)
-    .filter(([fieldName, field]) => !generatedFields.includes(fieldName) && field.createOptional)
-    .map(([fieldName]) => fieldName);
-  const timestampFields = generatedFields.filter(
-    (name) =>
-      entity.fields[name].generated === "created-at" ||
-      entity.fields[name].generated === "updated-at",
-  );
-  const omittedOnCreate = [...generatedFields, ...optionalCreateFields];
-  const optionalCreateInputFields = [...optionalCreateFields, ...timestampFields];
+  const fields = Object.entries(model.entities[name].fields);
   const enumNames = [
-    ...new Set(
-      Object.values(declaredFields)
-        .filter((field) => field.type === "enum")
-        .map((field) => field.enumName),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
-
+    ...new Set(fields.flatMap(([, field]) => (field.type === "enum" ? [field.enumName] : []))),
+  ].sort();
   return [
-    ...(enumNames.length > 0
-      ? enumNames
-          .map((enumName) => `import type { ${enumName} } from "./${enumName}.enum.js";`)
-          .concat("")
-      : []),
+    ...enumNames.map((name) => `import type { ${name} } from "./${name}.enum.js";`),
     `export interface ${name} {`,
-    ...fields,
-    "}",
-    "",
-    `export type Create${name}Input = Omit<${name}, ${omittedOnCreate.map((field) => JSON.stringify(field)).join(" | ")}>${
-      optionalCreateInputFields.length > 0
-        ? ` & Partial<Pick<${name}, ${optionalCreateInputFields.map((field) => JSON.stringify(field)).join(" | ")}>>`
-        : ""
-    };`,
-    "",
-  ].join("\n");
-}
-
-function enumFiles(model: DomainModelContext, entityDirectory: string): GeneratedFile[] {
-  return Object.entries(model.enums)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, values]) => ({
-      path: posix.join(entityDirectory, `${name}.enum.ts`),
-      content: `export type ${name} = ${values.map((value) => JSON.stringify(value)).join(" | ")};\n`,
-    }));
-}
-
-function repositoryFile(
-  name: string,
-  entityPath: string,
-  repositoryDirectory: string,
-  supportsPagination: boolean,
-): string {
-  const entityImport = relativeImport(repositoryDirectory, entityPath.replace(/\.ts$/, ".js"));
-  return [
-    `import type { ${name}, Create${name}Input } from "${entityImport}";`,
-    "",
-    `export interface ${name}Repository {`,
-    `  findById(id: string): Promise<${name} | null>;`,
-    `  findMany(filter?: Partial<${name}>): Promise<readonly ${name}[]>;`,
-    ...(supportsPagination
-      ? [
-          `  findPage(filter: Partial<${name}>, offset: number, limit: number): Promise<{ items: readonly ${name}[]; total: number }>;`,
-        ]
-      : []),
-    `  create(input: Create${name}Input): Promise<${name}>;`,
-    `  update(id: string, changes: Partial<Omit<${name}, "id">>): Promise<${name} | null>;`,
-    `  save(entity: ${name}): Promise<${name}>;`,
-    "  delete(id: string): Promise<void>;",
+    ...fields.map(
+      ([name, field]) =>
+        `  ${JSON.stringify(name)}: ${typeForField(field)}${field.nullable ? " | null" : ""};`,
+    ),
     "}",
     "",
   ].join("\n");
 }
 
-/** Produces deterministic, dependency-free domain artifacts in architecture-resolved paths. */
+/** Domain describes entity state; operation ports belong to declared application operations. */
 export function generateDomainFiles(context: BackendRenderContext): readonly GeneratedFile[] {
   const model = context.domainModel;
-
-  const entityDirectory = posix.join(
+  const directory = posix.join(
     context.framework.codeRoot,
     context.architecture.directories.domainEntity,
   );
-  const repositoryDirectory = posix.join(
-    context.framework.codeRoot,
-    context.architecture.directories.outboundPort,
-  );
-  const files: GeneratedFile[] = enumFiles(model, entityDirectory);
-
-  for (const name of Object.keys(model.entities).sort((left, right) => left.localeCompare(right))) {
-    const entityPath = posix.join(entityDirectory, `${name}.entity.ts`);
-    files.push({ path: entityPath, content: entityFile(name, model) });
-    files.push({
-      path: posix.join(repositoryDirectory, `${name}.repository.ts`),
-      content: repositoryFile(
-        name,
-        entityPath,
-        repositoryDirectory,
-        model.endpoints.some(
-          (endpoint) => endpoint.entity === name && endpoint.pagination !== undefined,
-        ),
-      ),
-    });
-  }
-  return files;
+  return [
+    ...Object.entries(model.enums)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, values]) => ({
+        path: posix.join(directory, `${name}.enum.ts`),
+        content: `export type ${name} = ${values.map((value) => JSON.stringify(value)).join(" | ")};\n`,
+      })),
+    ...Object.keys(model.entities)
+      .sort()
+      .map((name) => ({
+        path: posix.join(directory, `${name}.entity.ts`),
+        content: entityFile(name, model),
+      })),
+  ];
 }

@@ -1,6 +1,7 @@
 import { targetConfig } from "./fixtures.js";
 export function persistenceFixture(auth = true) {
   const config = targetConfig();
+  config.entities.Invoice.fields.total.default = 12.5;
   config.enums.EntityState = ["active", "archived"];
   config.entities.Customer.fields.state = {
     type: "enum",

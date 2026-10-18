@@ -83,8 +83,10 @@ function drizzleColumnBuilder(fieldName: string, field: ResolvedField): string {
         const instant = new Date(field.default as string).toISOString();
         builder += `.default(sql.raw(${JSON.stringify(`'${instant}'::timestamptz`)}))`;
       }
-    } else if (field.type === "boolean" || field.type === "number") {
-      builder += `.default(${JSON.stringify(field.default)})`;
+    } else if (field.type === "number" && field.format === "decimal") {
+      // Drizzle numeric columns use string values at the persistence boundary.
+      // Application/HTTP defaults remain numbers in the resolved model and DTOs.
+      builder += `.default(${JSON.stringify(String(field.default))})`;
     } else {
       builder += `.default(${JSON.stringify(field.default)})`;
     }
@@ -229,15 +231,10 @@ export function generateDrizzleAdapterFiles(
   const adapterDirectory = persistence.directories.adapter;
   const schemaDirectory = persistence.directories.schema;
   const schemaIndexPath = posix.join(schemaDirectory, "index.ts");
-  const entityDirectory = posix.join(
-    context.framework.codeRoot,
-    context.architecture.directories.domainEntity,
-  );
   const outboundPortDirectory = posix.join(
     context.framework.codeRoot,
     context.architecture.directories.outboundPort,
   );
-
   const files: GeneratedFile[] = [];
   const dependencyFactoryPath = posix.join(adapterDirectory, "create-route-dependencies.ts");
   const dbClientPath =
@@ -258,133 +255,7 @@ export function generateDrizzleAdapterFiles(
     dependencyLines.push("  const clock = new SystemClock();");
   }
 
-  // Generate repository adapters for each entity
-  for (const [entityName, entity] of Object.entries(model.entities).sort(([a], [b]) =>
-    a.localeCompare(b),
-  )) {
-    const adapterPath = posix.join(adapterDirectory, `${entityName}.drizzle.repository.ts`);
-    const entityPath = posix.join(entityDirectory, `${entityName}.entity.ts`);
-    const repositoryPortPath = posix.join(outboundPortDirectory, `${entityName}.repository.ts`);
-    const softDeleteCondition =
-      entity.softDelete === "boolean"
-        ? `eq(schema.${entityName}Table.isDeleted, false)`
-        : entity.softDelete === "timestamp"
-          ? `isNull(schema.${entityName}Table.deletedAt)`
-          : undefined;
-
-    const softDeleteDeleteStatement =
-      entity.softDelete === "boolean"
-        ? `await this.db.update(schema.${entityName}Table).set({ isDeleted: true }).where(eq(schema.${entityName}Table.id, id));`
-        : entity.softDelete === "timestamp"
-          ? `await this.db.update(schema.${entityName}Table).set({ deletedAt: new Date() }).where(eq(schema.${entityName}Table.id, id));`
-          : `await this.db.delete(schema.${entityName}Table).where(eq(schema.${entityName}Table.id, id));`;
-
-    const supportsPagination = model.endpoints.some(
-      (endpoint) => endpoint.entity === entityName && endpoint.pagination !== undefined,
-    );
-    const decimalFields = Object.entries(entity.fields)
-      .filter(([, field]) => field.type === "number" && field.format === "decimal")
-      .map(([fieldName]) => fieldName);
-
-    const adapterContent = [
-      'import { and, asc, eq, isNull, sql } from "drizzle-orm";',
-      `import type { ${entityName}, Create${entityName}Input } from "${importPath(adapterPath, entityPath)}";`,
-      `import type { ${entityName}Repository } from "${importPath(adapterPath, repositoryPortPath)}";`,
-      `import type { DrizzleDatabase } from "${importPath(adapterPath, dbClientPath)}";`,
-      `import * as schema from "${importPath(adapterPath, schemaIndexPath)}";`,
-      "",
-      `export class Drizzle${entityName}Repository implements ${entityName}Repository {`,
-      "  constructor(private readonly db: DrizzleDatabase) {}",
-      ...(decimalFields.length > 0
-        ? [
-            "",
-            `  private toDomain(row: typeof schema.${entityName}Table.$inferSelect): ${entityName} {`,
-            `    return { ...row, ${decimalFields.map((fieldName) => `${JSON.stringify(fieldName)}: row.${fieldName} == null ? null : Number(row.${fieldName})`).join(", ")} } as ${entityName};`,
-            "  }",
-          ]
-        : []),
-      "",
-      `  async findById(id: string): Promise<${entityName} | null> {`,
-      `    const conditions = [eq(schema.${entityName}Table.id, id)${softDeleteCondition ? `, ${softDeleteCondition}` : ""}];`,
-      `    const result = await this.db.select().from(schema.${entityName}Table).where(and(...conditions)).limit(1);`,
-      `    return result[0] ? ${decimalFields.length > 0 ? "this.toDomain(result[0])" : `(result[0] as ${entityName})`} : null;`,
-      "  }",
-      "",
-      `  async findMany(filter?: Partial<${entityName}>): Promise<readonly ${entityName}[]> {`,
-      "    const conditions: any[] = [];",
-      ...(softDeleteCondition ? [`    conditions.push(${softDeleteCondition});`] : []),
-      "    if (filter) {",
-      "      for (const [key, value] of Object.entries(filter)) {",
-      "        if (value !== undefined) {",
-      `          const column = (schema.${entityName}Table as any)[key];`,
-      "          if (column) conditions.push(eq(column, value));",
-      "        }",
-      "      }",
-      "    }",
-      `    const query = this.db.select().from(schema.${entityName}Table);`,
-      "    if (conditions.length > 0) query.where(and(...conditions));",
-      `    const rows = await query.orderBy(asc(schema.${entityName}Table.id));`,
-      `    return ${decimalFields.length > 0 ? "rows.map((row) => this.toDomain(row))" : `(rows as readonly ${entityName}[])`};`,
-      "  }",
-      ...(supportsPagination
-        ? [
-            "",
-            `  async findPage(filter: Partial<${entityName}>, offset: number, limit: number): Promise<{ items: readonly ${entityName}[]; total: number }> {`,
-            "    const conditions: any[] = [];",
-            ...(softDeleteCondition ? [`    conditions.push(${softDeleteCondition});`] : []),
-            "    if (filter) {",
-            "      for (const [key, value] of Object.entries(filter)) {",
-            "        if (value !== undefined) {",
-            `          const column = (schema.${entityName}Table as any)[key];`,
-            "          if (column) conditions.push(eq(column, value));",
-            "        }",
-            "      }",
-            "    }",
-            `    const baseQuery = this.db.select().from(schema.${entityName}Table);`,
-            "    if (conditions.length > 0) baseQuery.where(and(...conditions));",
-            `    const items = await baseQuery.orderBy(asc(schema.${entityName}Table.id)).offset(offset).limit(limit);`,
-            `    const countQuery = this.db.select({ count: sql\`count(*)\` }).from(schema.${entityName}Table);`,
-            "    if (conditions.length > 0) countQuery.where(and(...conditions));",
-            "    const countResult = await countQuery;",
-            "    const total = Number(countResult[0]?.count ?? 0);",
-            `    return { items: ${decimalFields.length > 0 ? "items.map((row) => this.toDomain(row))" : `(items as readonly ${entityName}[])`}, total };`,
-            "  }",
-          ]
-        : []),
-      "",
-      `  async create(input: Create${entityName}Input): Promise<${entityName}> {`,
-      `    const result = await this.db.insert(schema.${entityName}Table).values(input as any).returning();`,
-      `    return result[0] ? ${decimalFields.length > 0 ? "this.toDomain(result[0])" : `(result[0] as ${entityName})`} : (() => { throw new Error("Insert did not return the created ${entityName}."); })();`,
-      "  }",
-      "",
-      `  async update(id: string, changes: Partial<Omit<${entityName}, "id">>): Promise<${entityName} | null> {`,
-      `    const conditions = [eq(schema.${entityName}Table.id, id)${softDeleteCondition ? `, ${softDeleteCondition}` : ""}];`,
-      `    const result = await this.db.update(schema.${entityName}Table).set(${entity.fields.updatedAt ? "{...changes,updatedAt:new Date()}" : "changes"} as any).where(and(...conditions)).returning();`,
-      `    return result[0] ? ${decimalFields.length > 0 ? "this.toDomain(result[0])" : `(result[0] as ${entityName})`} : null;`,
-      "  }",
-      "",
-      `  async save(entity: ${entityName}): Promise<${entityName}> {`,
-      "    const existing = await this.findById(entity.id);",
-      "    if (existing) {",
-      "      const { id, ...changes } = entity;",
-      "      const updated = await this.update(id, changes);",
-      `      if (!updated) throw new Error(${JSON.stringify(`Failed to update ${entityName} with id `)} + id);`,
-      "      return updated;",
-      "    }",
-      "    return this.create(entity as any);",
-      "  }",
-      "",
-      "  async delete(id: string): Promise<void> {",
-      `    ${softDeleteDeleteStatement}`,
-      "  }",
-      "}",
-      "",
-    ].join("\n");
-
-    files.push({ path: adapterPath, content: adapterContent });
-  }
-
-  // Generate query port adapters for custom endpoints with joins
+  // Generate one persistence adapter for each declared operation.
   for (const endpoint of model.endpoints) {
     const mainEntity = model.entities[endpoint.entity];
     const operationName = endpointTypeName(endpoint);
