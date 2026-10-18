@@ -73,6 +73,7 @@ describe("Drizzle ORM plugin", () => {
           backend: "core-api",
           path: "/",
           method: "GET",
+          operationId: "getRoot",
           entity: "Order",
           authRequired: false,
           roles: [],
@@ -89,7 +90,7 @@ describe("Drizzle ORM plugin", () => {
     const adapterFiles = generateDrizzleAdapterFiles(context, persistence);
     expect(schemaFiles[0]?.content).toContain("export const OrderTable = pgTable(");
     expect(
-      adapterFiles.some((file) => file.path.endsWith("GetEndpoint.drizzle.query.adapter.ts")),
+      adapterFiles.some((file) => file.path.endsWith("GetRoot.drizzle.query.adapter.ts")),
     ).toBe(true);
 
     context.domainModel = {
@@ -175,108 +176,6 @@ describe("Drizzle ORM plugin", () => {
     );
     expect(files["apps/api-core/src/infrastructure/adapters/drizzle-database.ts"]).toContain(
       'neonConfig.fetchEndpoint = "http://127.0.0.1:4444/sql";',
-    );
-  });
-
-  it("resolves generated schema paths from the selected architecture layout", () => {
-    const modularArchitecture: GeneratorPlugin = {
-      descriptor: {
-        id: "modular",
-        version: "1.0.0",
-        role: "architecture",
-        provides: ["architecture:modular"],
-      },
-      resolveArchitectureLayout(framework): ArchitectureLayout {
-        return {
-          pluginId: "modular",
-          codeRoot: framework.codeRoot,
-          directories: {
-            domainEntity: "domain",
-            useCase: "application/use-cases",
-            inboundPort: "application/ports/inbound",
-            outboundPort: "application/ports/outbound",
-            adapter: "persistence/adapters",
-            controller: "http/controllers",
-            infrastructure: "persistence",
-          },
-          dependencyRules: [],
-        };
-      },
-      contribute: () => [],
-    };
-    const registry = new PluginRegistry();
-    registry.register(honoFrameworkPlugin);
-    registry.register(modularArchitecture);
-    registry.register(drizzleOrmPlugin);
-    const config = createValidConfig();
-    const backend = config.backends[0];
-    if (!backend) throw new Error("Fixture backend is missing.");
-    backend.architecture = "modular";
-
-    const result = composeBackendPlugins(NordixConfigSchema.parse(config), "core-api", registry);
-
-    expect(result.success).toBe(true);
-    if (!result.success) return;
-    expect(result.virtualFileSystem.snapshot()["apps/api-core/drizzle.config.ts"]).toContain(
-      'schema: "./src/persistence/database/schema/index.ts"',
-    );
-  });
-
-  it.each([
-    ["database engine", { engine: "mysql", provider: "neon" }],
-    ["database provider", { engine: "postgres", provider: "local" }],
-  ])("rejects an unsupported %s before generating files", (_label, database) => {
-    const config = createValidConfig();
-    config.databases["commerce-db"] = database;
-    const result = composeBackendPlugins(
-      NordixConfigSchema.parse(config),
-      "core-api",
-      createRegistry(),
-    );
-
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "PLUGIN_CAPABILITY_MISSING", path: "plugins.drizzle" }),
-    );
-  });
-
-  it("rejects a TypeScript framework on an unsupported runtime before contribution", () => {
-    const frameworkContext: FrameworkContext = {
-      pluginId: "node-framework",
-      applicationRoot: "apps/api-core",
-      codeRoot: "apps/api-core/src",
-      language: "typescript",
-      runtime: "node",
-      moduleSystem: "esm",
-      scaffold: { executable: "pnpm", argumentsBeforeTarget: [], argumentsAfterTarget: [] },
-      entryPoints: { app: "apps/api-core/src/index.ts" },
-      conventions: { importExtension: ".js" },
-    };
-    const nodeFrameworkPlugin: GeneratorPlugin = {
-      descriptor: {
-        id: "node-framework",
-        version: "1.0.0",
-        role: "framework",
-        provides: ["language:typescript", "runtime:node"],
-      },
-      createFrameworkContext: () => frameworkContext,
-      contribute: () => [],
-    };
-    const config = createValidConfig();
-    const backend = config.backends[0];
-    if (!backend) throw new Error("Fixture backend is missing.");
-    backend.framework = "node-framework";
-    const result = composeBackendPlugins(
-      NordixConfigSchema.parse(config),
-      "core-api",
-      createRegistry(nodeFrameworkPlugin),
-    );
-
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "PLUGIN_CAPABILITY_MISSING", path: "plugins.drizzle" }),
     );
   });
 
@@ -597,6 +496,7 @@ describe("Drizzle ORM plugin", () => {
     falseDeleteConfig.endpoints = [
       {
         path: "/api/orders/auto",
+        operationId: "getApiOrdersAuto",
         method: "GET",
         backend: "core-api",
         entity: "Order",

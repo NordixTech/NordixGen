@@ -74,7 +74,7 @@ describe("Clean Architecture domain artifacts", () => {
     const config = createValidConfig();
     config.backends.push({
       name: "other-api",
-      framework: "hono",
+      modules: { external: { architecture: "clean", entities: ["External"] } },
       repository: "commerce",
       path: "apps/other-api",
     });

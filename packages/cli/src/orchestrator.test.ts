@@ -1,530 +1,159 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import * as prompts from "@clack/prompts";
 import { parseNordixYaml } from "@nordixgen/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createStarterConfiguration, runGenerate } from "./orchestrator.js";
+import { createProgram } from "./index.js";
+import { createStarterConfiguration, runGenerate, runInit } from "./orchestrator.js";
 
-const temporaryDirectories: string[] = [];
-async function makeTempDirectory(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "nordixgen-cli-"));
-  temporaryDirectories.push(path);
-  return path;
+vi.mock("@clack/prompts", async (original) => ({
+  ...(await original<typeof import("@clack/prompts")>()),
+  intro: vi.fn(),
+  outro: vi.fn(),
+  text: vi.fn(),
+  select: vi.fn(),
+  isCancel: (value: unknown) => typeof value === "symbol",
+}));
+
+const directories: string[] = [];
+async function temporary() {
+  const directory = await mkdtemp(join(tmpdir(), "nordixgen-config-"));
+  directories.push(directory);
+  return directory;
 }
-
 afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
-  );
-});
-
-const configuration = `name: test-project
-version: 1.0.0
-repositories:
-  - name: workspace
-    path: .
-    initializeGit: false
-    createRemote: false
-frontends:
-  - name: web
-    framework: nextjs
-    repository: workspace
-    connectsTo: [api]
-    path: apps/web
-backends:
-  - name: api
-    framework: hono
-    repository: workspace
-    path: apps/api
-entities:
-  User:
-    backend: api
-    fields: {}
-`;
-
-function withRemote(source: string, initializeGit = false): string {
-  return source
-    .replace(
-      "version: 1.0.0",
-      "version: 1.0.0\norganizations:\n  - name: owner\n    provider: github\n    handle: NordixTech",
+  process.exitCode = undefined;
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
+  for (const directory of directories.splice(0)) {
+    if (
+      !resolve(directory).startsWith(`${resolve(tmpdir())}\\nordixgen-config-`) &&
+      !resolve(directory).startsWith(`${resolve(tmpdir())}/nordixgen-config-`)
     )
-    .replace("    initializeGit: false", `    initializeGit: ${initializeGit}`)
-    .replace("    createRemote: false", "    organization: owner\n    createRemote: true");
-}
-
-describe("init command configuration", () => {
-  it("creates a valid starter YAML and keeps Git/remote actions opt-in", () => {
-    const starter = createStarterConfiguration("my-project", true);
-    const parsed = parseNordixYaml(starter);
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) return;
-    expect(parsed.config.repositories[0]?.initializeGit).toBe(false);
-    expect(parsed.config.repositories[0]?.createRemote).toBe(false);
-    expect(parsed.config.frontends[0]?.connectsTo).toEqual(["api"]);
-    expect(parsed.config.frontends[0]?.styling).toBe("tailwind");
-    expect(parsed.config.frontends[0]?.ui).toBe("native");
-  });
+      throw new Error("Refusing unsafe temporary-directory cleanup");
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
-describe("generate command orchestration", () => {
-  it("scaffolds supported apps and assembles a pnpm workspace", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    await writeFile(configPath, configuration, "utf8");
-    const calls: string[][] = [];
-    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
-      calls.push(args);
-      const directoryName = args[2];
-      if (
-        directoryName &&
-        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
-      ) {
-        const appDirectory = resolve(cwd, basename(directoryName));
-        await mkdir(appDirectory, { recursive: true });
-        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
-      }
-      return "";
+describe("canonical configuration initialization and command preflight", () => {
+  it.each([0, 1, 2])(
+    "cancels initialization at prompt %s without writing a file",
+    async (stage) => {
+      const directory = await temporary();
+      const destination = join(directory, "config.yaml");
+      const cancelled = Symbol("cancel");
+      vi.mocked(prompts.text).mockResolvedValueOnce(stage === 0 ? cancelled : "client-app");
+      if (stage > 0)
+        vi.mocked(prompts.select).mockResolvedValueOnce(stage === 1 ? cancelled : true);
+      if (stage > 1) vi.mocked(prompts.text).mockResolvedValueOnce(cancelled);
+      await runInit();
+      expect(prompts.outro).toHaveBeenCalledWith("Setup cancelled.");
+      await expect(access(destination)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+  it("writes valid starter YAML and refuses to overwrite an existing configuration", async () => {
+    const directory = await temporary();
+    const destination = join(directory, "nested", "config.yaml");
+    const answers = () => {
+      vi.mocked(prompts.text)
+        .mockResolvedValueOnce("client-app")
+        .mockResolvedValueOnce(destination);
+      vi.mocked(prompts.select).mockResolvedValueOnce(true);
+    };
+    answers();
+    await runInit();
+    const source = await readFile(destination, "utf8");
+    expect(parseNordixYaml(source).success).toBe(true);
+    answers();
+    await expect(runInit()).rejects.toThrow(/File already exists/);
+    expect(await readFile(destination, "utf8")).toBe(source);
+  });
+  it.each([false, true])("initializes valid selector-free YAML with a frontend: %s", (frontend) => {
+    const source = createStarterConfiguration("client-app", frontend);
+    const result = parseNordixYaml(source);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.config.schemaVersion).toBe(2);
+    expect(result.config.backends[0]?.modules).toMatchObject({
+      examples: { architecture: "clean", entities: ["Example"] },
     });
-
-    await runGenerate(configPath, output, runner);
-
-    expect(calls).toHaveLength(4);
-    expect(calls[0]).toContain("--disable-git");
-    expect(calls[0]).toContain("--src-dir");
-    expect(calls[0]).toContain("--tailwind");
-    expect(calls[0]).not.toContain("--skip-install");
-    expect(await readFile(join(output, "README.md"), "utf8")).toContain("# ✦ NordixGen");
-    expect(await readFile(join(output, "README.md"), "utf8")).toContain("test-project");
-    const homepage = await readFile(join(output, "apps", "web", "src", "app", "page.tsx"), "utf8");
-    expect(homepage).toContain("A thoughtful starting point for test-project.");
-    expect(
-      await readFile(join(output, "apps", "web", "src", "components", "ui", "dialog.tsx"), "utf8"),
-    ).toContain("showModal()");
-    expect(
-      await readFile(join(output, "apps", "web", "src", "app", "globals.css"), "utf8"),
-    ).toContain('@import "tailwindcss";');
-    const webPackage = JSON.parse(
-      await readFile(join(output, "apps", "web", "package.json"), "utf8"),
+    expect(result.config.frontends).toHaveLength(frontend ? 1 : 0);
+    expect(source).not.toMatch(
+      /framework:|plugin:|orm:|styling:|stateManagement:|createRemote: true/,
     );
-    expect(webPackage.devDependencies.tailwindcss).toBe("^4.0.0");
-    expect(calls[1]).toEqual(["install"]);
-    expect(calls[2]).toEqual([
-      "create",
-      "hono@0.19.4",
-      "api",
-      "--template",
-      "cloudflare-workers",
-      "--pm",
-      "pnpm",
-      "--install",
+    expect(result.config.repositories[0]).toMatchObject({
+      initializeGit: false,
+      createRemote: false,
+    });
+    expect(() => createStarterConfiguration("Bad Name", frontend)).toThrow(/Project name/);
+  });
+
+  it("rejects invalid YAML with a source location before any generation effects", async () => {
+    const directory = await temporary();
+    const file = join(directory, "invalid.yaml");
+    const output = join(directory, "output");
+    await writeFile(file, "schemaVersion: 2\nname: [\n");
+    const runner = vi.fn();
+    await expect(runGenerate(file, output, runner)).rejects.toThrow(
+      /YAML_SYNTAX_ERROR.*invalid.yaml:/,
+    );
+    expect(runner).not.toHaveBeenCalled();
+    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("blocks unintegrated modular generation without invoking the old global renderer", async () => {
+    const directory = await temporary();
+    const file = join(directory, "valid.yaml");
+    const output = join(directory, "output");
+    const source = createStarterConfiguration("client-app", true);
+    await writeFile(file, source);
+    const runner = vi.fn();
+    await expect(runGenerate(file, output, runner)).rejects.toThrow(
+      /MODULE_GENERATION_UNAVAILABLE.*no files or external commands/i,
+    );
+    expect(runner).not.toHaveBeenCalled();
+    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(file, "utf8")).toBe(source);
+  });
+
+  it("presents invalid configuration paths/corrections and nonzero command status", async () => {
+    const directory = await temporary();
+    const file = join(directory, "invalid.yaml");
+    await writeFile(
+      file,
+      createStarterConfiguration("client-app", false).replace(
+        "schemaVersion: 2",
+        "schemaVersion: 1",
+      ),
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await createProgram().parseAsync(["node", "nordixgen", "validate", "-f", file]);
+    expect(process.exitCode).toBe(1);
+    expect(error.mock.calls.flat().join("\n")).toMatch(
+      /CONFIG_VERSION_UNSUPPORTED.*schemaVersion.*invalid.yaml/,
+    );
+    process.exitCode = undefined;
+    await createProgram().parseAsync([
+      "node",
+      "nordixgen",
+      "generate",
+      "-f",
+      file,
+      "-o",
+      join(directory, "out"),
     ]);
-    expect(calls[3]).toEqual(["install"]);
-    const apiPackage = JSON.parse(
-      await readFile(join(output, "apps", "api", "package.json"), "utf8"),
-    );
-    expect(apiPackage.dependencies.zod).toBe("^3.24.2");
-    expect(
-      await readFile(
-        join(output, "apps", "api", "src", "presentation", "controllers", "routes.ts"),
-        "utf8",
-      ),
-    ).toContain('routes.route("/health", healthController);');
-    expect(await readFile(join(output, "apps", "api", "src", "index.ts"), "utf8")).toContain(
-      'from "./presentation/controllers/routes.js"',
-    );
-    expect(await readFile(join(output, "pnpm-workspace.yaml"), "utf8")).toContain("apps/web");
-    const rootPackage = JSON.parse(await readFile(join(output, "package.json"), "utf8"));
-    expect(rootPackage.scripts.dev).toContain("--parallel");
-    expect(await readFile(join(output, "README.md"), "utf8")).toContain("workspace");
+    expect(process.exitCode).toBe(1);
+    await expect(access(join(directory, "out"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("selects plain CSS independently from the Next.js framework plugin", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    await writeFile(
-      configPath,
-      configuration.replace("    framework: nextjs", "    framework: nextjs\n    styling: css"),
-      "utf8",
-    );
-    const calls: string[][] = [];
-    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
-      calls.push(args);
-      const directoryName = args[2];
-      if (
-        directoryName &&
-        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
-      ) {
-        const appDirectory = resolve(cwd, basename(directoryName));
-        await mkdir(appDirectory, { recursive: true });
-        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
-      }
-      return "";
-    });
-
-    await runGenerate(configPath, output, runner);
-
-    expect(calls[0]).toContain("create-next-app@15.5.26");
-    expect(calls[0]).toContain("--no-tailwind");
-    expect(
-      await readFile(join(output, "apps", "web", "src", "app", "globals.css"), "utf8"),
-    ).not.toContain('@import "tailwindcss"');
-    expect(
-      await readFile(join(output, "apps", "web", "src", "components", "ui", "input.tsx"), "utf8"),
-    ).toContain("aria-invalid={error ? true : undefined}");
-  });
-
-  it("generates Drizzle files for a Hono backend configured with a database", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    const persistedConfiguration = configuration
-      .replace(
-        "version: 1.0.0",
-        "version: 1.0.0\ndatabases:\n  commerce-db:\n    engine: postgres\n    provider: neon",
-      )
-      .replace(
-        "    framework: hono",
-        "    framework: hono\n    persistence:\n      database: commerce-db\n      orm: drizzle",
-      );
-    await writeFile(configPath, persistedConfiguration, "utf8");
-
-    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
-      const directoryName = args[2];
-      if (
-        directoryName &&
-        (args[0] === "create" || args.some((argument) => argument.startsWith("create-next-app@")))
-      ) {
-        const appDirectory = resolve(cwd, basename(directoryName));
-        await mkdir(appDirectory, { recursive: true });
-        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
-      }
-      return "";
-    });
-
-    await runGenerate(configPath, output, runner);
-
-    const apiRoot = join(output, "apps", "api");
-    const apiPackage = JSON.parse(await readFile(join(apiRoot, "package.json"), "utf8"));
-    expect(apiPackage.scripts.typecheck).toBe("tsc --noEmit");
-    expect(apiPackage.scripts.build).toBe("tsc --noEmit");
-    expect(apiPackage.scripts["db:migrate"]).toContain("migrate.ts");
-    expect(apiPackage.devDependencies.tsx).toBeDefined();
-    expect(await readFile(join(apiRoot, "drizzle.config.ts"), "utf8")).toContain(
-      'dialect: "postgresql"',
-    );
-    expect(
-      await readFile(
-        join(apiRoot, "src", "infrastructure", "database", "schema", "index.ts"),
-        "utf8",
-      ),
-    ).toContain("export");
-    expect(await readFile(join(apiRoot, "src", "index.ts"), "utf8")).toContain(
-      "createRouteDependencies(c.env.DATABASE_URL)",
-    );
-    expect(runner).toHaveBeenCalledWith(
-      "pnpm",
-      expect.arrayContaining(["create", "hono@0.19.4"]),
-      expect.any(String),
-    );
-  });
-
-  it("integrates Better Auth, authorization, and Cloudflare runtime compatibility", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    const authConfiguration = configuration
-      .replace(
-        "version: 1.0.0",
-        "version: 1.0.0\ndatabases:\n  commerce-db:\n    engine: postgres\n    provider: neon",
-      )
-      .replace(
-        "    framework: hono",
-        '    framework: hono\n    persistence:\n      database: commerce-db\n      orm: drizzle\n    authentication:\n      plugin: better-auth\n      methods: [email-password]\n    authorization:\n      roles: [admin, customer]\n      defaultRole: customer\n      rolePermissions:\n        admin: ["*"]\n        customer: [orders:read]',
-      )
-      .concat(`
-endpoints:
-  - backend: api
-    operationId: createUser
-    method: POST
-    path: /api/users
-    entity: User
-    roles: [admin]
-    permissions: [orders:read]
-    requestBody: { useCase: { entity: User, operation: create } }
-`);
-    await writeFile(configPath, authConfiguration, "utf8");
-
-    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
-      const directoryName = args[2];
-      if (
-        directoryName &&
-        (args[0] === "create" || args.some((argument) => argument.startsWith("create-next-app@")))
-      ) {
-        const appDirectory = resolve(cwd, basename(directoryName));
-        await mkdir(appDirectory, { recursive: true });
-        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
-        await writeFile(
-          join(appDirectory, "wrangler.jsonc"),
-          '{\n  // Keep scaffold metadata.\n  "compatibility_date": "2026-01-01"\n}\n',
-          "utf8",
-        );
-      }
-      return "";
-    });
-
-    await runGenerate(configPath, output, runner);
-
-    const apiRoot = join(output, "apps", "api");
-    const wrangler = await readFile(join(apiRoot, "wrangler.jsonc"), "utf8");
-    expect(wrangler).toContain("// Keep scaffold metadata.");
-    expect(wrangler).toContain('"compatibility_flags": [\n    "nodejs_compat"\n  ]');
-    const apiPackage = JSON.parse(await readFile(join(apiRoot, "package.json"), "utf8"));
-    expect(apiPackage.dependencies["better-auth"]).toBe("^1.7.7");
-    expect(apiPackage.dependencies["@better-auth/drizzle-adapter"]).toBe("^1.7.7");
-    expect(await readFile(join(apiRoot, "src", "index.ts"), "utf8")).toContain(
-      "createAuth(c.env, c.executionCtx)",
-    );
-    expect(
-      await readFile(
-        join(apiRoot, "src", "presentation", "controllers", "createUser.controller.ts"),
-        "utf8",
-      ),
-    ).toContain("Authentication is required");
-    expect(
-      await readFile(
-        join(apiRoot, "src", "presentation", "controllers", "createUser.controller.ts"),
-        "utf8",
-      ),
-    ).toContain("A trusted Origin header is required for state-changing requests");
-    await expect(
-      access(join(apiRoot, "src", "presentation", "controllers", "user.controller.ts")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    expect(
-      await readFile(join(apiRoot, "src", "presentation", "controllers", "routes.ts"), "utf8"),
-    ).not.toContain('routes.route("/users"');
-  });
-
-  it("rejects an unregistered ORM before creating output or scaffolding", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    const persistedConfiguration = configuration
-      .replace(
-        "version: 1.0.0",
-        "version: 1.0.0\ndatabases:\n  commerce-db:\n    engine: postgres\n    provider: neon",
-      )
-      .replace(
-        "    framework: hono",
-        "    framework: hono\n    persistence:\n      database: commerce-db\n      orm: missing-orm",
-      );
-    await writeFile(configPath, persistedConfiguration, "utf8");
-    const runner = vi.fn();
-
-    await expect(runGenerate(configPath, output, runner)).rejects.toThrow("PLUGIN_NOT_REGISTERED");
-    expect(runner).not.toHaveBeenCalled();
-    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("writes Hono plugin files beneath a repository subdirectory with valid relative imports", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    const nestedConfiguration = configuration
-      .replace("path: .\n    initializeGit", "path: repositories/platform\n    initializeGit")
-      .replace("framework: nextjs", "framework: nextjs");
-    await writeFile(configPath, nestedConfiguration, "utf8");
-
-    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
-      const directoryName = args[2];
-      if (
-        directoryName &&
-        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
-      ) {
-        const appDirectory = resolve(cwd, basename(directoryName));
-        await mkdir(appDirectory, { recursive: true });
-        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
-      }
-      return "";
-    });
-
-    await runGenerate(configPath, output, runner);
-
-    const sourceRoot = join(output, "repositories", "platform", "apps", "api", "src");
-    expect(await readFile(join(sourceRoot, "index.ts"), "utf8")).toContain(
-      'from "./presentation/controllers/routes.js"',
-    );
-    expect(
-      await readFile(join(sourceRoot, "presentation", "controllers", "routes.ts"), "utf8"),
-    ).toContain('from "./health.controller.js"');
-  });
-
-  it("refuses a non-empty destination before running any generator", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    await writeFile(configPath, configuration, "utf8");
-    await mkdir(output);
-    await writeFile(join(output, "keep.txt"), "user data", "utf8");
-    const runner = vi.fn();
-
-    await expect(runGenerate(configPath, output, runner)).rejects.toThrow(
-      "Target directory must be empty",
-    );
-    expect(runner).not.toHaveBeenCalled();
-    expect(await readFile(join(output, "keep.txt"), "utf8")).toBe("user data");
-  });
-
-  it("rejects an unsupported framework before creating output", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    await writeFile(
-      configPath,
-      configuration.replace("framework: hono", "framework: express"),
-      "utf8",
-    );
-
-    await expect(runGenerate(configPath, output, vi.fn())).rejects.toThrow(
-      "Unsupported backend framework",
-    );
-    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("stops before generation if GitHub denies organization repository creation", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    await writeFile(configPath, withRemote(configuration), "utf8");
-    const calls: string[][] = [];
-    const runner = vi.fn(async (_file: string, args: string[]) => {
-      calls.push(args);
-      if (args[0] === "api" && args[1] === "user") return "developer";
-      if (args[0] === "api" && args[1] === "graphql") {
-        return JSON.stringify({
-          data: {
-            organization: { login: "NordixTech", viewerCanCreateRepositories: false },
-            user: null,
-          },
-        });
-      }
-      return "authenticated";
-    });
-
-    await expect(runGenerate(configPath, output, runner)).rejects.toThrow(
-      "cannot create repositories",
-    );
-    expect(calls.some((args) => args[0] === "repo" && args[1] === "create")).toBe(false);
-    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("accepts a delegated user account for an organization and checks push before sending", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    await writeFile(configPath, withRemote(configuration, true), "utf8");
-    const calls: string[][] = [];
-    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
-      calls.push(args);
-      if (args[0] === "api" && args[1] === "user") return "developer";
-      if (args[0] === "api" && args[1] === "graphql") {
-        return JSON.stringify({
-          data: {
-            organization: { login: "NordixTech", viewerCanCreateRepositories: true },
-            user: null,
-          },
-        });
-      }
-      if (args[0] === "api" && args[1]?.startsWith("repos/")) {
-        throw new Error("gh: Not Found (HTTP 404)");
-      }
-      if (args[0] === "remote" && args[1] === "get-url") {
-        return "https://github.com/NordixTech/workspace.git";
-      }
-      const directoryName = args[2];
-      if (
-        directoryName &&
-        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
-      ) {
-        const appDirectory = resolve(cwd, basename(directoryName));
-        await mkdir(appDirectory, { recursive: true });
-        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
-      }
-      return "ok";
-    });
-
-    await runGenerate(configPath, output, runner);
-
-    const dryRunIndex = calls.findIndex((args) => args[0] === "push" && args.includes("--dry-run"));
-    const pushIndex = calls.findIndex((args) => args[0] === "push" && !args.includes("--dry-run"));
-    expect(calls.some((args) => args[0] === "repo" && args[1] === "create")).toBe(true);
-    expect(dryRunIndex).toBeGreaterThan(-1);
-    expect(pushIndex).toBeGreaterThan(dryRunIndex);
-  });
-
-  it("keeps split applications in their assigned repositories", async () => {
-    const root = await makeTempDirectory();
-    const configPath = join(root, "nordix.config.yaml");
-    const output = join(root, "generated");
-    const splitConfig = `name: split-test
-version: 1.0.0
-repositories:
-  - name: web-repo
-    path: web-repo
-    initializeGit: false
-    createRemote: false
-  - name: api-repo
-    path: api-repo
-    initializeGit: false
-    createRemote: false
-frontends:
-  - name: web
-    framework: nextjs
-    repository: web-repo
-    connectsTo: [api]
-    path: .
-backends:
-  - name: api
-    framework: hono
-    repository: api-repo
-    path: .
-entities:
-  User:
-    backend: api
-    fields: {}
-`;
-    await writeFile(configPath, splitConfig, "utf8");
-    const runner = vi.fn(async (_file: string, args: string[], cwd: string) => {
-      const directoryName = args[2];
-      if (
-        directoryName &&
-        (args.some((argument) => argument.startsWith("create-next-app@")) || args[0] === "create")
-      ) {
-        const appDirectory = resolve(cwd, basename(directoryName));
-        await mkdir(appDirectory, { recursive: true });
-        await writeFile(join(appDirectory, "package.json"), "{}\n", "utf8");
-        await writeFile(join(appDirectory, "README.md"), "upstream app README\n", "utf8");
-      }
-      return "";
-    });
-
-    await runGenerate(configPath, output, runner);
-
-    expect(await readFile(join(output, "web-repo", "README.md"), "utf8")).toContain(
-      "# ✦ NordixGen",
-    );
-    expect(await readFile(join(output, "web-repo", "README.md"), "utf8")).toContain(
-      "upstream app README",
-    );
-    expect(await readFile(join(output, "api-repo", "README.md"), "utf8")).toContain(
-      "# ✦ NordixGen",
-    );
-    expect(await readFile(join(output, "api-repo", "README.md"), "utf8")).toContain(
-      "upstream app README",
-    );
-    await expect(access(join(output, "pnpm-workspace.yaml"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+  it("distinguishes structurally valid configuration from unavailable generation in validate", async () => {
+    const directory = await temporary();
+    const file = join(directory, "valid.yaml");
+    await writeFile(file, createStarterConfiguration("client-app", false));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await createProgram().parseAsync(["node", "nordixgen", "validate", "-f", file]);
+    expect(process.exitCode).toBe(1);
+    expect(error.mock.calls.flat().join("\n")).toContain("MODULE_GENERATION_UNAVAILABLE");
   });
 });

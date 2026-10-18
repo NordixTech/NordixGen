@@ -17,7 +17,7 @@ export function getCoreInfo(): NordixCoreInfo {
   };
 }
 
-export * from "./compatibility.js";
+export * from "./configuration/readiness.js";
 export * from "./diagnostics.js";
 export * from "./intermediate-representation.js";
 export * from "./json-schema.js";

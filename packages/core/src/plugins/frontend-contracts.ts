@@ -1,4 +1,4 @@
-import type { FrontendDefinition } from "../configuration/schema.js";
+import type { FrontendRenderSettings } from "../configuration/schema.js";
 import type { FieldDefinition, NormalizedEndpointDefinition } from "../configuration/schema.js";
 import type { GeneratedFile, UpstreamScaffoldPlan } from "./contracts.js";
 
@@ -44,7 +44,7 @@ export interface FrontendFrameworkContext {
 
 export interface FrontendPluginContributionContext {
   readonly projectName: string;
-  readonly frontend: FrontendDefinition;
+  readonly frontend: FrontendRenderSettings;
   readonly framework: FrontendFrameworkContext;
   readonly availableCapabilities: ReadonlySet<string>;
   readonly api: FrontendApiContract;
@@ -76,6 +76,6 @@ export interface FrontendApiContract {
 
 export interface FrontendGeneratorPlugin {
   readonly descriptor: FrontendPluginDescriptor;
-  createFrameworkContext?: (frontend: FrontendDefinition) => FrontendFrameworkContext;
+  createFrameworkContext?: (frontend: FrontendRenderSettings) => FrontendFrameworkContext;
   contribute: (context: FrontendPluginContributionContext) => readonly GeneratedFile[];
 }

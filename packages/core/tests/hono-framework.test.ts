@@ -145,6 +145,7 @@ describe("Hono framework plugin", () => {
       backend: "core-api",
       path: "/",
       method: "GET",
+      operationId: "getRoot",
       entity: "Order",
       authRequired: false,
       roles: [],
@@ -211,7 +212,7 @@ describe("Hono framework plugin", () => {
     expect(customController).toContain('"/api/orders/create-custom"');
 
     // Endpoint without operationId and root path
-    const fallbackController = files[`${root}/presentation/controllers/getEndpoint.controller.ts`];
+    const fallbackController = files[`${root}/presentation/controllers/getRoot.controller.ts`];
     expect(fallbackController).toBeDefined();
 
     // 4. Routes aggregator

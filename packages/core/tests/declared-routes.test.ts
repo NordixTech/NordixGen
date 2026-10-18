@@ -16,6 +16,7 @@ import {
   composeFrontendPlugins,
   drizzleOrmPlugin,
   featureScreensFrontendPlugin,
+  frontendRenderSettings,
   honoFrameworkPlugin,
   nativeReactUiPlugin,
   nextjsFrontendPlugin,
@@ -31,17 +32,20 @@ function configuration(withEndpoints = true, createPath = "/api/sample-items") {
   const parsed = parseNordixYaml(`
 name: declared-routes
 version: 1.0.0
+schemaVersion: 2
 repositories: [{ name: app, path: . }]
 databases:
-  primary: { engine: postgres, provider: neon }
+  primary: {}
 backends:
   - name: api
-    framework: hono
-    architecture: clean
     repository: app
     path: apps/api
-    persistence: { database: primary, orm: drizzle }
-    authentication: { plugin: better-auth, methods: [email-password] }
+    modules:
+      business:
+        architecture: clean
+        entities: [SampleItem, PrivateRecord]
+    persistence: { database: primary }
+    authentication: { methods: [email-password] }
     authorization:
       roles: [editor, viewer, outsider]
       defaultRole: viewer
@@ -51,11 +55,9 @@ backends:
         outsider: [sample-items:create]
 frontends:
   - name: web
-    framework: nextjs
     repository: app
     path: apps/web
     connectsTo: [api]
-    stateManagement: { server: tanstack-query, generateHooks: true }
 entities:
   SampleItem:
     backend: api
@@ -342,7 +344,8 @@ describe("declared business routes in generated Hono applications", () => {
     "keeps frontend consumers limited to the declared set (endpoints: %s)",
     (withEndpoints) => {
       const config = configuration(withEndpoints);
-      const frontend = config.frontends[0];
+      const declaration = config.frontends[0];
+      const frontend = declaration ? frontendRenderSettings(declaration) : undefined;
       if (!frontend) throw new Error("Frontend fixture is missing");
       const api = buildFrontendApiContract(config, frontend);
       expect(api.endpoints.map(({ operationId }) => operationId)).toEqual(

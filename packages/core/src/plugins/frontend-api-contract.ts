@@ -38,7 +38,10 @@ export function buildFrontendApiContract(
     normalizeBackends(config).map((backend) => [backend.name, backend]),
   );
   let authentication: FrontendAuthenticationContract | undefined;
-  for (const backendName of frontend.connectsTo) {
+  const authorities = frontend.connectsTo.filter((name) => backendByName.get(name)?.authentication);
+  const authority =
+    frontend.access.backend ?? (authorities.length === 1 ? authorities[0] : undefined);
+  for (const backendName of authority ? [authority] : []) {
     const backend = backendByName.get(backendName);
     if (!backend?.authentication) continue;
     authentication = {

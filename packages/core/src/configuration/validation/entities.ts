@@ -1,26 +1,33 @@
 import { type ConfigDiagnostic, createDiagnostic } from "../../diagnostics.js";
 import type { FieldDefinition, NordixConfig } from "../schema.js";
+import { fieldDefinitions, moduleOwners, sameOwner, snakeCase } from "./shared.js";
 
 function defaultMatchesFieldType(
   field: FieldDefinition,
   value: unknown,
   enumValues: string[],
 ): boolean {
+  if (value === null) return !field.required;
   switch (field.type) {
     case "string":
       return typeof value === "string";
     case "number":
-      return typeof value === "number" && Number.isFinite(value);
+      return (
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        (field.format !== "integer" || Number.isInteger(value))
+      );
     case "boolean":
       return typeof value === "boolean";
     case "date":
       return (
-        (typeof value === "string" && !Number.isNaN(Date.parse(value))) ||
+        (typeof value === "string" && validInstant(value)) ||
         (typeof value === "object" &&
           value !== null &&
           !Array.isArray(value) &&
           "kind" in value &&
-          value.kind === "now")
+          value.kind === "now" &&
+          Object.keys(value).length === 1)
       );
     case "uuid":
       return (
@@ -28,7 +35,7 @@ function defaultMatchesFieldType(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
       );
     case "json":
-      return value !== undefined;
+      return jsonValue(value);
     case "enum":
       return typeof value === "string" && enumValues.includes(value);
   }
@@ -38,27 +45,17 @@ export function validateEntities(config: NordixConfig): ConfigDiagnostic[] {
   const fieldDiagnostics: ConfigDiagnostic[] = [];
   const relationDiagnostics: ConfigDiagnostic[] = [];
   const generatedFieldDiagnostics: ConfigDiagnostic[] = [];
-  const backendNames = new Set([
-    ...config.backends.map((backend) => backend.name),
-    ...(config.backend ? ["backend"] : []),
-  ]);
 
+  const owners = moduleOwners(config);
+  const tables = new Map<string, string>();
+  for (const [name, entity] of Object.entries(config.entities))
+    tables.set(`${entity.backend}:${snakeCase(name)}`, `entities.${name}`);
   for (const [entityName, entity] of Object.entries(config.entities)) {
     const generatedFields = new Set(["id"]);
     if (entity.timestamps.createdAt) generatedFields.add("createdAt");
     if (entity.timestamps.updatedAt) generatedFields.add("updatedAt");
     if (entity.softDelete === "boolean") generatedFields.add("isDeleted");
     if (entity.softDelete === "timestamp") generatedFields.add("deletedAt");
-
-    if (!backendNames.has(entity.backend)) {
-      relationDiagnostics.push(
-        createDiagnostic(
-          "UNKNOWN_ENTITY_BACKEND",
-          `entities.${entityName}.backend`,
-          `Backend "${entity.backend}" is not configured.`,
-        ),
-      );
-    }
 
     for (const [fieldName, field] of Object.entries(entity.fields)) {
       const fieldPath = `entities.${entityName}.fields.${fieldName}`;
@@ -71,38 +68,48 @@ export function validateEntities(config: NordixConfig): ConfigDiagnostic[] {
           ),
         );
       }
-      if (field.type === "enum" && !config.enums[field.enumName]) {
-        fieldDiagnostics.push(
-          createDiagnostic(
-            "UNKNOWN_ENUM",
-            `${fieldPath}.enumName`,
-            `Enum "${field.enumName}" is not defined under enums.`,
-          ),
-        );
-      }
-      if (field.default !== undefined) {
-        const enumValues = field.type === "enum" ? (config.enums[field.enumName] ?? []) : [];
-        if (!defaultMatchesFieldType(field, field.default, enumValues)) {
-          fieldDiagnostics.push(
-            createDiagnostic(
-              "INVALID_FIELD_DEFAULT",
-              `${fieldPath}.default`,
-              `Default value does not match field type "${field.type}"${field.type === "enum" ? ` or is not a member of enum "${field.enumName}"` : ""}.`,
-            ),
-          );
-        }
-      }
+      validateField(field, fieldPath, config, fieldDiagnostics);
     }
 
     const fieldNames = new Set(Object.keys(entity.fields));
+    const sqlNames = new Map<string, string>();
+    for (const fieldName of Object.keys(fieldDefinitions(config, entityName))) {
+      const sqlName = snakeCase(fieldName);
+      if (sqlNames.has(sqlName))
+        generatedFieldDiagnostics.push(
+          createDiagnostic(
+            "GENERATED_NAME_COLLISION",
+            `entities.${entityName}.fields.${fieldName}`,
+            `Field collides with "${sqlNames.get(sqlName)}" after SQL normalization. Rename one field.`,
+          ),
+        );
+      sqlNames.set(sqlName, fieldName);
+    }
+    const foreignKeys = new Map<string, string>();
     for (const [relationName, relation] of Object.entries(entity.relations)) {
       const relationPath = `entities.${entityName}.relations.${relationName}`;
+      if (relation.type === "many-to-many") {
+        const name = snakeCase(
+          relation.joinTable ?? `${snakeCase(entityName)}_${snakeCase(relation.target)}`,
+        );
+        const key = `${entity.backend}:${name}`;
+        const previous = tables.get(key);
+        if (previous)
+          relationDiagnostics.push(
+            createDiagnostic(
+              "GENERATED_NAME_COLLISION",
+              `${relationPath}.joinTable`,
+              `Join table conflicts with ${previous}. Choose a distinct joinTable; declare each association once.`,
+            ),
+          );
+        tables.set(key, relationPath);
+      }
       if (!config.entities[relation.target]) {
         relationDiagnostics.push(
           createDiagnostic(
             "UNKNOWN_RELATION_TARGET",
             `${relationPath}.target`,
-            `Entity "${relation.target}" is not defined.`,
+            `Entity "${relation.target}" is not defined. Declare it or correct the relation target.`,
           ),
         );
       } else if (entity.backend !== config.entities[relation.target]?.backend) {
@@ -113,6 +120,101 @@ export function validateEntities(config: NordixConfig): ConfigDiagnostic[] {
             `Entity relations must stay within one backend; "${entityName}" and "${relation.target}" have different backends.`,
           ),
         );
+      }
+      if (!sameOwner(owners, entityName, relation.target))
+        relationDiagnostics.push(
+          createDiagnostic(
+            "CROSS_MODULE_RELATION",
+            `${relationPath}.target`,
+            `Relation to "${relation.target}" crosses module ownership. Use a scalar UUID and an explicit public application call.`,
+          ),
+        );
+      if (relation.type === "one-to-many") {
+        const fk = relation.foreignKey ?? `${entityName.toLowerCase()}_id`;
+        const inverse = Object.values(config.entities[relation.target]?.relations ?? {}).filter(
+          (r) =>
+            (r.type === "many-to-one" || r.type === "one-to-one") &&
+            r.target === entityName &&
+            (r.foreignKey ?? `${entityName.toLowerCase()}_id`) === fk,
+        );
+        if (config.entities[relation.target] && inverse.length !== 1)
+          relationDiagnostics.push(
+            createDiagnostic(
+              "RELATION_INVERSE_INVALID",
+              relationPath,
+              "Declare exactly one matching target-side to-one relation with the same foreignKey.",
+            ),
+          );
+        if (relation.onDelete !== undefined)
+          relationDiagnostics.push(
+            createDiagnostic(
+              "RELATION_DELETE_POLICY_INVALID",
+              `${relationPath}.onDelete`,
+              "Omit onDelete on inverse relations; configure it on the owning to-one relation.",
+            ),
+          );
+      }
+      if (
+        (relation.type === "one-to-many" || relation.type === "many-to-many") &&
+        relation.required
+      )
+        relationDiagnostics.push(
+          createDiagnostic(
+            "RELATION_NULLABILITY_INVALID",
+            `${relationPath}.required`,
+            "Collection relations must use required: false. Configure nullability on the owning foreign key.",
+          ),
+        );
+      if (relation.joinTable && relation.type !== "many-to-many")
+        relationDiagnostics.push(
+          createDiagnostic(
+            "RELATION_JOIN_TABLE_INVALID",
+            `${relationPath}.joinTable`,
+            "joinTable is only valid for many-to-many relations. Remove this property.",
+          ),
+        );
+      if (relation.type === "many-to-many" && relation.onDelete === "set-null")
+        relationDiagnostics.push(
+          createDiagnostic(
+            "INVALID_SET_NULL_RELATION",
+            `${relationPath}.onDelete`,
+            "Join-table foreign keys are nonnullable. Choose cascade, restrict or no-action.",
+          ),
+        );
+      if (relation.type === "many-to-one" || relation.type === "one-to-one") {
+        const fk = relation.foreignKey ?? `${relation.target.toLowerCase()}_id`;
+        const previous = foreignKeys.get(snakeCase(fk));
+        if (previous)
+          relationDiagnostics.push(
+            createDiagnostic(
+              "GENERATED_NAME_COLLISION",
+              `${relationPath}.foreignKey`,
+              `Foreign key collides with ${previous}. Assign a distinct foreignKey to each owning relation.`,
+            ),
+          );
+        foreignKeys.set(snakeCase(fk), relationPath);
+        const declared = entity.fields[fk];
+        if (generatedFields.has(fk))
+          relationDiagnostics.push(
+            createDiagnostic(
+              "RESERVED_GENERATED_FIELD",
+              `${relationPath}.foreignKey`,
+              "A relationship cannot overwrite a generated field. Choose a different foreignKey.",
+            ),
+          );
+        if (
+          declared &&
+          (declared.type !== "uuid" ||
+            declared.required !== relation.required ||
+            declared.unique !== (relation.type === "one-to-one"))
+        )
+          relationDiagnostics.push(
+            createDiagnostic(
+              "RELATION_FOREIGN_KEY_MISMATCH",
+              `${relationPath}.foreignKey`,
+              "The declared UUID field must match this relation's nullability and uniqueness. Correct the field or remove the redundant declaration.",
+            ),
+          );
       }
       if (fieldNames.has(relationName)) {
         relationDiagnostics.push(
@@ -145,4 +247,96 @@ export function validateEntities(config: NordixConfig): ConfigDiagnostic[] {
   }
 
   return [...fieldDiagnostics, ...relationDiagnostics, ...generatedFieldDiagnostics];
+}
+
+export function validInstant(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(
+    value,
+  );
+  if (!match || !Number.isFinite(Date.parse(value))) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return (
+    month >= 1 && month <= 12 && day >= 1 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate()
+  );
+}
+function jsonValue(value: unknown): boolean {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(jsonValue);
+  return (
+    typeof value === "object" &&
+    Object.getPrototypeOf(value) === Object.prototype &&
+    Object.values(value).every(jsonValue)
+  );
+}
+export function validateField(
+  field: FieldDefinition,
+  path: string,
+  config: NordixConfig,
+  diagnostics: ConfigDiagnostic[],
+): void {
+  if (
+    field.type === "string" &&
+    field.minLength !== undefined &&
+    field.maxLength !== undefined &&
+    field.minLength > field.maxLength
+  )
+    diagnostics.push(
+      createDiagnostic(
+        "FIELD_CONSTRAINT_INVALID",
+        path,
+        "minLength cannot exceed maxLength. Correct these limits.",
+      ),
+    );
+  if (
+    field.type === "string" &&
+    typeof field.default === "string" &&
+    ((field.minLength !== undefined && field.default.length < field.minLength) ||
+      (field.maxLength !== undefined && field.default.length > field.maxLength))
+  )
+    diagnostics.push(
+      createDiagnostic(
+        "INVALID_FIELD_DEFAULT",
+        `${path}.default`,
+        "The string default must satisfy the declared length constraints.",
+      ),
+    );
+  if (
+    field.type === "number" &&
+    (((field.precision !== undefined || field.scale !== undefined) &&
+      (field.format === "integer" || field.format === "float")) ||
+      (field.scale ?? 2) > (field.precision ?? 10))
+  )
+    diagnostics.push(
+      createDiagnostic(
+        "FIELD_CONSTRAINT_INVALID",
+        path,
+        "Decimal precision/scale require decimal format, and scale cannot exceed precision. Correct the numeric constraints.",
+      ),
+    );
+  if (field.type === "enum" && !config.enums[field.enumName])
+    diagnostics.push(
+      createDiagnostic(
+        "UNKNOWN_ENUM",
+        `${path}.enumName`,
+        `Enum "${field.enumName}" does not exist. Declare it under enums or correct the reference.`,
+      ),
+    );
+  if (
+    field.default !== undefined &&
+    !defaultMatchesFieldType(
+      field,
+      field.default,
+      field.type === "enum" ? (config.enums[field.enumName] ?? []) : [],
+    )
+  )
+    diagnostics.push(
+      createDiagnostic(
+        "INVALID_FIELD_DEFAULT",
+        `${path}.default`,
+        `Supply a default compatible with ${field.type}, constraints and nullability; dates require a timezone-bearing ISO instant or { kind: now }.`,
+      ),
+    );
 }

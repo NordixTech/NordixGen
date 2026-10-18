@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { FrontendSchema, NordixConfigSchema } from "../src/configuration/schema.js";
+import {
+  FrontendSchema,
+  NordixConfigSchema,
+  frontendRenderSettings,
+} from "../src/configuration/schema.js";
 import {
   type FrontendGeneratorPlugin,
   FrontendPluginRegistrationError,
@@ -25,15 +29,29 @@ import {
   groupEndpointsByEntity,
 } from "../src/plugins/frontends/feature-screens.js";
 import { frontendRootShellOwnerRole } from "../src/plugins/frontends/root-shell.js";
+import { targetConfig } from "./fixtures.js";
 
-const frontend = (options: Record<string, unknown> = {}) =>
-  FrontendSchema.parse({
-    name: "store-web",
-    framework: "nextjs",
-    path: "apps/store-web",
-    repository: "commerce",
-    ...options,
-  });
+const frontend = (options: Record<string, unknown> = {}) => ({
+  ...frontendRenderSettings(
+    FrontendSchema.parse({
+      name: "store-web",
+      path: "apps/store-web",
+      repository: "commerce",
+      connectsTo: options.connectsTo ?? [],
+    }),
+  ),
+  ...options,
+  stateManagement:
+    typeof options.stateManagement === "object"
+      ? {
+          client: "zustand",
+          server: "tanstack-query",
+          generateHooks: true,
+          optimisticUpdates: false,
+          ...options.stateManagement,
+        }
+      : undefined,
+});
 
 function registryWith(...plugins: FrontendGeneratorPlugin[]) {
   const registry = new FrontendPluginRegistry();
@@ -115,110 +133,43 @@ describe("frontend plugin contracts", () => {
   const [orderEndpoint, , updateEndpoint] = apiContract.endpoints;
   if (!orderEndpoint || !updateEndpoint) throw new Error("API test fixtures are incomplete.");
 
-  it("limits normalized API contracts to the frontend's connected backends", () => {
-    const config = NordixConfigSchema.parse({
-      name: "commerce",
-      version: "1.0.0",
-      repositories: [{ name: "app", path: "." }],
-      backends: [
-        {
-          name: "api",
-          framework: "hono",
-          repository: "app",
-          path: "apps/api",
-          authentication: { plugin: "better-auth" },
-          authorization: {
-            roles: ["admin"],
-            defaultRole: "admin",
-            rolePermissions: { admin: ["orders:read"] },
-          },
-        },
-        { name: "admin", framework: "hono", repository: "app", path: "apps/admin" },
-      ],
-      entities: {
-        Order: {
-          backend: "api",
-          softDelete: "timestamp",
-          fields: { status: { type: "string" } },
-          relations: {
-            user: { type: "many-to-one", target: "User", foreignKey: "userId" },
-            owner: { type: "one-to-one", target: "User" },
-          },
-        },
-        User: {
-          backend: "api",
-          fields: { name: { type: "string" } },
-          relations: { orders: { type: "one-to-many", target: "Order" } },
-        },
-        AuditLog: { backend: "admin" },
-      },
-      endpoints: [
-        {
-          backend: "api",
-          path: "/orders/{status}",
-          method: "GET",
-          entity: "Order",
-          pathParams: [{ name: "status", field: { entity: "Order", field: "status" } }],
-          queryParams: [{ name: "status", field: { entity: "Order", field: "status" } }],
-          joins: [{ entity: "User", type: "left", fields: ["name"] }],
-        },
-        {
-          backend: "api",
-          path: "/orders",
-          method: "POST",
-          entity: "Order",
-          requestBody: {
-            name: { field: { entity: "User", field: "name" } },
-            label: { type: "string", required: true },
-          },
-        },
-        {
-          backend: "api",
-          path: "/users",
-          method: "POST",
-          entity: "User",
-          requestBody: { useCase: { entity: "User", operation: "create" } },
-        },
-        { backend: "admin", path: "/audit-logs", method: "GET", entity: "AuditLog" },
-      ],
-    });
-    const contract = buildFrontendApiContract(config, frontend({ connectsTo: ["api"] }));
-    expect(contract.endpoints.map((endpoint) => endpoint.path)).toEqual([
-      "/orders/{status}",
-      "/orders",
-      "/users",
-    ]);
-    expect(contract.entities).not.toHaveProperty("AuditLog");
-    expect(contract.entities.Order?.fields).toHaveProperty("userId");
-    expect(contract.entities.Order?.softDelete).toBe("timestamp");
-    expect(contract.entities).toHaveProperty("User");
+  it("limits API contracts to connected declared operations and the selected authority", () => {
+    const config = targetConfig();
+    const contract = buildFrontendApiContract(
+      config,
+      frontend({
+        connectsTo: ["api"],
+        access: { mode: "mixed", backend: "api", publicRoutes: ["/"] },
+      }),
+    );
+    expect(contract.endpoints).toHaveLength(config.endpoints.length);
+    expect(contract.entities.CustomerAddress?.fields).toHaveProperty("customerId");
     expect(contract.authentication).toMatchObject({
       plugin: "better-auth",
       backend: "api",
-      roles: ["admin"],
-      rolePermissions: { admin: ["orders:read"] },
+      roles: ["admin", "viewer"],
     });
-    expect(
-      buildFrontendApiContract(config, frontend({ connectsTo: ["admin"] })).authentication,
-    ).toBe(undefined);
+    const disconnected = buildFrontendApiContract(config, frontend({ connectsTo: [] }));
+    expect(disconnected.endpoints).toEqual([]);
+    expect(disconnected.entities).toEqual({});
+    expect(disconnected.authentication).toBeUndefined();
   });
 
   it("assigns collision-safe operation names and covers generated body variants", () => {
     const endpoints = [
-      { ...orderEndpoint, operationId: "list-orders", backend: "api" },
-      { ...orderEndpoint, operationId: "list_orders", backend: "api" },
-      { ...orderEndpoint, operationId: "list orders", backend: "api" },
+      { ...orderEndpoint, operationId: "listOrders", backend: "public-api" },
+      { ...orderEndpoint, operationId: "listOrders", backend: "admin-api" },
     ];
-    const names = [...getFrontendOperationNames(endpoints).values()];
-    expect(new Set(names).size).toBe(3);
-    const unusualNames = getFrontendOperationNames([
-      { ...orderEndpoint, operationId: "---" },
-      { ...orderEndpoint, operationId: "123" },
+    expect([...getFrontendOperationNames(endpoints).values()]).toEqual([
+      "publicApiListOrders",
+      "adminApiListOrders",
     ]);
-    expect([...unusualNames.values()]).toEqual(["request", "request123"]);
     expect([
-      ...getFrontendOperationNames([{ ...orderEndpoint, operationId: "single" }]).values(),
-    ]).toEqual(["single"]);
+      ...getFrontendOperationNames([
+        { ...orderEndpoint, operationId: "listOrders", backend: "api--2-" },
+        { ...orderEndpoint, operationId: "listOrders", backend: "admin-api" },
+      ]).values(),
+    ]).toEqual(["api2ListOrders", "adminApiListOrders"]);
 
     const result = composeFrontendPlugins(
       "Commerce",
@@ -468,14 +419,6 @@ describe("frontend plugin contracts", () => {
         ...apiContract.endpoints,
         {
           ...updateEndpoint,
-          operationId: "patchByStringKey",
-          method: "PATCH" as const,
-          path: "/users/{key}",
-          pathParams: [{ name: "key", type: "string" as const, required: true }],
-          requestBody: undefined,
-        },
-        {
-          ...updateEndpoint,
           operationId: "patchOrderById",
           method: "PATCH" as const,
           entity: "Order",
@@ -487,7 +430,7 @@ describe("frontend plugin contracts", () => {
         },
         {
           ...orderEndpoint,
-          operationId: undefined,
+          operationId: "getOrdersId",
           path: "/orders/{id}",
           pathParams: [{ name: "id", type: "uuid" as const, required: true }],
           queryParams: [
@@ -599,7 +542,7 @@ describe("frontend plugin contracts", () => {
       ),
       extended,
     );
-    expect(result.success).toBe(true);
+    expect(result.success, JSON.stringify(result.diagnostics)).toBe(true);
     if (!result.success) return;
     const types = result.virtualFileSystem.readFile("apps/store-web/src/lib/api/types.ts");
     const endpoints = result.virtualFileSystem.readFile("apps/store-web/src/lib/api/endpoints.ts");
@@ -903,20 +846,7 @@ describe("frontend plugin contracts", () => {
     }
   });
 
-  it("supports legacy client-state names and covers authentication plugin boundaries", () => {
-    const legacyState = composeFrontendPlugins(
-      "Commerce",
-      frontend({ stateManagement: "context" }),
-      registryWith(
-        nextjsFrontendPlugin,
-        tailwindStylingPlugin,
-        nativeReactUiPlugin,
-        contextClientStatePlugin,
-      ),
-      { endpoints: [], entities: {}, enums: {} },
-    );
-    expect(legacyState.success).toBe(true);
-
+  it("checks authentication renderer boundaries", () => {
     expect(frontendRootShellOwnerRole(new Set())).toBeUndefined();
 
     const definition = frontend();

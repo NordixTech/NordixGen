@@ -1,4 +1,4 @@
-# Target YAML v2 scenario; the current CLI still uses the previous schema.
+# Accepted YAML v2 configuration; modular generation is not integrated yet.
 schemaVersion: 2
 name: clean-commerce
 version: 1.0.0

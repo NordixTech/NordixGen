@@ -1,4 +1,4 @@
-# Target-valid YAML v2; future Hexagonal/Onion renderers are not generation-ready.
+# Accepted YAML v2 configuration; modular generation is not integrated yet.
 schemaVersion: 2
 name: client-platform
 version: 1.0.0

@@ -1,98 +1,38 @@
 # @nordixgen/core
 
-The NordixGen core parses and validates `nordix.config.yaml`, resolves the configuration into a deterministic intermediate representation, and provides an in-memory virtual file system.
+The core parses and validates strict YAML v2 for NordixGen's fixed stack. It checks module ownership, public operation references, independent module cycles, data relationships, explicit endpoint bindings, project paths, authentication and frontend access.
 
-## Try the example
+## Configuration API
+
+```ts
+import { readFile } from "node:fs/promises";
+import { parseNordixYaml, formatDiagnostic } from "@nordixgen/core";
+
+const file = "nordix.config.yaml";
+const result = parseNordixYaml(await readFile(file, "utf8"), file);
+if (!result.success) {
+  for (const diagnostic of result.diagnostics) console.error(formatDiagnostic(diagnostic));
+} else {
+  console.log(result.config.schemaVersion); // 2
+}
+```
+
+`validateNordixConfig(input)` validates object input without invented source coordinates. `parseNordixYaml(source, filename)` attaches YAML line/column information. A successful result includes the canonical configuration and a transitional normalized endpoint view (effective authentication and pagination); it is not the complete resolved model planned for RF-05.
+
+Pass `{ requireGeneration: true }` as the third parser argument to include shared readiness checks. All modular generation is currently blocked; Clean requires integration and Hexagonal/Onion have no renderer. The CLI always includes this preflight.
+
+## Development and remaining internals
 
 From the repository root:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm --filter @nordixgen/core test
-pnpm --filter @nordixgen/core build
+pnpm typecheck
+pnpm build
+pnpm test
 pnpm generate:schema
 ```
 
-Provide your project configuration as a YAML file (for example, `nordix.config.yaml`). The schema generator writes [`nordix.schema.json`](../../nordix.schema.json) for YAML editor autocomplete.
+The editor schema is generated from the authoritative Zod definitions and a test checks exact equality with the checked-in file. IR format version 4 contains canonical applications and removes dormant deployment/Docker/AI settings. The existing virtual filesystem and concrete renderer tests remain useful low-level checks. Temporary fixed renderer views and the internal plugin composition machinery are scheduled for replacement by the resolved model and direct generation work; they are not a supported alternative v2 CLI pipeline.
 
-Database resources are named under `databases`; each backend can optionally select a resource and ORM under `persistence`. The former root-level `database` property is no longer supported, and the intermediate representation uses format version 3 for this shape change. ORM identifiers are checked against registered, compatible plugins during composition. Keep credentials and connection strings in environment configuration, never in YAML.
-
-## Use the core APIs
-
-```ts
-import { readFile } from "node:fs/promises";
-import {
-  buildIntermediateRepresentation,
-  formatDiagnostic,
-  parseNordixYaml,
-  VirtualFileSystem,
-} from "@nordixgen/core";
-
-const source = await readFile("nordix.config.yaml", "utf8");
-const result = parseNordixYaml(source);
-
-if (!result.success) {
-  for (const diagnostic of result.diagnostics) console.error(formatDiagnostic(diagnostic));
-  process.exitCode = 1;
-} else {
-  const representation = buildIntermediateRepresentation(result.config);
-  console.log(representation.entityOrder);
-
-  const output = new VirtualFileSystem();
-  output.writeFile("nordix.intermediate-representation.json", `${JSON.stringify(representation, null, 2)}\n`);
-  await output.emit("./generated");
-}
-```
-
-`parseNordixYaml` returns structured diagnostics for YAML syntax, schema, semantic, and compatibility errors. `buildIntermediateRepresentation` sorts entities by their foreign-key dependencies, reports cycles, injects generated IDs and audit fields, and normalizes object ordering. The virtual file system writes files only when their contents change.
-
-Use `composeBackendPlugins(config, backendName, registry)` to resolve the framework, architecture, and optional ORM declared by a backend. It checks that each selected plugin is registered and that its declared capability requirements match the configured database engine and provider before any plugin contributes files. ORM plugins receive a typed persistence context with the named database, architecture-resolved infrastructure and adapter paths, and the environment variable name used for credentials.
-
-The Hono framework plugin describes the pinned official `create-hono` Cloudflare Workers scaffold and runtime conventions. It consumes the selected architecture layout to generate the Worker entry point, route registration, and a health controller with imports derived from the final paths. Hono HTTP code stays in this framework plugin; architecture plugins only define semantic locations and dependency direction.
-
-## Backend generator plugins
-
-The core exposes contracts for architecture, framework, ORM, and authentication plugins, along with first-party Hono, Clean Architecture, and Drizzle integrations. Each integration implements the same public plugin contract and can be replaced by another registered implementation. A plugin declares a stable identifier/version, role, provided capabilities, and required capabilities. The compatibility resolver checks the complete selection before calling any plugin.
-
-Framework plugins resolve a `FrameworkContext` containing application/code roots, language, runtime, module system, entry points, and conventions. Architecture plugins receive that context and return an `ArchitectureLayout` with semantic file-role directories and dependency rules. Every plugin then contributes a list of relative POSIX file paths and contents. The composer normalizes paths, rejects collisions and unsafe paths, and returns a `VirtualFileSystem` only when the whole composition succeeds.
-
-```ts
-import {
-  cleanArchitecturePlugin,
-  composePlugins,
-  drizzleOrmPlugin,
-  formatDiagnostic,
-  honoFrameworkPlugin,
-  PluginRegistry,
-} from "@nordixgen/core";
-
-const registry = new PluginRegistry();
-registry.register(honoFrameworkPlugin);
-registry.register(cleanArchitecturePlugin);
-registry.register(drizzleOrmPlugin);
-
-const result = composePlugins({
-  registry,
-  selections: [
-    { pluginId: "hono", configuration: { applicationRoot: "apps/api" } },
-    { pluginId: "clean" },
-    { pluginId: "drizzle" },
-  ],
-  persistence: {
-    database: { name: "commerce-db", engine: "postgres", provider: "neon" },
-    connectionStringEnvironmentVariable: "DATABASE_URL",
-  },
-});
-
-if (!result.success) {
-  for (const diagnostic of result.diagnostics) console.error(formatDiagnostic(diagnostic));
-} else {
-  await result.virtualFileSystem.emit("./generated");
-}
-```
-
-Each backend composition requires one framework and one architecture plugin. Other roles are selected only when needed. Capability identifiers are declared by plugins (for example, `runtime:cloudflare-workers` or `orm:drizzle`); incompatible or missing required capabilities produce diagnostics before contribution begins. Every contributing plugin receives the set of capabilities available in that composition. Optional capability requirements produce warnings and let the plugin choose a fallback based on that set.
-
-The Drizzle integration currently supports TypeScript on Cloudflare Workers with PostgreSQL hosted by Neon through the Neon HTTP driver. It generates a Drizzle Kit configuration whose schema path is resolved from the selected architecture's infrastructure directory. `DATABASE_URL` is read from the environment; credentials are never embedded in generated YAML or source files. Schema and repository generation are handled by later Phase 4 issues.
-
-`cleanArchitecturePlugin` is a framework-independent strategy exported by the core. It resolves semantic directories and dependency directions from the selected framework's code root. New architecture strategies can implement the same plugin contract and be registered alongside it; core does not need to change.
+See the [contract](../../docs/configuration/YAML_V2.md) and [validation/evidence guide](../../docs/configuration/VALIDATION.md). Keep credentials in environment configuration, never YAML.

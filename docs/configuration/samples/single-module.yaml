@@ -1,4 +1,4 @@
-# YAML v2 design example; not accepted by the current CLI.
+# Accepted YAML v2 configuration; modular generation is not integrated yet.
 schemaVersion: 2
 name: notes-project
 version: 1.0.0

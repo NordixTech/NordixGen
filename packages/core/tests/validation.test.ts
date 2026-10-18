@@ -1,478 +1,401 @@
 import { describe, expect, it } from "vitest";
+import { stringify } from "yaml";
+import { generationReadiness } from "../src/configuration/readiness.js";
+import type { NordixConfig } from "../src/configuration/schema.js";
 import {
   parseNordixYaml,
-  resolvePaginationProfileReferences,
+  stringifyNordixYaml,
   validateNordixConfig,
 } from "../src/configuration/validate.js";
-import { buildIntermediateRepresentation } from "../src/intermediate-representation.js";
-import { comprehensiveYaml, createValidConfig } from "./fixtures.js";
+import { formatDiagnostic } from "../src/diagnostics.js";
+import { createValidConfig, targetConfig } from "./fixtures.js";
 
-describe("config validation", () => {
-  it("accepts a complete config and a representative YAML document", () => {
-    expect(validateNordixConfig(createValidConfig())).toMatchObject({
-      success: true,
-      diagnostics: [],
-    });
-    expect(parseNordixYaml(comprehensiveYaml).success).toBe(true);
-  });
+const diagnostics = (input: unknown) => validateNordixConfig(input).diagnostics;
+describe("YAML structure, references and descriptive diagnostics", () => {
+  it.each(["single-module", "clean-modules", "mixed-modules"])(
+    "validates the approved %s example without pretending generation is ready",
+    (name) => {
+      const config = targetConfig(name);
+      expect(validateNordixConfig(config)).toMatchObject({ success: true, diagnostics: [] });
+      expect(generationReadiness(config).length).toBeGreaterThan(0);
+      if (name === "mixed-modules")
+        expect(generationReadiness(config).map((d) => d.code)).toContain(
+          "MODULE_ARCHITECTURE_UNIMPLEMENTED",
+        );
+    },
+  );
 
-  it("keeps YAML profile references and exposes resolved pagination options", () => {
-    const config = createValidConfig();
-    const result = validateNordixConfig(config);
+  it("keeps canonical YAML round trips and effective authentication defaults", () => {
+    const config = targetConfig();
+    const result = parseNordixYaml(stringifyNordixYaml(config));
     expect(result.success).toBe(true);
     if (!result.success) return;
-    const summary = result.normalizedConfig.endpoints.find(
-      (endpoint) => endpoint.operationId === "getOrderSummary",
-    );
-    expect(summary?.pagination).toEqual({
-      strategy: "offset",
-      pageParam: "page",
-      pageSizeParam: "pageSize",
+    expect(result.config).toEqual(config);
+    expect(
+      result.normalizedConfig.endpoints.find((e) => e.operationId === "getCustomer")?.authRequired,
+    ).toBe(true);
+    expect(
+      result.normalizedConfig.endpoints.find((e) => e.operationId === "listCustomers")
+        ?.authRequired,
+    ).toBe(false);
+    expect(result.normalizedConfig.endpoints[0]?.pagination).toMatchObject({
       defaultPageSize: 20,
       maxPageSize: 80,
     });
-    expect(result.config.pagination.standard?.defaultPageSize).toBe(20);
-
-    const unpaginatedConfig = createValidConfig();
-    const unpaginatedEndpoint = unpaginatedConfig.endpoints[0];
-    if (!unpaginatedEndpoint) throw new Error("Endpoint fixture is missing.");
-    unpaginatedEndpoint.pagination = undefined;
-    const unpaginatedResult = validateNordixConfig(unpaginatedConfig);
-    expect(unpaginatedResult.success).toBe(true);
-    if (unpaginatedResult.success)
-      expect(unpaginatedResult.normalizedConfig.endpoints[0]?.pagination).toBeUndefined();
+    expect(() => stringifyNordixYaml({ secret: "never-print" })).toThrow(/schemaVersion/);
   });
 
-  it("rejects unknown profiles, invalid profile definitions, parameter collisions, and non-collection methods", () => {
-    const missing = createValidConfig();
-    const missingEndpoint = missing.endpoints[0];
-    if (!missingEndpoint) throw new Error("Endpoint fixture is missing.");
-    missingEndpoint.pagination = "missing";
-    expect(validateNordixConfig(missing).diagnostics.map(({ code }) => code)).toContain(
-      "UNKNOWN_PAGINATION_PROFILE",
-    );
-
-    const invalid = createValidConfig();
-    invalid.pagination.bad = {
-      strategy: "offset",
-      pageParam: "page",
-      pageSizeParam: "page",
-      defaultPageSize: 20,
-      maxPageSize: 10,
-    };
-    const invalidEndpoint = invalid.endpoints[0];
-    if (!invalidEndpoint) throw new Error("Endpoint fixture is missing.");
-    invalidEndpoint.pagination = "bad";
-    invalidEndpoint.method = "GET";
-    invalidEndpoint.path = "/api/orders/{orderId}";
-    expect(validateNordixConfig(invalid).diagnostics.map(({ code }) => code)).toContain(
-      "CONFIG_SCHEMA_INVALID",
-    );
-
-    const pathParameter = createValidConfig();
-    const pathEndpoint = pathParameter.endpoints[0];
-    if (!pathEndpoint) throw new Error("Endpoint fixture is missing.");
-    pathEndpoint.path = "/api/orders/{orderId}";
-    pathEndpoint.pathParams = [{ name: "orderId", type: "uuid" }];
-    expect(validateNordixConfig(pathParameter).diagnostics.map(({ code }) => code)).toContain(
-      "PAGINATION_REQUIRES_GET",
-    );
-
-    const conflict = createValidConfig();
-    const conflictEndpoint = conflict.endpoints[0];
-    if (!conflictEndpoint) throw new Error("Endpoint fixture is missing.");
-    conflictEndpoint.queryParams.push({ name: "page", type: "number" });
-    expect(validateNordixConfig(conflict).diagnostics.map(({ code }) => code)).toContain(
-      "PAGINATION_PARAMETER_CONFLICT",
-    );
-  });
-
-  it("parses named pagination profiles from YAML", () => {
-    const yaml = comprehensiveYaml
-      .replace(
-        "pagination: { strategy: offset, defaultPageSize: 20, maxPageSize: 80 }",
-        "pagination: standard",
-      )
-      .replace(
-        "endpoints:\n",
-        "pagination:\n  standard: { strategy: offset, defaultPageSize: 20, maxPageSize: 80 }\n\nendpoints:\n",
-      );
-    const result = parseNordixYaml(yaml);
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.config.pagination.standard?.defaultPageSize).toBe(20);
-  });
-
-  it("leaves an unresolved pagination reference unchanged during normalization", () => {
-    const config = createValidConfig();
-    const endpoint = config.endpoints[0];
-    if (!endpoint) throw new Error("Endpoint fixture is missing.");
-    endpoint.pagination = "missing";
-    expect(resolvePaginationProfileReferences(config).endpoints[0]?.pagination).toBe("missing");
-  });
-
-  it("parses a representative YAML document and orders its entity dependencies", () => {
-    const result = parseNordixYaml(comprehensiveYaml);
-    expect(result.success).toBe(true);
-    if (!result.success) return;
-    const entityOrder = buildIntermediateRepresentation(result.config).entityOrder;
-    expect(entityOrder.indexOf("User")).toBeLessThan(entityOrder.indexOf("Order"));
-  });
-
-  it("returns useful schema diagnostics for root and nested failures", () => {
-    const rootResult = validateNordixConfig(null);
-    expect(rootResult.success).toBe(false);
-    if (!rootResult.success) expect(rootResult.diagnostics[0]?.path).toBe("");
-    const nestedResult = validateNordixConfig({
-      ...createValidConfig(),
-      entities: { User: { fields: { name: { type: "missing" } } } },
+  it("attaches file, line and column to semantic and structural errors", () => {
+    const config = targetConfig("single-module");
+    config.backends[0].persistence.database = "missing";
+    const source = stringify(config);
+    const result = parseNordixYaml(source, "client.yaml");
+    const error = result.diagnostics.find((d) => d.code === "UNKNOWN_BACKEND_DATABASE");
+    const expectedLine =
+      source.split("\n").findIndex((line) => line.includes("database: missing")) + 1;
+    expect(error).toMatchObject({
+      path: "backends[0].persistence.database",
+      source: { file: "client.yaml", line: expectedLine },
     });
-    expect(nestedResult.success).toBe(false);
-    if (!nestedResult.success)
-      expect(
-        nestedResult.diagnostics.some((diagnostic) =>
-          diagnostic.path.includes("entities.User.fields.name"),
-        ),
-      ).toBe(true);
-  });
-
-  it("checks defaults against all supported primitive and enum field types", () => {
-    const config = createValidConfig();
-    config.entities.User.fields = {
-      email: { type: "string" },
-      stringValue: { type: "string", default: "name" },
-      numberValue: { type: "number", default: 2 },
-      booleanValue: { type: "boolean", default: false },
-      dateValue: { type: "date", default: "2026-10-07T00:00:00Z" },
-      dateNowValue: { type: "date", default: { kind: "now" } },
-      uuidValue: { type: "uuid", default: "550e8400-e29b-41d4-a716-446655440000" },
-      jsonValue: { type: "json", default: { nested: [1, true] } },
-      enumValue: { type: "enum", enumName: "OrderStatus", default: "PENDING" },
-    };
-    expect(validateNordixConfig(config).success).toBe(true);
-    config.entities.User.fields.numberValue = { type: "number", default: "2" };
-    config.entities.User.fields.dateValue = { type: "date", default: "not-a-date" };
-    config.entities.User.fields.uuidValue = { type: "uuid", default: "not-a-uuid" };
-    config.entities.User.fields.enumValue = {
-      type: "enum",
-      enumName: "OrderStatus",
-      default: "UNKNOWN",
-    };
-    expect(validateNordixConfig(config).diagnostics.map((diagnostic) => diagnostic.code)).toContain(
-      "INVALID_FIELD_DEFAULT",
+    expect(formatDiagnostic(error)).toContain(`client.yaml:${expectedLine}:`);
+    const structure = parseNordixYaml("schemaVersion: 1\nname: sample\n", "version.yaml");
+    expect(structure.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "CONFIG_VERSION_UNSUPPORTED",
+        source: { file: "version.yaml", line: 1, column: 16 },
+      }),
     );
+    expect(diagnostics(config).every((d) => d.source === undefined)).toBe(true);
   });
 
-  it("reports unknown enums and invalid enum defaults", () => {
-    const config = createValidConfig();
-    config.entities.User.fields.role = { type: "enum", enumName: "Missing", default: "ADMIN" };
-    const result = validateNordixConfig(config);
+  it.each([
+    "name: broken\nversion: [\n",
+    "name: duplicate\nname: private-secret-value\n",
+    "? [complex, key]\n: value\n",
+    "schemaVersion: 2\n<<: { name: merged }\n",
+    "schemaVersion: 2\nname: !private secret-value\n",
+    "schemaVersion: 2\nentities: &recursive { Example: *recursive }\n",
+  ])("rejects malformed/unsafe YAML without exposing source values", (source) => {
+    const result = parseNordixYaml(source, "invalid.yaml");
     expect(result.success).toBe(false);
-    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain("UNKNOWN_ENUM");
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics[0]?.source).toMatchObject({ file: "invalid.yaml" });
+    expect(JSON.stringify(result.diagnostics)).not.toContain("private-secret-value");
+    expect(JSON.stringify(result.diagnostics)).not.toContain("secret-value");
   });
 
-  it("validates relation targets, member collisions, nullable deletes, and many-to-many keys", () => {
-    const config = createValidConfig();
-    config.entities.Order.fields.customer = { type: "string" };
-    config.entities.Order.relations = {
-      customer: { type: "many-to-one", target: "Missing", onDelete: "set-null", required: true },
-      labels: { type: "many-to-many", target: "User", foreignKey: "user_id" },
-    };
-    const codes = validateNordixConfig(config).diagnostics.map((diagnostic) => diagnostic.code);
-    expect(codes).toEqual(
-      expect.arrayContaining([
-        "UNKNOWN_RELATION_TARGET",
-        "DUPLICATE_ENTITY_MEMBER",
-        "INVALID_SET_NULL_RELATION",
-        "INVALID_MANY_TO_MANY_FOREIGN_KEY",
-      ]),
+  it("rejects cyclic programmatic input and bounded alias expansion", () => {
+    const input: Record<string, unknown> = {};
+    input.self = input;
+    expect(diagnostics(input)).toContainEqual(
+      expect.objectContaining({ code: "CONFIG_DATA_CYCLE", path: "self" }),
     );
+    const aliases =
+      "a: &a [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\nb: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a, *a]\nc: [*b, *b, *b, *b, *b, *b, *b, *b, *b, *b]\n";
+    expect(parseNordixYaml(aliases).diagnostics[0]?.code).toBe("YAML_CONVERSION_ERROR");
   });
 
-  it("rejects fields reserved for generated identifiers and audit metadata", () => {
-    const config = createValidConfig();
-    config.entities.User.fields.id = { type: "string" };
-    config.entities.User.fields.createdAt = { type: "date" };
-    config.entities.User.fields.deletedAt = { type: "date", required: false };
-    const diagnostics = validateNordixConfig(config).diagnostics;
-    expect(
-      diagnostics.filter((diagnostic) => diagnostic.code === "RESERVED_GENERATED_FIELD"),
-    ).toHaveLength(3);
+  it("accepts ordinary acyclic aliases", () => {
+    const source = stringify(targetConfig("single-module")).replace(
+      "primary: {}",
+      "primary: &resource {}\n  secondary: *resource",
+    );
+    expect(parseNordixYaml(source).success).toBe(true);
   });
 
-  it("rejects duplicate app names and paths, and unsafe relative paths", () => {
-    const duplicateConfig = createValidConfig();
-    const duplicateFrontend = duplicateConfig.frontends[0] as { name: string; path: string };
-    duplicateFrontend.name = "core-api";
-    duplicateFrontend.path = "apps/api-core";
-    const duplicateCodes = validateNordixConfig(duplicateConfig).diagnostics.map(
-      (diagnostic) => diagnostic.code,
-    );
-    expect(duplicateCodes).toContain("DUPLICATE_APP_NAME");
-    expect(duplicateCodes).toContain("DUPLICATE_APP_PATH");
-
-    const unsafeConfig = createValidConfig();
-    (unsafeConfig.frontends[0] as { path: string }).path = "../outside";
-    expect(
-      validateNordixConfig(unsafeConfig).diagnostics.map((diagnostic) => diagnostic.code),
-    ).toContain("UNSAFE_APP_PATH");
-  });
-
-  it("validates repository and organization declarations while allowing flexible topology", () => {
-    const flexible = createValidConfig();
-    const flexibleFrontend = flexible.frontends[0];
-    const flexibleRepository = flexible.repositories[0];
-    if (!flexibleFrontend || !flexibleRepository) throw new Error("Fixture is incomplete.");
-    flexibleFrontend.connectsTo = ["core-api", "worker-notifications"];
-    flexibleRepository.path = "repos/commerce";
-    flexible.repositories.push({ name: "notifications", path: "repos/notifications" });
-    flexible.frontends.push({
-      name: "standalone-web",
-      framework: "nextjs",
-      path: ".",
-      repository: "commerce",
-      connectsTo: [],
-    });
-    flexible.backends.push({
-      name: "worker-notifications",
-      framework: "hono",
-      path: "apps/notifications",
-      repository: "commerce",
-    });
-    expect(validateNordixConfig(flexible).success).toBe(true);
-
-    const rootRepository = createValidConfig();
-    rootRepository.repositories.push({ name: "nested-repo", path: "packages/nested" });
-    expect(validateNordixConfig(rootRepository).diagnostics.map((item) => item.code)).toContain(
-      "NESTED_REPOSITORY_PATH",
-    );
-
-    const invalid = createValidConfig();
-    invalid.organizations.push({ name: "nordix", provider: "github", handle: "NordixTech" });
-    const invalidRepository = invalid.repositories[0];
-    if (!invalidRepository) throw new Error("Fixture is incomplete.");
-    invalidRepository.path = "repos/commerce";
-    invalid.repositories.push(
-      { name: "commerce", path: "repos/commerce", organization: "missing" },
-      { name: "nested", path: "repos/commerce/nested" },
-      { name: "remote-without-org", path: "repos/remote", createRemote: true },
-    );
-    invalid.frontends.push({
-      name: "store-web",
-      framework: "nextjs",
-      path: "../outside",
-      repository: "missing-repository",
-    });
-    const codes = validateNordixConfig(invalid).diagnostics.map((item) => item.code);
-    expect(codes).toEqual(
-      expect.arrayContaining([
-        "DUPLICATE_ORGANIZATION",
-        "DUPLICATE_REPOSITORY",
-        "DUPLICATE_REPOSITORY_PATH",
-        "NESTED_REPOSITORY_PATH",
-        "UNKNOWN_REPOSITORY_ORGANIZATION",
-        "REMOTE_REPOSITORY_WITHOUT_ORGANIZATION",
-        "UNKNOWN_APP_REPOSITORY",
-        "DUPLICATE_APP_NAME",
-        "UNSAFE_APP_PATH",
-      ]),
-    );
-  });
-
-  it("checks backend ownership for entities, relations, endpoints, and joins", () => {
-    const config = createValidConfig();
-    config.entities.OrderItem.backend = "other-api";
-    const endpoint = config.endpoints[0];
-    if (!endpoint) throw new Error("Fixture is incomplete.");
-    endpoint.backend = "unknown-api";
-    const codes = validateNordixConfig(config).diagnostics.map((item) => item.code);
-    expect(codes).toEqual(
-      expect.arrayContaining([
-        "CROSS_BACKEND_RELATION",
-        "UNKNOWN_ENDPOINT_BACKEND",
-        "ENDPOINT_ENTITY_BACKEND_MISMATCH",
-        "CROSS_BACKEND_JOIN",
-      ]),
-    );
-  });
-
-  it("supports the singular backend form when resolving entity ownership", () => {
-    const result = validateNordixConfig({
-      name: "single-backend",
-      version: "1.0.0",
-      repositories: [{ name: "app", path: "." }],
-      backend: { framework: "hono", path: "apps/api", repository: "app" },
-      entities: { User: { backend: "backend" } },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("validates endpoint entities, roles, duplicate routes, join projections, and enum parameters", () => {
-    const config = createValidConfig();
-    const originalEndpoint = config.endpoints[0];
-    if (!originalEndpoint) throw new Error("Fixture is incomplete.");
-    originalEndpoint.path = "/api/orders/summary/{status}";
-    originalEndpoint.pathParams = [{ name: "status", field: { entity: "Order", field: "status" } }];
-    config.endpoints.push({
-      path: "/api/orders/summary/{status}",
-      method: "GET",
-      backend: "core-api",
-      entity: "Missing",
-      roles: ["owner"],
-      permissions: ["billing:read"],
-      pathParams: [{ name: "status", type: "enum", enumName: "MissingEnum" }],
-      joins: [
-        { entity: "MissingJoin", type: "left", fields: ["ignored"] },
-        { entity: "User", type: "inner", fields: ["unknownField", "createdAt", "id"] },
-      ],
-    });
-    const codes = validateNordixConfig(config).diagnostics.map((diagnostic) => diagnostic.code);
-    expect(codes).toEqual(
-      expect.arrayContaining([
-        "DUPLICATE_ENDPOINT",
-        "UNKNOWN_ENDPOINT_ENTITY",
-        "UNKNOWN_ENDPOINT_ROLE",
-        "UNKNOWN_JOIN_ENTITY",
-        "UNKNOWN_ENDPOINT_PERMISSION",
-        "UNKNOWN_JOIN_FIELD",
-        "UNKNOWN_PARAMETER_ENUM",
-      ]),
-    );
-  });
-
-  it("validates a missing parameter enum name and rejects YAML syntax or duplicate-key errors", () => {
-    const config = createValidConfig();
-    (config.endpoints[0] as { queryParams: unknown[] }).queryParams = [
-      { name: "status", type: "enum", required: false },
-    ];
-    expect(validateNordixConfig(config).diagnostics.map((diagnostic) => diagnostic.code)).toContain(
-      "UNKNOWN_PARAMETER_ENUM",
-    );
-    expect(parseNordixYaml("name: broken\nversion: [\n").diagnostics[0]?.code).toBe(
-      "YAML_SYNTAX_ERROR",
-    );
-    expect(parseNordixYaml("a: [").diagnostics[0]?.path).toBe("line 1, column 5");
-    expect(parseNordixYaml("name: sample\nname: duplicate\n").diagnostics[0]?.code).toBe(
-      "YAML_SYNTAX_ERROR",
-    );
-  });
-
-  it("checks endpoint role and permission declarations against unauthenticated backends", () => {
-    const config = createValidConfig();
-    config.backends = [
-      {
-        name: "core-api",
-        framework: "hono",
-        path: "apps/api",
-        repository: "commerce",
-        auth: { type: "none" },
+  const cases: [string, (config: NordixConfig) => void, string][] = [
+    [
+      "missing owner",
+      (c) => {
+        c.backends[0].modules.customers.entities = ["CustomerAddress"];
       },
-    ];
-    const endpoint = config.endpoints[0] as {
-      backend: string;
-      roles: string[];
-      permissions: string[];
-    };
-    endpoint.backend = "core-api";
-    endpoint.roles = ["admin"];
-    endpoint.permissions = ["orders:read"];
-    expect(validateNordixConfig(config).diagnostics.map((item) => item.code)).toEqual(
-      expect.arrayContaining(["UNKNOWN_ENDPOINT_ROLE", "UNKNOWN_ENDPOINT_PERMISSION"]),
+      "ENTITY_OWNER_MISSING",
+    ],
+    [
+      "duplicate owners",
+      (c) => {
+        c.backends[0].modules.billing.entities.push("Customer");
+      },
+      "ENTITY_OWNER_DUPLICATE",
+    ],
+    [
+      "unknown module entity",
+      (c) => {
+        c.backends[0].modules.billing.entities.push("Missing");
+      },
+      "UNKNOWN_MODULE_ENTITY",
+    ],
+    [
+      "unknown producer",
+      (c) => {
+        c.backends[0].modules.billing.imports = { ghost: ["getCustomer"] };
+      },
+      "MODULE_IMPORT_UNKNOWN",
+    ],
+    [
+      "private operation",
+      (c) => {
+        c.backends[0].modules.customers.exports = [];
+      },
+      "MODULE_IMPORT_NOT_EXPORTED",
+    ],
+    [
+      "unknown export",
+      (c) => {
+        c.backends[0].modules.customers.exports = ["missingOperation"];
+      },
+      "MODULE_EXPORT_UNKNOWN",
+    ],
+    [
+      "foreign export",
+      (c) => {
+        c.backends[0].modules.customers.exports = ["listInvoices"];
+      },
+      "MODULE_EXPORT_OWNER_MISMATCH",
+    ],
+    [
+      "self import",
+      (c) => {
+        c.backends[0].modules.customers.imports = { customers: ["getCustomer"] };
+      },
+      "MODULE_IMPORT_SELF",
+    ],
+    [
+      "cross-module relation",
+      (c) => {
+        c.entities.Invoice.relations.customer = {
+          type: "many-to-one",
+          target: "Customer",
+          required: false,
+        };
+      },
+      "CROSS_MODULE_RELATION",
+    ],
+    [
+      "cross-module join",
+      (c) => {
+        c.endpoints.find((e) => e.operationId === "listInvoices").joins = [
+          { entity: "Customer", type: "left", fields: ["name"] },
+        ];
+      },
+      "CROSS_MODULE_JOIN",
+    ],
+    [
+      "cross-module input",
+      (c) => {
+        c.endpoints.find((e) => e.operationId === "listInvoices").queryParams = [
+          { name: "customer", required: false, field: { entity: "Customer", field: "name" } },
+        ];
+      },
+      "CROSS_MODULE_FIELD_REFERENCE",
+    ],
+    [
+      "duplicate operation",
+      (c) => {
+        c.endpoints[1].operationId = c.endpoints[0].operationId;
+      },
+      "DUPLICATE_OPERATION_ID",
+    ],
+    [
+      "duplicate route shape",
+      (c) => {
+        c.endpoints.push({
+          ...c.endpoints[1],
+          operationId: "otherLookup",
+          path: "/api/customers/{other}",
+          pathParams: [{ name: "other", required: true, type: "uuid" }],
+        });
+      },
+      "DUPLICATE_ENDPOINT",
+    ],
+    [
+      "missing pagination",
+      (c) => {
+        c.endpoints[0].pagination = "unknown";
+      },
+      "UNKNOWN_PAGINATION_PROFILE",
+    ],
+    [
+      "page input collision",
+      (c) => {
+        c.endpoints[0].queryParams.push({ name: "page", type: "number", required: false });
+      },
+      "PAGINATION_PARAMETER_CONFLICT",
+    ],
+    [
+      "invalid page limits",
+      (c) => {
+        c.pagination.standard.maxPageSize = 1;
+      },
+      "PAGINATION_PROFILE_INVALID",
+    ],
+    [
+      "unguarded write",
+      (c) => {
+        const e = c.endpoints.find((e) => e.operationId === "deleteCustomer");
+        e.path = "/api/customers";
+        e.pathParams = [];
+      },
+      "MUTATION_GUARD_REQUIRED",
+    ],
+    [
+      "invalid body method",
+      (c) => {
+        c.endpoints[0].requestBody = { title: { type: "string", required: true, unique: false } };
+      },
+      "REQUEST_BODY_METHOD_INVALID",
+    ],
+    [
+      "ambiguous parameter type",
+      (c) => {
+        c.endpoints[1].pathParams[0].type = "uuid";
+      },
+      "PARAMETER_TYPE_INVALID",
+    ],
+    [
+      "incorrect placeholder",
+      (c) => {
+        c.endpoints[1].pathParams[0].name = "different";
+      },
+      "ENDPOINT_PATH_PARAMETERS_INVALID",
+    ],
+    [
+      "unknown field",
+      (c) => {
+        c.endpoints[1].pathParams[0].field.field = "missing";
+      },
+      "UNKNOWN_ENDPOINT_FIELD_REFERENCE",
+    ],
+    [
+      "unknown main entity",
+      (c) => {
+        c.endpoints[1].entity = "Missing";
+      },
+      "UNKNOWN_ENDPOINT_ENTITY",
+    ],
+    [
+      "reserved route",
+      (c) => {
+        c.endpoints[0].path = "/api/auth/sign-in";
+      },
+      "PLATFORM_ROUTE_RESERVED",
+    ],
+    [
+      "generated field override",
+      (c) => {
+        c.entities.Customer.fields.id = { type: "uuid", required: true, unique: true };
+      },
+      "RESERVED_GENERATED_FIELD",
+    ],
+    [
+      "invalid enum default",
+      (c) => {
+        c.entities.Customer.fields.status = {
+          type: "enum",
+          enumName: "Status",
+          required: true,
+          unique: false,
+          default: "BAD",
+        };
+        c.enums.Status = ["GOOD"];
+      },
+      "INVALID_FIELD_DEFAULT",
+    ],
+    [
+      "incompatible numeric constraints",
+      (c) => {
+        c.entities.Invoice.fields.total = {
+          type: "number",
+          format: "integer",
+          precision: 2,
+          scale: 3,
+          required: true,
+          unique: false,
+        };
+      },
+      "FIELD_CONSTRAINT_INVALID",
+    ],
+    [
+      "invalid required null",
+      (c) => {
+        c.entities.Customer.fields.name.default = null;
+      },
+      "INVALID_FIELD_DEFAULT",
+    ],
+    [
+      "missing inverse",
+      (c) => {
+        c.entities.CustomerAddress.relations = {};
+      },
+      "RELATION_INVERSE_INVALID",
+    ],
+    [
+      "unsafe required relation",
+      (c) => {
+        c.entities.CustomerAddress.relations.customer.onDelete = "set-null";
+      },
+      "INVALID_SET_NULL_RELATION",
+    ],
+  ];
+  it.each(cases)("rejects %s with a specific actionable diagnostic", (_name, mutate, code) => {
+    const config = targetConfig();
+    mutate(config);
+    const errors = diagnostics(config);
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        code,
+        severity: "error",
+        path: expect.any(String),
+        message: expect.stringMatching(/\w+.*[.!]/),
+      }),
     );
   });
-  it("validates endpoint field bindings, operation reuse, pagination, and body references", () => {
-    const config = createValidConfig();
-    const summary = config.endpoints[0];
-    if (!summary) throw new Error("Fixture endpoint is missing.");
-    summary.operationId = "readOrders";
-    summary.pagination = "standard";
-    summary.queryParams = [
-      { name: "badType", field: { entity: "Order", field: "status" }, type: "string" },
-      { name: "missing", field: { entity: "Order", field: "missing" } },
-      { name: "orderDeleted", field: { entity: "Order", field: "isDeleted" } },
-      { name: "userDeletedAt", field: { entity: "User", field: "deletedAt" } },
-      { name: "userUpdatedAt", field: { entity: "User", field: "updatedAt" } },
-      { name: "wrongEnum", field: { entity: "Order", field: "status" }, enumName: "UserRole" },
-      { name: "externalValue", field: { entity: "External", field: "value" } },
-      { name: "missingEntity", field: { entity: "Missing", field: "value" } },
-    ];
+
+  it("reports actual module cycles separately from entity dependencies", () => {
+    const config = targetConfig();
+    config.backends[0].modules.billing.exports = ["listInvoices"];
+    config.backends[0].modules.customers.imports = { billing: ["listInvoices"] };
+    expect(diagnostics(config)).toContainEqual(
+      expect.objectContaining({
+        code: "MODULE_DEPENDENCY_CYCLE",
+        message: expect.stringContaining("billing -> customers -> billing"),
+      }),
+    );
+  });
+
+  it("permits identical HTTP methods/paths on separate backends", () => {
+    const config = targetConfig("single-module");
     config.backends.push({
-      name: "other-api",
-      framework: "hono",
-      repository: "commerce",
-      path: "apps/other-api",
+      ...structuredClone(config.backends[0]),
+      name: "second",
+      path: "apps/second",
+      persistence: undefined,
+      modules: { other: { architecture: "clean", entities: ["Other"], exports: [], imports: {} } },
     });
-    config.entities.External = { backend: "other-api", fields: { value: { type: "string" } } };
+    config.entities.Other = { ...structuredClone(config.entities.Note), backend: "second" };
     config.endpoints.push({
-      backend: "core-api",
-      path: "/api/orders/{orderId}",
-      method: "GET",
-      operationId: "readOrders",
-      entity: "Order",
-      authRequired: false,
-      roles: [],
-      permissions: [],
+      ...structuredClone(config.endpoints[0]),
+      backend: "second",
+      entity: "Other",
+      operationId: "listOther",
       queryParams: [],
-      pathParams: [{ name: "orderId", field: { entity: "Order", field: "id" } }],
-      joins: [],
     });
-    config.endpoints.push({
-      backend: "core-api",
-      path: "/api/orders/custom",
-      method: "POST",
-      entity: "Order",
-      authRequired: false,
-      roles: [],
-      permissions: [],
-      queryParams: [{ name: "page", type: "number" }],
-      pathParams: [],
-      pagination: "standard",
-      requestBody: { useCase: { entity: "User", operation: "update" } },
-      joins: [],
-    });
-    config.endpoints.push({
-      backend: "core-api",
-      path: "/api/orders/body",
-      method: "PATCH",
-      entity: "Order",
-      authRequired: false,
-      roles: [],
-      permissions: [],
-      queryParams: [],
-      pathParams: [],
-      requestBody: {
-        orderStatus: { field: { entity: "Order", field: "status" } },
-        unknownField: { field: { entity: "Order", field: "unknown" } },
-        externalValue: { field: { entity: "External", field: "value" } },
-        freeText: { type: "string" },
-      },
-      joins: [],
-    });
-    config.endpoints.push({
-      backend: "core-api",
-      path: "/api/orders/create-body-mismatch",
-      method: "PATCH",
-      entity: "Order",
-      authRequired: false,
-      roles: [],
-      permissions: [],
-      queryParams: [],
-      pathParams: [],
-      requestBody: { useCase: { entity: "Order", operation: "create" } },
-      joins: [],
-    });
-    const codes = validateNordixConfig(config).diagnostics.map((diagnostic) => diagnostic.code);
-    expect(codes).toEqual(
+    expect(validateNordixConfig(config).success).toBe(true);
+  });
+
+  it("accumulates independent failures in deterministic order", () => {
+    const config = targetConfig();
+    config.backends[0].persistence.database = "unknown";
+    config.frontends[0].connectsTo.push("ghost");
+    config.entities.Invoice.fields.total.default = "not-a-number";
+    const first = diagnostics(config);
+    expect(first.map((d) => d.code)).toEqual(
       expect.arrayContaining([
-        "DUPLICATE_OPERATION_ID",
-        "ENDPOINT_FIELD_TYPE_MISMATCH",
-        "UNKNOWN_ENDPOINT_FIELD_REFERENCE",
-        "PAGINATION_REQUIRES_GET",
-        "PAGINATION_PARAMETER_CONFLICT",
-        "CROSS_BACKEND_FIELD_REFERENCE",
-        "ENDPOINT_FIELD_ENUM_MISMATCH",
-        "UNKNOWN_REQUEST_BODY_ENTITY",
-        "REQUEST_BODY_OPERATION_METHOD_MISMATCH",
+        "UNKNOWN_BACKEND_DATABASE",
+        "FRONTEND_BACKEND_UNKNOWN",
+        "INVALID_FIELD_DEFAULT",
       ]),
     );
+    expect(diagnostics(config)).toEqual(first);
   });
 });
