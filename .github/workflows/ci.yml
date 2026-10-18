@@ -92,5 +92,6 @@ jobs:
           path: |
             tmp/acceptance/*/report.json
             tmp/acceptance/*/behaviors.json
+            tmp/acceptance/*/operation-artifacts.json
             tmp/acceptance/*/*.png
             tmp/acceptance/*/*.log

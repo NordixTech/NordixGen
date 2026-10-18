@@ -406,7 +406,7 @@ describe("declared business routes in generated Hono applications", () => {
         files[
           `${root}/modules/business/infrastructure/adapters/PrivateRecord.drizzle.repository.ts`
         ],
-      ).toBeDefined();
+      ).toBeUndefined();
       const factory =
         files[`${root}/modules/business/infrastructure/adapters/create-route-dependencies.ts`];
       expect(factory).not.toContain("entities:");

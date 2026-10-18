@@ -40,18 +40,6 @@ interface DatabaseTools {
   runMigrations(options: { directory: string }): Promise<void>;
   seedDatabase(options: { seed: number }): Promise<Record<string, unknown[]>>;
 }
-interface InvoiceRepository {
-  findById(id: string): Promise<Record<string, unknown> | null>;
-  findMany(filter?: Record<string, unknown>): Promise<Record<string, unknown>[]>;
-  findPage(
-    filter: Record<string, unknown>,
-    offset: number,
-    limit: number,
-  ): Promise<{ items: Record<string, unknown>[]; total: number }>;
-  create(input: Record<string, unknown>): Promise<Record<string, unknown>>;
-  update(id: string, changes: Record<string, unknown>): Promise<Record<string, unknown> | null>;
-  delete(id: string): Promise<void>;
-}
 // Required in CI. Local opt-in always requires this explicitly named, isolated database.
 describe
   .skipIf(!databaseUrl)
@@ -300,31 +288,36 @@ describe
       expect(conflict.status).toBe(409);
       expect(await conflict.text()).not.toMatch(/insert into|foreign key|postgresql:\/\//i);
     });
-    it("executes owned repository ports against the same physical database", async () => {
+    it("executes declared operation ports against the physical database", async () => {
       const createDb = load(`${root}/platform/database/drizzle-database.ts`)
         .createDrizzleDatabase as (url: string) => unknown;
-      const Repository = load(
-        `${root}/modules/billing/infrastructure/adapters/Invoice.drizzle.repository.ts`,
-      ).DrizzleInvoiceRepository as new (
+      interface QueryPort {
+        execute(input: {
+          request: Record<string, unknown>;
+          filters: unknown[];
+          pagination?: { page: number; pageSize: number };
+        }): Promise<Row[]>;
+      }
+      const Adapter = load(
+        `${root}/modules/billing/infrastructure/adapters/CreateInvoice.drizzle.query.adapter.ts`,
+      ).DrizzleCreateInvoiceQueryAdapter as new (
         db: unknown,
-      ) => InvoiceRepository;
-      const repository = new Repository(createDb(databaseUrl as string));
-      const created = await repository.create({
-        customerId: "11111111-1111-4111-8111-111111111111",
-        total: "2.50",
-        note: "Repository contract",
+      ) => QueryPort;
+      const created = await new Adapter(createDb(databaseUrl as string)).execute({
+        request: {
+          customerId: "11111111-1111-4111-8111-111111111111",
+          total: 2.5,
+          note: "Declared port contract",
+        },
+        filters: [],
       });
-      const id = String(created.id);
-      expect(created.total).toBe(2.5);
-      expect(created.discount).toBeNull();
-      expect((await repository.update(id, { discount: "1.25" }))?.discount).toBe(1.25);
-      expect((await repository.findMany({ id })).map((row) => row.id)).toEqual([id]);
-      const page = await repository.findPage({ id }, 0, 1);
-      expect(page.total).toBe(1);
-      expect(page.items[0].id).toBe(id);
-      await repository.delete(id);
-      expect(await repository.findById(id)).toBeNull();
-      expect((await repository.findPage({ id }, 0, 1)).total).toBe(0);
+      expect(created[0].entity.total).toBe(2.5);
+      expect(created[0].entity.discount).toBeNull();
+      const id = String(created[0].entity.id);
+      const stored = await sql("SELECT total,discount FROM invoice WHERE id=$1", [id]);
+      expect(Number(stored[0].total)).toBe(2.5);
+      expect(stored[0].discount).toBeNull();
+      expect((await request(`/api/invoices/${id}`, "DELETE")).status).toBe(200);
       expect((await sql("SELECT is_deleted FROM invoice WHERE id=$1", [id]))[0].is_deleted).toBe(
         true,
       );

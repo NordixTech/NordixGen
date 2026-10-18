@@ -1,5 +1,4 @@
 import { posix } from "node:path";
-import type { FieldDefinition } from "../../configuration/schema.js";
 import type { ResolvedField, ResolvedInput } from "../../project/types.js";
 import type { BackendRenderContext, DomainModelContext, GeneratedFile } from "../contracts.js";
 
@@ -13,12 +12,7 @@ const JSON_SCHEMA = [
   "const JsonValueSchema:z.ZodType<JsonValue>=z.lazy(()=>z.union([z.string(),z.number().finite(),z.boolean(),z.null(),z.array(JsonValueSchema),z.record(JsonValueSchema)]));",
 ];
 
-function fieldSchema(
-  field: ResolvedField,
-  model: DomainModelContext,
-  applyDefaults = true,
-  transport = false,
-): string {
+function fieldSchema(field: ResolvedField, transport = false): string {
   let schema: string;
   switch (field.type) {
     case "string":
@@ -51,24 +45,15 @@ function fieldSchema(
     }
   }
   if (field.required === false) schema += ".nullable()";
-  if (!applyDefaults) return field.required === false ? `${schema}.default(null)` : schema;
-  if (field.type === "date" && field.defaultValue.kind === "clock") return `${schema}.optional()`;
-  if (field.default !== undefined) {
-    if (field.type === "date" && field.default !== null && !transport) {
-      return `${schema}.default(() => new Date(${JSON.stringify(field.default)}))`;
-    }
-    return `${schema}.default(${JSON.stringify(field.default)})`;
-  }
-  return field.required === false ? `${schema}.optional()` : schema;
+  return field.required === false ? `${schema}.default(null)` : schema;
 }
 
 function inputSchema(
   input: ResolvedInput,
-  model: DomainModelContext,
   transport: "parameter" | "body" | false = false,
 ): string {
   const definition = { ...input.definition, required: true, default: undefined } as ResolvedField;
-  let schema = fieldSchema(definition, model, false, Boolean(transport));
+  let schema = fieldSchema(definition, Boolean(transport));
   if (transport === "parameter") {
     if (definition.type === "number")
       schema = `z.preprocess(value => typeof value === "string" && value.trim() !== "" ? Number(value) : Number.NaN, ${schema})`;
@@ -92,133 +77,18 @@ function inputSchema(
   return `${schema}.optional()`;
 }
 
-function objectShape(
-  fields: Readonly<Record<string, ResolvedField>>,
-  model: DomainModelContext,
-  excluded: ReadonlySet<string> = new Set(),
-  applyDefaults = true,
-): string[] {
-  return Object.entries(fields)
-    .filter(([name]) => !excluded.has(name))
-    .map(
-      ([name, field]) => `  ${JSON.stringify(name)}: ${fieldSchema(field, model, applyDefaults)},`,
-    );
-}
-
-function entityDtoFile(
-  name: string,
-  entity: DomainModelContext["entities"][string],
-  model: DomainModelContext,
-): string {
-  const generated = new Set(entity.generatedFields);
-  const declaredFields = entity.fields;
-  const fields = objectShape(declaredFields, model, new Set(), false);
-  const createFields = objectShape(declaredFields, model, generated);
-  const filterFields = Object.entries(declaredFields)
-    .filter(([name]) => !generated.has(name))
-    .map(
-      ([name, field]) =>
-        `  ${JSON.stringify(name)}: ${fieldSchema({ ...field, required: true, default: undefined } as ResolvedField, model)}.optional(),`,
-    );
+function entityResponseFile(name: string, entity: DomainModelContext["entities"][string]): string {
   return [
     'import { z } from "zod";',
     ...JSON_SCHEMA,
-    "",
-    `export const Create${name}Schema = z.object({`,
-    ...createFields,
-    "});",
-    `export type Create${name}Input = z.infer<typeof Create${name}Schema>;`,
-    "",
-    `export const Update${name}Schema = Create${name}Schema.partial().refine((value) => Object.keys(value).length > 0, { message: "At least one field must be updated." });`,
-    `export type Update${name}Input = z.infer<typeof Update${name}Schema>;`,
-    "",
     `export const ${name}ResponseSchema = z.object({`,
-    ...fields,
+    ...Object.entries(entity.fields).map(
+      ([name, field]) => `  ${JSON.stringify(name)}: ${fieldSchema(field)},`,
+    ),
     "});",
     `export type ${name}Response = z.infer<typeof ${name}ResponseSchema>;`,
     "",
-    `export const ${name}IdSchema = z.string().uuid();`,
-    `export const Update${name}RequestSchema = z.object({ id: ${name}IdSchema, changes: Update${name}Schema });`,
-    `export const List${name}InputSchema = z.object({`,
-    "  filter: z.object({",
-    ...filterFields,
-    "  }).partial().default({}),",
-    "});",
-    `export type List${name}Input = z.infer<typeof List${name}InputSchema>;`,
-    "",
   ].join("\n");
-}
-
-function crudUseCaseFiles(
-  name: string,
-  useCaseDirectory: string,
-  dtoDirectory: string,
-  portDirectory: string,
-  dynamicDefaults: readonly string[],
-  timestamps: { createdAt: boolean; updatedAt: boolean },
-): GeneratedFile[] {
-  const folder = posix.join(useCaseDirectory, name);
-  const portPath = posix.join(portDirectory, `${name}.repository.ts`);
-  const dtoPath = posix.join(dtoDirectory, `${name}.dto.ts`);
-  const repositoryImport = (file: string) => importPath(file, portPath);
-  const dtoImport = (file: string) => importPath(file, dtoPath);
-  const generated: GeneratedFile[] = [];
-  const definitions = [
-    {
-      operation: "Create",
-      filename: "create",
-      body: `const parsed = Create${name}Schema.parse(input);\n    const entity = await this.repository.create({ ...parsed${dynamicDefaults.map((field) => `, ${field}: parsed.${field} ?? this.clock.now()`).join("")}${timestamps.createdAt ? ", createdAt: this.clock.now()" : ""}${timestamps.updatedAt ? ", updatedAt: this.clock.now()" : ""} });\n    return ${name}ResponseSchema.parse(entity);`,
-      signature: `input: unknown): Promise<${name}Response>`,
-      imports: `import { Create${name}Schema, ${name}ResponseSchema } from "${dtoImport(posix.join(folder, "create.ts"))}";\nimport type { ${name}Response } from "${dtoImport(posix.join(folder, "create.ts"))}";${dynamicDefaults.length > 0 || timestamps.createdAt || timestamps.updatedAt ? `\nimport type { Clock } from "${importPath(posix.join(folder, "create.ts"), posix.join(portDirectory, "clock.port.ts"))}";` : ""}`,
-    },
-    {
-      operation: "Get",
-      filename: "get",
-      body: `const id = ${name}IdSchema.parse(input);\n    const entity = await this.repository.findById(id);\n    return entity === null ? null : ${name}ResponseSchema.parse(entity);`,
-      signature: `input: unknown): Promise<${name}Response | null>`,
-      imports: `import { ${name}IdSchema, ${name}ResponseSchema } from "${dtoImport(posix.join(folder, "get.ts"))}";\nimport type { ${name}Response } from "${dtoImport(posix.join(folder, "get.ts"))}";`,
-    },
-    {
-      operation: "List",
-      filename: "list",
-      body: `const { filter } = List${name}InputSchema.parse(input);\n    const result = await this.repository.findMany(filter);\n    return result.map((entity) => ${name}ResponseSchema.parse(entity));`,
-      signature: `input: unknown): Promise<readonly ${name}Response[]>`,
-      imports: `import { List${name}InputSchema, ${name}ResponseSchema } from "${dtoImport(posix.join(folder, "list.ts"))}";\nimport type { ${name}Response } from "${dtoImport(posix.join(folder, "list.ts"))}";`,
-    },
-    {
-      operation: "Update",
-      filename: "update",
-      body: `const { id, changes } = Update${name}RequestSchema.parse(input);\n    const entity = await this.repository.update(id, changes);\n    return entity === null ? null : ${name}ResponseSchema.parse(entity);`,
-      signature: `input: unknown): Promise<${name}Response | null>`,
-      imports: `import { Update${name}RequestSchema, ${name}ResponseSchema } from "${dtoImport(posix.join(folder, "update.ts"))}";\nimport type { ${name}Response } from "${dtoImport(posix.join(folder, "update.ts"))}";`,
-    },
-    {
-      operation: "Delete",
-      filename: "delete",
-      body: `const id = ${name}IdSchema.parse(input);\n    await this.repository.delete(id);`,
-      signature: "input: unknown): Promise<void>",
-      imports: `import { ${name}IdSchema } from "${dtoImport(posix.join(folder, "delete.ts"))}";`,
-    },
-  ];
-  for (const definition of definitions) {
-    const filePath = posix.join(folder, `${definition.filename}-${name.toLowerCase()}.use-case.ts`);
-    const imports = definition.imports;
-    const body = definition.body;
-    const content = [
-      imports,
-      `import type { ${name}Repository } from "${repositoryImport(filePath)}";`,
-      "",
-      `export class ${definition.operation}${name}UseCase {`,
-      `  constructor(private readonly repository: ${name}Repository${definition.operation === "Create" && (dynamicDefaults.length > 0 || timestamps.createdAt || timestamps.updatedAt) ? ", private readonly clock: Clock" : ""}) {}`,
-      `  async execute(${definition.signature} {`,
-      `    ${body.split("\n").join("\n    ")}`,
-      "  }",
-      "}",
-      "",
-    ].join("\n");
-    generated.push({ path: filePath, content });
-  }
-  return generated;
 }
 
 function endpointTypeName(endpoint: DomainModelContext["endpoints"][number]): string {
@@ -227,7 +97,6 @@ function endpointTypeName(endpoint: DomainModelContext["endpoints"][number]): st
 
 function endpointDtoFiles(
   endpoint: DomainModelContext["endpoints"][number],
-  model: DomainModelContext,
   dtoDirectory: string,
   portDirectory: string,
   useCaseDirectory: string,
@@ -245,10 +114,10 @@ function endpointDtoFiles(
   const parameterShape = (parameters: typeof endpoint.queryParams) =>
     parameters.map(
       (parameter) =>
-        `  ${JSON.stringify(parameter.name)}: ${inputSchema(parameter.input, model, "parameter")},`,
+        `  ${JSON.stringify(parameter.name)}: ${inputSchema(parameter.input, "parameter")},`,
     );
   const requestBodyFieldsContent = Object.values(endpoint.body.fields).map(
-    (input) => `  ${JSON.stringify(input.name)}: ${inputSchema(input, model, "body")},`,
+    (input) => `  ${JSON.stringify(input.name)}: ${inputSchema(input, "body")},`,
   );
   const requestBodyDynamicDefaults = [
     ...endpoint.body.dynamicDefaults,
@@ -313,7 +182,7 @@ function endpointDtoFiles(
     "export const InputSchema = z.object({",
     ...Object.values(endpoint.input).map(
       (input) =>
-        `  ${JSON.stringify(input.name)}: ${input.from === "pagination" ? `z.number().int().positive()${input.name === pagination?.pageSizeParam ? `.max(${pagination.maxPageSize})` : ""}.default(${input.definition.default})` : inputSchema(input, model)},`,
+        `  ${JSON.stringify(input.name)}: ${input.from === "pagination" ? `z.number().int().positive()${input.name === pagination?.pageSizeParam ? `.max(${pagination.maxPageSize})` : ""}.default(${input.definition.default})` : inputSchema(input)},`,
     ),
     `}).strict()${endpoint.body.kind === "update" ? `.refine(value => ${JSON.stringify(Object.keys(endpoint.body.fields))}.some(key => Object.hasOwn(value, key)), { message: "At least one field must be updated." })` : ""};`,
     "export type Input = z.infer<typeof InputSchema>;",
@@ -420,19 +289,10 @@ export function generateApplicationFiles(context: BackendRenderContext): readonl
   const dtoDirectory = posix.join(codeRoot, context.architecture.directories.useCase, "dtos");
   const portDirectory = posix.join(codeRoot, context.architecture.directories.outboundPort);
   const adapterDirectory = posix.join(codeRoot, context.architecture.directories.adapter);
-  const hasDynamicDefaults =
-    Object.values(model.entities).some(
-      (entity) =>
-        entity.timestamps.createdAt ||
-        entity.timestamps.updatedAt ||
-        Object.values(entity.fields).some(
-          (field) => field.type === "date" && field.defaultValue.kind === "clock",
-        ),
-    ) ||
-    model.endpoints.some(
-      (endpoint) =>
-        endpoint.body.dynamicDefaults.length > 0 || endpoint.body.serverDefaults.length > 0,
-    );
+  const hasDynamicDefaults = model.endpoints.some(
+    (endpoint) =>
+      endpoint.body.dynamicDefaults.length > 0 || endpoint.body.serverDefaults.length > 0,
+  );
   const files: GeneratedFile[] = [];
   if (hasDynamicDefaults) {
     const clockPortPath = posix.join(portDirectory, "clock.port.ts");
@@ -455,24 +315,20 @@ export function generateApplicationFiles(context: BackendRenderContext): readonl
       ].join("\n"),
     });
   }
-  for (const name of Object.keys(model.entities).sort((left, right) => left.localeCompare(right))) {
-    const entity = model.entities[name];
-    const dynamicDefaults = Object.entries(entity.fields)
-      .filter(([, field]) => field.type === "date" && field.defaultValue.kind === "clock")
-      .map(([fieldName]) => fieldName);
+  const responseEntities = new Set(
+    model.endpoints.flatMap((endpoint) => [
+      endpoint.entity,
+      ...endpoint.joins.map((join) => join.entity),
+    ]),
+  );
+  for (const name of [...responseEntities].sort()) {
     files.push({
       path: posix.join(dtoDirectory, `${name}.dto.ts`),
-      content: entityDtoFile(name, entity, model),
+      content: entityResponseFile(name, model.entities[name]),
     });
-    files.push(
-      ...crudUseCaseFiles(name, useCaseDirectory, dtoDirectory, portDirectory, dynamicDefaults, {
-        createdAt: entity.timestamps.createdAt,
-        updatedAt: entity.timestamps.updatedAt,
-      }),
-    );
   }
   for (const endpoint of model.endpoints) {
-    files.push(...endpointDtoFiles(endpoint, model, dtoDirectory, portDirectory, useCaseDirectory));
+    files.push(...endpointDtoFiles(endpoint, dtoDirectory, portDirectory, useCaseDirectory));
   }
   return files;
 }

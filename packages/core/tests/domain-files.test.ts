@@ -14,7 +14,7 @@ function composeFixture(config = createValidConfig()) {
 }
 
 describe("Clean Architecture domain artifacts", () => {
-  it("generates state-shaped domain entities, per-enum modules, and repository ports", () => {
+  it("generates state-shaped domain entities, per-enum modules, without implicit operation ports", () => {
     const config = createValidConfig();
     config.entities.Customer.fields.enabled = { type: "boolean", default: true };
     config.entities.Customer.fields.birthday = { type: "date", required: false };
@@ -27,8 +27,6 @@ describe("Clean Architecture domain artifacts", () => {
     const files = result.virtualFileSystem.snapshot();
     const user = files["apps/api-core/src/modules/commerce/domain/entities/Customer.entity.ts"];
     const order = files["apps/api-core/src/modules/commerce/domain/entities/Order.entity.ts"];
-    const repository =
-      files["apps/api-core/src/modules/commerce/application/ports/outbound/Order.repository.ts"];
     expect(user).toContain('import type { CustomerRole } from "./CustomerRole.enum.js";');
     expect(user).toContain('"email": string;');
     expect(user).toContain('"enabled": boolean;');
@@ -42,11 +40,8 @@ describe("Clean Architecture domain artifacts", () => {
     expect(
       files["apps/api-core/src/modules/commerce/domain/entities/OrderStatus.enum.ts"],
     ).toContain('export type OrderStatus = "PENDING" | "PAID";');
-    expect(repository).toContain(
-      'import type { Order, CreateOrderInput } from "../../../domain/entities/Order.entity.js";',
-    );
-    expect(repository).toContain("findById(id: string): Promise<Order | null>;");
-    expect(repository).not.toMatch(/hono|drizzle/i);
+    expect(Object.keys(files).some((path) => path.endsWith(".repository.ts"))).toBe(false);
+    expect(user).not.toContain("CreateCustomerInput");
     expect(user).not.toMatch(/hono|drizzle/i);
   });
 
@@ -68,28 +63,6 @@ describe("Clean Architecture domain artifacts", () => {
     expect(first.virtualFileSystem.snapshot()).toEqual(second.virtualFileSystem.snapshot());
     expect(Object.keys(first.virtualFileSystem.snapshot())).not.toContain(
       "apps/api-core/src/modules/commerce/domain/entities/External.entity.ts",
-    );
-  });
-
-  it("uses a same-directory relative import when an architecture colocates its ports", () => {
-    const { framework, architecture, domainModel } = createContributionContext(
-      backendView(resolvedFixture(NordixConfigSchema.parse(createValidConfig())), "core-api"),
-    );
-    const colocatedContext: BackendRenderContext = {
-      framework,
-      architecture: {
-        ...architecture,
-        directories: {
-          ...architecture.directories,
-          outboundPort: architecture.directories.domainEntity,
-        },
-      },
-      projectName: "test",
-      domainModel,
-    };
-    const files = generateDomainFiles(colocatedContext);
-    expect(files.find((file) => file.path.endsWith("Customer.repository.ts"))?.content).toContain(
-      'from "./Customer.entity.js"',
     );
   });
 

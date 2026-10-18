@@ -52,16 +52,7 @@ describe("owned Drizzle persistence", () => {
     expect(schemaSource(files)).toContain("export const OrderTable = pgTable(");
     expect(schemaSource(files)).toContain("export const CustomerTable = pgTable(");
     expect(schemaSource(files)).toContain("export const OrderStatusPgEnum = pgEnum(");
-    expect(
-      files[
-        "apps/api-core/src/modules/commerce/infrastructure/adapters/Order.drizzle.repository.ts"
-      ],
-    ).toContain("class DrizzleOrderRepository implements OrderRepository");
-    expect(
-      files[
-        "apps/api-core/src/modules/commerce/infrastructure/adapters/Customer.drizzle.repository.ts"
-      ],
-    ).toContain("class DrizzleCustomerRepository implements CustomerRepository");
+    expect(Object.keys(files).some((path) => path.endsWith(".drizzle.repository.ts"))).toBe(false);
     expect(files["apps/api-core/src/platform/database/drizzle-database.ts"]).toContain(
       "createDrizzleDatabase",
     );
@@ -70,7 +61,7 @@ describe("owned Drizzle persistence", () => {
     );
   });
 
-  it("covers generated schemas, repository adapters, and query adapters", () => {
+  it("covers generated schemas and declared query adapters", () => {
     const config = createValidConfig();
     config.entities.Order.fields.total = { type: "number", format: "decimal" };
     config.entities.Order.fields.submittedAt = { type: "date", default: { kind: "now" } };
@@ -122,42 +113,6 @@ describe("owned Drizzle persistence", () => {
     expect(schema).toContain("export const OrderTable = pgTable(");
     expect(schema).toContain("export const OrderRelations = relations(");
     expect(schema).toContain("export const OrderStatusPgEnum = pgEnum(");
-
-    const orderAdapter =
-      files[
-        "apps/api-core/src/modules/commerce/infrastructure/adapters/Order.drizzle.repository.ts"
-      ];
-    expect(orderAdapter).toContain("class DrizzleOrderRepository implements OrderRepository");
-    expect(orderAdapter).toContain("isDeleted");
-    expect(orderAdapter).toContain("findPage");
-    expect(orderAdapter).toContain("findById");
-    expect(orderAdapter).toContain("findMany");
-    expect(orderAdapter).toContain("save");
-    expect(orderAdapter).toContain("delete");
-    expect(orderAdapter).toContain('"total": row.total == null ? null : Number(row.total)');
-    expect(orderAdapter).toContain("items.map((row) => this.toDomain(row))");
-    expect(
-      files[
-        "apps/api-core/src/modules/commerce/infrastructure/adapters/create-route-dependencies.ts"
-      ],
-    ).not.toContain("CreateOrderUseCase");
-
-    const userAdapter =
-      files[
-        "apps/api-core/src/modules/commerce/infrastructure/adapters/Customer.drizzle.repository.ts"
-      ];
-    expect(userAdapter).toContain("class DrizzleCustomerRepository implements CustomerRepository");
-    expect(userAdapter).toContain("deletedAt");
-
-    const orderItemAdapter =
-      files[
-        "apps/api-core/src/modules/commerce/infrastructure/adapters/OrderItem.drizzle.repository.ts"
-      ];
-    expect(orderItemAdapter).toContain(
-      "class DrizzleOrderItemRepository implements OrderItemRepository",
-    );
-    expect(orderItemAdapter).not.toContain("deletedAt");
-    expect(orderItemAdapter).not.toContain("isDeleted");
 
     const queryAdapter =
       files[
@@ -456,9 +411,9 @@ describe("owned Drizzle persistence", () => {
     const pageFiles = resultWithOne.virtualFileSystem.snapshot();
     expect(
       pageFiles[
-        "apps/api-core/src/modules/commerce/infrastructure/adapters/OrderItem.drizzle.repository.ts"
+        "apps/api-core/src/modules/commerce/infrastructure/adapters/GetOrderItemPage.drizzle.query.adapter.ts"
       ],
-    ).toContain("findPage");
+    ).toContain("offset: pagination.offset");
 
     config.enums = {};
     config.entities.Customer.fields.role = { type: "string" };

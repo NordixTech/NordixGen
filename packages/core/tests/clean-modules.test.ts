@@ -114,7 +114,7 @@ db.query.CustomerTable;
           "MODULE_DEPENDENCY_UNDECLARED",
         ],
         [
-          `await import("../../customers/infrastructure/adapters/Customer.drizzle.repository.js");`,
+          `await import("../../customers/infrastructure/database/schema/Customer.table.js");`,
           "MODULE_PRIVATE_IMPORT",
         ],
       ]) {
@@ -124,7 +124,7 @@ db.query.CustomerTable;
       await writeFile(bad, "");
       await writeFile(
         join(app, "src/modules/billing/index.ts"),
-        'export * from "./infrastructure/adapters/Invoice.drizzle.repository.js";',
+        'export * from "./infrastructure/database/schema/Invoice.table.js";',
       );
       expect(() => run()).toThrow("MODULE_PRIVATE_EXPORT");
     } finally {

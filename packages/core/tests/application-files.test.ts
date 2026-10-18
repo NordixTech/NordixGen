@@ -71,13 +71,13 @@ describe("resolved application contracts and concrete DTO rendering", () => {
     expect(files[`${root}/application/use-cases/dtos/Order.dto.ts`]).toContain(
       '"fixedAt": z.date().nullable().default(null)',
     );
-    expect(files[`${root}/application/use-cases/dtos/Order.dto.ts`]).toContain(
+    expect(files[`${root}/application/use-cases/dtos/endpoints/CreateOrder.dto.ts`]).toContain(
       'new Date("2024-01-01T00:00:00.000Z")',
     );
     expect(files[`${root}/application/use-cases/dtos/Order.dto.ts`]).toContain(
       '"note": z.string().nullable().default(null)',
     );
-    expect(files[`${root}/application/use-cases/Order/create-order.use-case.ts`]).toContain(
+    expect(files[`${root}/application/use-cases/CreateOrder.use-case.ts`]).toContain(
       "this.clock.now()",
     );
   });

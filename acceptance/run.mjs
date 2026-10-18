@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { copyFile, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanup, command, freePort, images, names, ready, start } from "./resources.mjs";
@@ -149,6 +149,59 @@ if (cleanupId) {
     });
     const api = join(state.output, "apps/api");
     const web = join(state.output, "apps/web");
+    await runStage("declared-operation-artifacts", async () => {
+      const { resolveProjectYaml } = await import("../packages/core/dist/index.js");
+      const resolved = resolveProjectYaml(
+        await readFile(join(root, "acceptance/project.yaml"), "utf8"),
+      );
+      assert.ok(resolved.success);
+      const paths = (await readdir(join(api, "src/modules"), { recursive: true })).map((path) =>
+        path.replaceAll("\\", "/"),
+      );
+      const operations = Object.values(resolved.project.operations).map((operation) => ({
+        module: resolved.project.modules[operation.moduleId].name,
+        name: operation.typeName,
+      }));
+      const checks = [
+        [
+          /\/application\/use-cases\/[^/]+\.use-case\.ts$/,
+          (operation) => `${operation.module}/application/use-cases/${operation.name}.use-case.ts`,
+        ],
+        [
+          /\.query\.port\.ts$/,
+          (operation) =>
+            `${operation.module}/application/ports/outbound/${operation.name}.query.port.ts`,
+        ],
+        [
+          /\.drizzle\.query\.adapter\.ts$/,
+          (operation) =>
+            `${operation.module}/infrastructure/adapters/${operation.name}.drizzle.query.adapter.ts`,
+        ],
+      ];
+      for (const [pattern, expected] of checks)
+        assert.deepEqual(
+          paths.filter((path) => pattern.test(`/${path}`)).sort(),
+          operations.map(expected).sort(),
+        );
+      assert.deepEqual(
+        paths.filter((path) => path.endsWith(".repository.ts")),
+        [],
+      );
+      assert.deepEqual(
+        paths.filter((path) => /\/use-cases\/[^/]+\/[^/]+\.use-case\.ts$/.test(path)),
+        [],
+      );
+      const evidence = {
+        operations,
+        useCases: paths.filter((path) => path.endsWith(".use-case.ts")),
+        implicitCrudArtifacts: [],
+      };
+      await writeFile(
+        join(directory, "operation-artifacts.json"),
+        JSON.stringify(evidence, null, 2),
+      );
+      return `${operations.length} declared operations have exactly one use case, persistence port and adapter; no entity-derived CRUD/repository artifacts.`;
+    });
     await runStage("authored-contract-and-boundaries", async () => {
       await copyFile(
         join(root, "acceptance/preview-customer.ts"),
