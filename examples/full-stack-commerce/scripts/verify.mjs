@@ -444,7 +444,13 @@ export async function verifyApplication(state, directory, expireAccountant) {
         "Your account does not have the roles or permissions required to send this request.",
         { exact: true },
       );
-      await expect(deniedMessage).toBeVisible();
+      // The permission-scoped query provider can remount the Explorer as IAM finishes loading.
+      await expect
+        .poll(async () => {
+          await operation.selectOption("listInvoices");
+          return deniedMessage.isVisible();
+        })
+        .toBe(true);
       await expect(send).toBeDisabled();
       await expect(send).toHaveAttribute("aria-describedby", "api-operation-access");
       await expect(send).toHaveCSS("cursor", "not-allowed");
