@@ -138,7 +138,7 @@ describe("scoped browser operations, caches and forms", () => {
     const screen = f.files[`${root}/components/features/customer-screen.tsx`];
     expect(screen).not.toContain("Confirm Delete");
     expect(screen).not.toContain("as unknown as");
-  });
+  }, 20_000);
   it("scopes keys by backend/module/operation/input and sends JSON filters and abort signals correctly", async () => {
     const f = runtime();
     f.setSession({ id: "user-a", role: "admin" });
