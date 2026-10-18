@@ -338,6 +338,10 @@ export async function verifyApplication(state, directory, expireAccountant) {
       await expect(deniedMessage).toBeVisible();
       await expect(send).toBeDisabled();
       await expect(send).toHaveAttribute("aria-describedby", "api-operation-access");
+      await expect(send).toHaveCSS("cursor", "not-allowed");
+      expect(
+        await send.evaluate((button) => Number(getComputedStyle(button).opacity)),
+      ).toBeLessThan(1);
       await send.evaluate((button) => button.click());
       await page.screenshot({
         path: join(directory, "verified-explorer-permissions.png"),
@@ -346,6 +350,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
       await operation.selectOption("listCustomers");
       await expect(deniedMessage).toHaveCount(0);
       await expect(send).toBeEnabled();
+      await expect(send).toHaveCSS("opacity", "1");
       const publicResponse = page.waitForResponse(
         (response) =>
           new URL(response.url()).pathname === "/api/customers" &&
