@@ -60,7 +60,7 @@ describe("direct backend generation and file ownership", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     const files = result.virtualFileSystem.snapshot();
-    const index = files["apps/api-core/src/infrastructure/database/schema/index.ts"];
+    const index = files["apps/api-core/src/platform/database/schema/index.ts"];
     for (const name of ["Customer", "Order", "OrderItem"])
       expect(index.split(`export const ${name}Table = pgTable`).length - 1).toBe(1);
     expect(index).toContain("auth-schema.js");

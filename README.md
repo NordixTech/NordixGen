@@ -8,7 +8,7 @@ A generated backend is a modular monolith: business modules run together in one 
 
 The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
 
-**Single Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules require the next module-layout integration; Hexagonal/Onion remain unsupported. Full database/browser acceptance is still pending.
+**Independent Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules share one backend; public intermodule wiring is the next integration, while Hexagonal/Onion remain unsupported. Full database/browser acceptance is still pending.
 
 ## Target generated project
 

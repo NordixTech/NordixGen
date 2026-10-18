@@ -99,9 +99,7 @@ export async function runInit(): Promise<void> {
   }
   await mkdir(dirname(destination), { recursive: true });
   await writeFile(destination, configuration, { encoding: "utf8", flag: "wx" });
-  outro(
-    `Created ${destination}. Modular generation is not integrated yet; use validate to inspect configuration/readiness.`,
-  );
+  outro(`Created ${destination}. Use validate to inspect configuration and generation readiness.`);
 }
 export async function runGenerate(
   file: string,

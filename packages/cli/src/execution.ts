@@ -109,6 +109,11 @@ export async function executeGeneration(
     const manifest = (await exists(packageFile))
       ? JSON.parse(await readFile(packageFile, "utf8"))
       : { name: app.name, private: true };
+    if (app.backend)
+      manifest.scripts = {
+        ...manifest.scripts,
+        "check:boundaries": "node scripts/check-boundaries.mjs",
+      };
     manifest.dependencies = { ...manifest.dependencies, ...app.result.runtimeDependencies };
     manifest.devDependencies = {
       ...manifest.devDependencies,
@@ -117,6 +122,7 @@ export async function executeGeneration(
     await writeFile(packageFile, `${JSON.stringify(manifest, null, 2)}\n`);
     if (Object.keys(app.result.runtimeDependencies).length)
       await runner("pnpm", ["install"], target);
+    if (app.backend) await runner("pnpm", ["run", "check:boundaries"], target);
   }
   for (const repository of project.repositories) {
     const repo = inside(root, repository.path);

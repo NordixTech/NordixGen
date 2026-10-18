@@ -64,7 +64,7 @@ describe("resolved application contracts and concrete DTO rendering", () => {
   it("emits effective fields and application dates without reconstructing implicit fields", () => {
     const result = composeFixture();
     const files = result.virtualFileSystem.snapshot();
-    const root = "apps/api-core/src";
+    const root = "apps/api-core/src/modules/commerce";
     expect(files[`${root}/domain/entities/Order.entity.ts`]).toContain(
       '"customer_id": string | null;',
     );
@@ -84,7 +84,7 @@ describe("resolved application contracts and concrete DTO rendering", () => {
   it("uses flat application input and separate HTTP schemas with the same values", () => {
     const files = composeFixture().virtualFileSystem.snapshot();
     const dto = files[
-      "apps/api-core/src/application/use-cases/dtos/endpoints/UpdateOrder.dto.ts"
+      "apps/api-core/src/modules/commerce/application/use-cases/dtos/endpoints/UpdateOrder.dto.ts"
     ] as string;
     const input = dto.split("export const InputSchema")[1]?.split("export type Input")[0];
     expect(input).toContain('"id": z.string().uuid()');
@@ -92,14 +92,16 @@ describe("resolved application contracts and concrete DTO rendering", () => {
     expect(dto).toContain("export const PathParamsSchema");
     expect(dto).toContain("export const RequestBodySchema");
     expect(dto).toContain("At least one field must be updated.");
-    expect(files["apps/api-core/src/presentation/controllers/updateOrder.controller.ts"]).toContain(
-      "const rawInput = { ...path, ...query, ...body }",
-    );
+    expect(
+      files[
+        "apps/api-core/src/modules/commerce/presentation/controllers/updateOrder.controller.ts"
+      ],
+    ).toContain("const rawInput = { ...path, ...query, ...body }");
   });
   it("uses resolved clock defaults without giving callers server-generated fields", () => {
     const files = composeFixture().virtualFileSystem.snapshot();
     const create = files[
-      "apps/api-core/src/application/use-cases/CreateOrder.use-case.ts"
+      "apps/api-core/src/modules/commerce/application/use-cases/CreateOrder.use-case.ts"
     ] as string;
     expect(create).toContain("createdAt: this.clock.now()");
     expect(create).toContain("updatedAt: this.clock.now()");
@@ -107,18 +109,18 @@ describe("resolved application contracts and concrete DTO rendering", () => {
       "issuedAt: input.issuedAt === undefined ? this.clock.now() : input.issuedAt",
     );
     const dto = files[
-      "apps/api-core/src/application/use-cases/dtos/endpoints/CreateOrder.dto.ts"
+      "apps/api-core/src/modules/commerce/application/use-cases/dtos/endpoints/CreateOrder.dto.ts"
     ] as string;
     const input = dto.split("export const InputSchema")[1]?.split("export type Input")[0];
     expect(input).not.toMatch(/createdAt|updatedAt|deletedAt|isDeleted/);
-    expect(files["apps/api-core/src/application/use-cases/UpdateOrder.use-case.ts"]).not.toContain(
-      "issuedAt: input.issuedAt",
-    );
+    expect(
+      files["apps/api-core/src/modules/commerce/application/use-cases/UpdateOrder.use-case.ts"],
+    ).not.toContain("issuedAt: input.issuedAt");
   });
   it("renders query arrays, typed JSON and body aliases from pre-resolved inputs", () => {
     const files = composeFixture().virtualFileSystem.snapshot();
     const dto = files[
-      "apps/api-core/src/application/use-cases/dtos/endpoints/CustomOrder.dto.ts"
+      "apps/api-core/src/modules/commerce/application/use-cases/dtos/endpoints/CustomOrder.dto.ts"
     ] as string;
     expect(dto).toContain('"numbers": z.array(');
     expect(dto).toContain('z.enum(["true", "false"])');
@@ -129,7 +131,7 @@ describe("resolved application contracts and concrete DTO rendering", () => {
   it("keeps collection joins nonnullable and preserves explicit projections", () => {
     const files = composeFixture().virtualFileSystem.snapshot();
     const dto = files[
-      "apps/api-core/src/application/use-cases/dtos/endpoints/GetOrderSummary.dto.ts"
+      "apps/api-core/src/modules/commerce/application/use-cases/dtos/endpoints/GetOrderSummary.dto.ts"
     ] as string;
     expect(dto).toContain('"OrderItem": z.array(');
     expect(dto).not.toContain("}).nullable(),");

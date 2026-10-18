@@ -53,7 +53,8 @@ export function createProgram(): Command {
             result.diagnostics.some(
               (d) =>
                 d.code.startsWith("MODULE_GENERATION") ||
-                d.code === "MODULE_ARCHITECTURE_UNIMPLEMENTED",
+                d.code === "MODULE_ARCHITECTURE_UNIMPLEMENTED" ||
+                d.code === "RELATION_MAPPING_UNIMPLEMENTED",
             )
               ? "Configuration is valid; generation is not ready"
               : "Configuration is invalid",

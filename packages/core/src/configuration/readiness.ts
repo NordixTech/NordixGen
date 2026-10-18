@@ -3,7 +3,7 @@ import type { ResolvedEntity, ResolvedModule, ResolvedProject } from "../project
 
 /** Concrete internal implementation status; no configurable capability registry. */
 export const MODULE_GENERATION_SUPPORT = {
-  clean: "pending-integration",
+  clean: "implemented",
   hexagonal: "not-implemented",
   onion: "not-implemented",
 } as const;
@@ -13,29 +13,24 @@ export function resolveGenerationReadiness(
 ) {
   return [
     ...modules
-      .filter(
-        (module) =>
-          module.architecture !== "clean" ||
-          modules.filter((other) => other.backend === module.backend).length > 1,
-      )
+      .filter((module) => module.architecture !== "clean")
       .map((module) => ({
         ...createDiagnostic(
-          MODULE_GENERATION_SUPPORT[module.architecture] === "pending-integration"
-            ? "MODULE_GENERATION_UNAVAILABLE"
-            : "MODULE_ARCHITECTURE_UNIMPLEMENTED",
-          MODULE_GENERATION_SUPPORT[module.architecture] === "pending-integration"
-            ? module.origin.path
-            : `${module.origin.path}.architecture`,
-          MODULE_GENERATION_SUPPORT[module.architecture] === "pending-integration"
-            ? "Multiple Clean modules require the modular composition integration. Use a single Clean module until that integration is available; no files or external commands have been started."
-            : `Architecture '${module.architecture}' is recognized, but its generator is not implemented. Select an implemented family once modular integration is available; no fallback is performed.`,
+          "MODULE_ARCHITECTURE_UNIMPLEMENTED",
+          `${module.origin.path}.architecture`,
+          `Architecture '${module.architecture}' is recognized, but its generator is not implemented. Select Clean; no fallback or files are emitted.`,
         ),
-        ...((module.architecture === "clean" ? module.origin : module.architectureOrigin).source
-          ? {
-              source: (module.architecture === "clean" ? module.origin : module.architectureOrigin)
-                .source,
-            }
-          : {}),
+        ...(module.architectureOrigin.source ? { source: module.architectureOrigin.source } : {}),
+      })),
+    ...modules
+      .filter((module) => module.exports.length > 0 || module.imports.length > 0)
+      .map((module) => ({
+        ...createDiagnostic(
+          "MODULE_COMMUNICATION_UNAVAILABLE",
+          module.origin.path,
+          "Public module contracts and dependency wiring are not integrated yet. Generate independent Clean modules without exports/imports until that integration is available; no files or commands were emitted.",
+        ),
+        ...(module.origin.source ? { source: module.origin.source } : {}),
       })),
     ...Object.values(entities).flatMap((entity) =>
       Object.values(entity.relations)
