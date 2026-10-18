@@ -37,7 +37,7 @@ function pageSource(context: FrontendRenderContext): string {
     '        <div className="ng-hero-copy">',
     '          <p className="ng-eyebrow">A clear path from idea to product</p>',
     `          <h1 id="welcome-title">A thoughtful starting point for ${projectName}.</h1>`,
-    '          <p className="ng-lede">Your application shell is ready. Add the workflows your users need while keeping framework, styling, and data integrations replaceable.</p>',
+    '          <p className="ng-lede">Your application shell is ready. Build the workflows your users need around your business modules and their declared operations.</p>',
     '          <div className="ng-actions">',
     ...(apiExplorerLink
       ? ['            <a className="ng-text-link" href="/api-explorer">Open API Explorer</a>']
@@ -58,7 +58,7 @@ function pageSource(context: FrontendRenderContext): string {
     `            <div><dt>Frontend</dt><dd>${frontendName}</dd></div>`,
     "            <div><dt>Framework</dt><dd>Next.js App Router</dd></div>",
     "          </dl>",
-    '          <p className="ng-panel-note">This starter is intentionally modular. Your generated features can grow without locking the project into one UI or state-management choice.</p>',
+    '          <p className="ng-panel-note">Explore your generated features and extend them as your business workflows grow.</p>',
     "        </aside>",
     "      </section>",
     '      <footer className="ng-footer"><span>Generated with NordixGen</span><span>Make it yours.</span></footer>',

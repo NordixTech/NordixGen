@@ -222,6 +222,52 @@ function generatedApplication(
 }
 
 describe("declared business routes in generated Hono applications", () => {
+  it("supports explicit credentialed CORS without generating an identity authority", async () => {
+    const f = generatedApplication(true, undefined, (config) => {
+      config.backends[0].authentication = undefined;
+      config.backends[0].authorization = undefined;
+      for (const operation of config.endpoints) {
+        operation.authRequired = false;
+        operation.roles = [];
+        operation.permissions = [];
+      }
+    });
+    const app = f.load(`${root}/index.ts`).default as hono.Hono;
+    const env = {
+      DATABASE_URL: "unused",
+      CORS_ALLOWED_ORIGINS: ` https://other.example.test, ${origin} `,
+    };
+    const response = await app.request("/api/sample-items", { headers: { origin } }, env, {
+      waitUntil: () => {},
+      passThroughOnException: () => {},
+      props: {},
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+    const preflight = await app.request(
+      "/api/sample-items",
+      {
+        method: "OPTIONS",
+        headers: {
+          origin,
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "content-type",
+        },
+      },
+      env,
+    );
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-methods")).toContain("POST");
+    const denied = await app.request(
+      "/api/sample-items",
+      { headers: { origin: "https://untrusted.example.test" } },
+      env,
+      { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+    );
+    expect(denied.headers.get("access-control-allow-origin")).toBeNull();
+    expect(Object.keys(f.files).some((path) => path.includes("/platform/auth/"))).toBe(false);
+  });
   it("decodes HTTP arrays and scalar values into the resolved flat application input", async () => {
     const { request, pageQuery } = generatedApplication(true, undefined, (config) => {
       config.entities.SampleItem.fields.count = {

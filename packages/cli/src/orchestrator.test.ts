@@ -5,6 +5,7 @@ import { stripVTControlCharacters } from "node:util";
 import * as prompts from "@clack/prompts";
 import { parseNordixYaml, stringifyNordixYaml } from "@nordixgen/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fixtureCommand } from "../tests/scaffold-fixture.js";
 import { createProgram } from "./index.js";
 import { createStarterConfiguration, runGenerate, runInit } from "./orchestrator.js";
 
@@ -48,15 +49,7 @@ describe("canonical configuration initialization and command preflight", () => {
     async (kind, code) => {
       const parsed = parseNordixYaml(createStarterConfiguration("client-app", false));
       if (!parsed.success) throw new Error("Invalid initialization fixture");
-      if (kind === "multiple") {
-        parsed.config.entities.Second = { ...structuredClone(parsed.config.entities.Example) };
-        parsed.config.backends[0].modules.second = {
-          architecture: "clean",
-          entities: ["Second"],
-          exports: [],
-          imports: {},
-        };
-      } else if (kind === "cycle" || kind === "association")
+      if (kind === "cycle" || kind === "association")
         parsed.config.entities.Example.relations.related = {
           type: kind === "cycle" ? "many-to-one" : "many-to-many",
           target: "Example",
@@ -156,7 +149,7 @@ describe("canonical configuration initialization and command preflight", () => {
     const output = join(directory, "output");
     const source = createStarterConfiguration("client-app", true);
     await writeFile(file, source);
-    const runner = vi.fn(async () => "");
+    const runner = vi.fn(fixtureCommand);
     await runGenerate(file, output, runner);
     expect(runner.mock.calls.some((call) => call[0] === "pnpm")).toBe(true);
     expect(await readFile(join(output, "apps/api/src/index.ts"), "utf8")).toContain("new Hono");
@@ -221,7 +214,7 @@ describe("modular generation execution", () => {
     const parsed = parseNordixYaml(source);
     if (!parsed.success) throw new Error("Invalid modular fixture");
     await writeFile(file, stringifyNordixYaml(parsed.config));
-    const runner = vi.fn(async () => "");
+    const runner = vi.fn(fixtureCommand);
     await runGenerate(file, output, runner);
     expect(
       await readFile(

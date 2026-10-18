@@ -2,8 +2,14 @@ import type { GeneratedFile } from "../plugins/contracts.js";
 import type { FrontendRenderContext } from "../plugins/frontend-contracts.js";
 
 /** A frontend selects one identity authority; public URLs contain no credentials. */
+export function backendBaseEnvironment(name: string): string {
+  return `NEXT_PUBLIC_${name.toUpperCase().replaceAll("-", "_")}_BASE_URL`;
+}
 export function identityBaseUrl(context: FrontendRenderContext): string {
-  return `process.env.NEXT_PUBLIC_AUTH_BASE_URL${context.frontend.connections.length === 1 ? " ?? process.env.NEXT_PUBLIC_API_BASE_URL" : ""} ?? ""`;
+  const single =
+    context.frontend.connections.length === 1 ? context.frontend.connections[0] : undefined;
+  const selected = single ? backendBaseEnvironment(single) : undefined;
+  return `process.env.NEXT_PUBLIC_AUTH_BASE_URL${selected ? ` ?? process.env.${selected}${selected === "NEXT_PUBLIC_API_BASE_URL" ? "" : " ?? process.env.NEXT_PUBLIC_API_BASE_URL"}` : ""} ?? ""`;
 }
 
 export function generateFrontendAccess(context: FrontendRenderContext): readonly GeneratedFile[] {

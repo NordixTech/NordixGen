@@ -51,6 +51,12 @@ export function validateApplications(config: NordixConfig): ConfigDiagnostic[] {
         `${path}.organization`,
         "Remote creation requires an existing organization alias. Declare it or disable createRemote.",
       );
+    if (repository.createRemote && !repository.initializeGit)
+      add(
+        "REMOTE_REQUIRES_LOCAL_GIT",
+        `${path}.initializeGit`,
+        "Remote publication requires an initialized local repository. Enable initializeGit or disable createRemote.",
+      );
     if (
       repository.organization &&
       !config.organizations.some((o) => o.name === repository.organization)

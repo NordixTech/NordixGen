@@ -278,9 +278,9 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
     content: [
       'import { Hono } from "hono";',
       'import { HTTPException } from "hono/http-exception";',
+      'import { cors } from "hono/cors";',
       ...(hasAuthentication
         ? [
-            'import { cors } from "hono/cors";',
             `import { createAuth, isTrustedAuthOrigin, type AuthEnvironment } from "${relativeImport(entryPoint, authFilePath)}";`,
           ]
         : []),
@@ -301,8 +301,10 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       ...(hasAuthentication
         ? ["const app = new Hono<{ Bindings: AuthEnvironment }>();"]
         : hasDrizzle
-          ? ["const app = new Hono<{ Bindings: { DATABASE_URL: string } }>();"]
-          : ["const app = new Hono();"]),
+          ? [
+              "const app = new Hono<{ Bindings: { DATABASE_URL: string;CORS_ALLOWED_ORIGINS?:string } }>();",
+            ]
+          : ["const app = new Hono<{Bindings:{CORS_ALLOWED_ORIGINS?:string}}>();"]),
       "",
       "// Global RFC 7807 error handler",
       "app.onError((error, c) => {",
@@ -316,20 +318,17 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       '  return problemResponse(c, 404, "Not Found", `Route not found: ${c.req.path}`);',
       "});",
       "",
+      'app.use("*",cors({',
+      " origin:(origin,c)=>{",
+      hasAuthentication
+        ? "  return isTrustedAuthOrigin(origin,c.env)?origin:null;"
+        : '  const allowed=c.env?.CORS_ALLOWED_ORIGINS;return origin && typeof allowed==="string" && allowed.split(",").map((value:string)=>value.trim()).includes(origin)?origin:null;',
+      ' },allowHeaders:["Content-Type","Authorization"],allowMethods:["GET","POST","PUT","PATCH","DELETE","OPTIONS"],credentials:true,maxAge:600,',
+      "}));",
       ...(hasAuthentication
         ? [
-            'app.use("*", cors({',
-            "  origin: (origin, c) => {",
-            "    return isTrustedAuthOrigin(origin, c.env) ? origin : null;",
-            "  },",
-            '  allowHeaders: ["Content-Type", "Authorization"],',
-            '  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],',
-            "  credentials: true,",
-            "  maxAge: 600,",
-            "}));",
-            "",
             "// Better Auth owns credential, session, cookie, and CSRF handling.",
-            'app.all("/api/auth/*", (c) => createAuth(c.env, c.executionCtx).handler(c.req.raw));',
+            'app.all("/api/auth/*", (c) => createAuth(c.env,c.executionCtx).handler(c.req.raw));',
             "",
           ]
         : []),

@@ -38,12 +38,13 @@ a { color: inherit; text-decoration: none; }
 `,
     },
     {
-      path: `${root}/postcss.config.mjs`,
-      content: `export default {
+      path: `${context.framework.applicationRoot}/postcss.config.mjs`,
+      content: `const config = {
   plugins: {
     "@tailwindcss/postcss": {},
   },
 };
+export default config;
 `,
     },
   ];

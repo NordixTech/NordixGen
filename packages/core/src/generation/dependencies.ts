@@ -1,4 +1,5 @@
 /** Internal stack versions: runtime and tooling are distinct; no selector or version solver. */
+export const WORKSPACE_TOOLING = Object.freeze({ node: ">=24.0.0", packageManager: "pnpm@10.5.2" });
 export const BACKEND_STACK = Object.freeze({
   runtime: Object.freeze({ hono: "^4.7.2", "@hono/zod-validator": "^0.4.3", zod: "^3.24.2" }),
   persistence: Object.freeze({ "drizzle-orm": "0.45.4", "@neondatabase/serverless": "^0.10.4" }),
