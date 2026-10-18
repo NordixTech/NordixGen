@@ -1,5 +1,5 @@
 import type { ResolvedFrontend, ResolvedIdentity, TransportOperation } from "../project/types.js";
-import type { GeneratedFile, UpstreamScaffoldPlan } from "./contracts.js";
+import type { UpstreamScaffoldPlan } from "./contracts.js";
 export type FrontendApiEntity = ResolvedFrontend["entities"][string];
 export type FrontendAuthenticationContract = ResolvedIdentity;
 export interface FrontendApiContract {

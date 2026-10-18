@@ -100,9 +100,6 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
   ];
   const routesRegistrations: string[] = ['  routes.route("/health", healthController);'];
 
-  const useCaseDirectory = posix.join(framework.codeRoot, architecture.directories.useCase);
-  const dtoDirectory = posix.join(useCaseDirectory, "dtos");
-
   // 3. Declared business endpoint controllers
   for (const endpoint of model.endpoints) {
     const operationName = endpointTypeName(endpoint);

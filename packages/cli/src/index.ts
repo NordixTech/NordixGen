@@ -22,7 +22,7 @@ export function createProgram(): Command {
   const coreInfo = getCoreInfo();
   program
     .name("nordixgen")
-    .description("Declarative architecture and scaffolding for full-stack projects")
+    .description("Initialize fixed-stack full-stack projects from YAML v2")
     .version(CLI_VERSION);
 
   program
@@ -38,7 +38,7 @@ export function createProgram(): Command {
 
   program
     .command("validate")
-    .description("Validate a NordixGen YAML configuration")
+    .description("Validate YAML v2 and supported generation readiness")
     .requiredOption("-f, --file <file>", "Configuration YAML file")
     .action(async ({ file }: { file: string }) => {
       const task = spinner();
@@ -52,7 +52,6 @@ export function createProgram(): Command {
           task.stop(
             result.diagnostics.some(
               (d) =>
-                d.code.startsWith("MODULE_GENERATION") ||
                 d.code === "MODULE_ARCHITECTURE_UNIMPLEMENTED" ||
                 d.code === "RELATION_MAPPING_UNIMPLEMENTED",
             )

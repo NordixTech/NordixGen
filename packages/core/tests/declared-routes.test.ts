@@ -6,12 +6,8 @@ import * as httpException from "hono/http-exception";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import * as zod from "zod";
-import {
-  buildFrontendApiContract,
-  generateBackend,
-  generateFrontend,
-  parseNordixYaml,
-} from "../src/index.js";
+import { generateBackend, generateFrontend, parseNordixYaml } from "../src/index.js";
+import { buildFrontendApiContract } from "../src/plugins/frontend-api-contract.js";
 import { resolvedFixture } from "./fixtures.js";
 
 function configuration(withEndpoints = true, createPath = "/api/sample-items") {

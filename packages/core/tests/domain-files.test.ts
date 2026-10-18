@@ -86,7 +86,7 @@ function createContributionContext(domainModel: DomainModelContext) {
   const framework = backendPaths("apps/api-core");
   return {
     framework,
-    architecture: resolveCleanArchitectureLayout(framework),
+    architecture: resolveCleanArchitectureLayout(),
     domainModel,
     projectName: "test",
   };

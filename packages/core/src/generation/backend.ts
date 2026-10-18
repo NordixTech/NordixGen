@@ -1,5 +1,4 @@
 import { posix } from "node:path";
-import { createDiagnostic } from "../diagnostics.js";
 import type { ConfigDiagnostic } from "../diagnostics.js";
 import { generateApplicationFiles } from "../plugins/architecture/application-files.js";
 import { resolveCleanArchitectureLayout } from "../plugins/architecture/clean.js";
@@ -28,7 +27,7 @@ export function backendRenderContext(project: ResolvedProject, name: string): Ba
   const domainModel = backendView(project, name);
   const backend = domainModel.backend;
   const framework = backendPaths(backend.path);
-  const clean = resolveCleanArchitectureLayout(framework);
+  const clean = resolveCleanArchitectureLayout();
   const architecture = {
     ...clean,
     directories: {
@@ -152,7 +151,7 @@ export function moduleRenderContext(
     throw new Error("UNKNOWN_MODULE_TARGET: Select a module owned by this backend.");
   const codeRoot = parent.moduleRoots[moduleId];
   const framework = { ...parent.framework, codeRoot };
-  const architecture = resolveCleanArchitectureLayout(framework);
+  const architecture = resolveCleanArchitectureLayout();
   const entities = Object.fromEntries(
     module.entities.map((name) => [name, project.entities[name]]),
   );
