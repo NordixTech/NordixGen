@@ -1,12 +1,7 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { intro, isCancel, outro, select, text } from "@clack/prompts";
-import {
-  formatDiagnostic,
-  parseNordixYaml,
-  resolveProjectYaml,
-  stringifyNordixYaml,
-} from "@nordixgen/core";
+import { formatDiagnostic, resolveProjectYaml, stringifyNordixYaml } from "@nordixgen/core";
 import { executeGeneration } from "./execution.js";
 import { type CommandRunner, runCommand } from "./process.js";
 
@@ -20,12 +15,14 @@ export function createStarterConfiguration(name: string, includeFrontend: boolea
     name,
     version: "1.0.0",
     repositories: [{ name: "app", path: ".", initializeGit: false, createRemote: false }],
+    databases: { primary: {} },
     backends: [
       {
         name: "api",
         repository: "app",
         path: "apps/api",
         modules: { examples: { architecture: "clean", entities: ["Example"] } },
+        persistence: { database: "primary" },
       },
     ],
     ...(includeFrontend
@@ -44,11 +41,39 @@ export function createStarterConfiguration(name: string, includeFrontend: boolea
     entities: {
       Example: {
         backend: "api",
-        fields: { name: { type: "string", required: true } },
+        fields: { name: { type: "string", required: true, minLength: 1, maxLength: 120 } },
         timestamps: { createdAt: true, updatedAt: true },
       },
     },
-    endpoints: [],
+    pagination: { standard: {} },
+    endpoints: [
+      {
+        backend: "api",
+        entity: "Example",
+        operationId: "listExamples",
+        method: "GET",
+        path: "/api/examples",
+        authRequired: false,
+        pagination: "standard",
+        queryParams: [
+          {
+            name: "search",
+            field: { entity: "Example", field: "name" },
+            operator: "contains",
+            required: false,
+          },
+        ],
+      },
+      {
+        backend: "api",
+        entity: "Example",
+        operationId: "createExample",
+        method: "POST",
+        path: "/api/examples",
+        authRequired: false,
+        requestBody: { useCase: { entity: "Example", operation: "create" } },
+      },
+    ],
   });
 }
 export async function runInit(): Promise<void> {
@@ -88,7 +113,7 @@ export async function runInit(): Promise<void> {
   if (typeof name !== "string" || typeof frontend !== "boolean" || typeof output !== "string")
     throw new Error("Complete the project name, frontend choice and configuration path.");
   const configuration = createStarterConfiguration(name, frontend);
-  const parsed = parseNordixYaml(configuration);
+  const parsed = resolveProjectYaml(configuration, undefined, { requireGeneration: true });
   if (!parsed.success) throw new Error(parsed.diagnostics.map(formatDiagnostic).join("\n"));
   const destination = resolve(output);
   try {

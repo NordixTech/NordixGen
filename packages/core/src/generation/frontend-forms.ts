@@ -74,9 +74,12 @@ export function coerceFormValue(value:unknown,field:FormField):unknown {
  if(field.type==="json" && typeof value==="string"){try{return JSON.parse(value) as unknown;}catch{return Symbol("invalid-json");}}
  return value;
 }
-const bodyFields=${JSON.stringify(bodies)} as const;
-export function formDefaults(operation:keyof typeof bodyFields,record?:object):Record<string,unknown> {
+type FormOperation=${operations.map((operation) => JSON.stringify(names[operation.id])).join("|") || "never"};
+interface BodyField {readonly nullable:boolean;readonly definition:{readonly type:string;readonly defaultValue:{readonly kind:"absent"|"clock"}|{readonly kind:"literal";readonly value:unknown};readonly [name:string]:unknown};readonly [name:string]:unknown;}
+const bodyFields:Readonly<Record<string,Readonly<Record<string,BodyField>>>>=${JSON.stringify(bodies)};
+export function formDefaults(operation:FormOperation,record?:object):Record<string,unknown> {
  const values:Record<string,unknown>={};const row=record as Record<string,unknown>|undefined;
+ if(!Object.hasOwn(bodyFields,operation))throw new Error("This operation has no generated form.");
  for(const [name,input]of Object.entries(bodyFields[operation])){
   const field=input.definition;let value=row?row[name]:field.defaultValue.kind==="literal"?field.defaultValue.value:input.nullable?null:field.type==="boolean"?false:undefined;
   if(field.type==="json" && value!==undefined && value!==null)value=JSON.stringify(value);

@@ -136,6 +136,7 @@ describe("named fixed-stack resources and safe project placement", () => {
     config.organizations = [{ name: "team", handle: "NordixTech" }];
     config.repositories[0].organization = "team";
     config.repositories[0].createRemote = true;
+    config.repositories[0].initializeGit = true;
     config.repositories[0].path = "server";
     config.repositories.push({
       name: "client",

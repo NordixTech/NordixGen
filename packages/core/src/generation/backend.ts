@@ -22,6 +22,7 @@ import { backendDependencies } from "./dependencies.js";
 import { collectFiles } from "./files.js";
 import { generateModuleComposition } from "./module-composition.js";
 import { generateModulePublicFiles } from "./module-public.js";
+import { backendEnvironmentFile } from "./runtime-environment.js";
 
 export function backendRenderContext(project: ResolvedProject, name: string): BackendRenderContext {
   const domainModel = backendView(project, name);
@@ -123,6 +124,7 @@ export function generateBackend(project: ResolvedProject, name: string) {
     {
       owner: "backend-runtime",
       files: [
+        backendEnvironmentFile(context),
         {
           path: posix.join(view.backend.path, "wrangler.jsonc"),
           content: `${JSON.stringify({ name: view.backend.name, main: "src/index.ts", compatibility_date: "2025-04-01", compatibility_flags: ["nodejs_compat"] }, null, 2)}\n`,

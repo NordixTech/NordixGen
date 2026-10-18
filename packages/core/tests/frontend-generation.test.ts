@@ -118,6 +118,31 @@ void [date, present, body, invalid];`,
 });
 
 describe("fixed UI assembly and declared features", () => {
+  it.each([false, true])(
+    "compiles form defaults with string-only or absent operations: %s",
+    async (empty) => {
+      const config = apiConfiguration();
+      config.endpoints = empty
+        ? []
+        : config.endpoints.filter((endpoint) => endpoint.operationId === "updateUser");
+      const files = generateFrontend(
+        resolvedFixture(config),
+        "store-web",
+      ).virtualFileSystem.snapshot();
+      const sources = Object.fromEntries(
+        Object.entries(files)
+          .filter(([name]) => /\/lib\/api\/(types|client|endpoints|forms)\.ts$/.test(name))
+          .map(([name, content]) => [name.split("/src/")[1], content]),
+      );
+      expect(
+        await generatedTypeErrors(sources, {
+          module: ts.ModuleKind.ESNext,
+          moduleResolution: ts.ModuleResolutionKind.Bundler,
+        }),
+      ).toEqual([]);
+    },
+    20_000,
+  );
   it.each([false, "boolean", "timestamp"] as const)(
     "generates declared CRUD, forms, filtering and pagination for %s deletion",
     (softDelete) => {

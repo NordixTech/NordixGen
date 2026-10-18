@@ -8,7 +8,7 @@ A generated backend is a modular monolith: business modules run together in one 
 
 The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
 
-**Independent Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Hexagonal/Onion remain unsupported. Full database/browser acceptance is still pending.
+**Independent Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Hexagonal/Onion remain unsupported. Focused persistence, identity, browser access, forms and cache-isolation checks pass. Full milestone acceptance remains separate work.
 
 ## Target generated project
 
@@ -22,16 +22,20 @@ NordixGen generates application scaffolding and source code. Cloud deployment co
 
 ## Use the CLI
 
+From this checkout, install dependencies with pnpm 10.5.2 and run `pnpm build` first (Node.js 24+). These commands use the current development CLI.
+
 ```bash
 # Create a starter configuration
-npx nordixgen init
+node packages/cli/dist/index.js init
 
-# Validate configuration and generation readiness (currently exits 1 for valid v2)
-npx nordixgen validate -f nordix.config.yaml
+# Validate configuration and supported generation readiness
+node packages/cli/dist/index.js validate -f nordix.config.yaml
 
-# Generation remains blocked until modular integration is complete
-npx nordixgen generate -f nordix.config.yaml -o ./my-client-project
+# Generate a supported Clean project into a new or empty directory
+node packages/cli/dist/index.js generate -f nordix.config.yaml -o ./my-client-project
 ```
+
+The initializer emits a public database-backed example with list/create operations and an optional frontend. Generation prepares supported output, checks prerequisites, runs pinned official scaffolds, installs each repository workspace, and verifies application types and backend boundaries before optional Git/GitHub publication. Configure the emitted environment examples and apply database migrations before starting the applications. See [CLI workflow and evidence](docs/generation/CLI_WORKFLOW.md).
 
 The [approved YAML reference](docs/configuration/YAML_V2.md) defines the target contract. [Validation behavior and evidence](docs/configuration/VALIDATION.md) explains what currently works, how to run checks, diagnostic categories and remaining integration work. The core resolution API builds the [shared project model](docs/configuration/RESOLVED_MODEL.md) independently of generation readiness.
 

@@ -39,7 +39,11 @@ describe("direct backend generation and file ownership", () => {
         { owner: "root", files: [{ path: "src/index.ts", content: "root" }] },
       ]).listFiles(),
     ).toEqual(["src/index.ts"]);
-    expect(BACKEND_SCAFFOLD_OVERLAYS).toEqual(["src/index.ts", "wrangler.jsonc"]);
+    expect(BACKEND_SCAFFOLD_OVERLAYS).toEqual([
+      "src/index.ts",
+      "wrangler.jsonc",
+      ".dev.vars.example",
+    ]);
   });
   it.each([
     "../secret",

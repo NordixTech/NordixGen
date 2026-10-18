@@ -309,7 +309,7 @@ function signInPageContent(): string {
     "        <div>",
     '          <p className="ng-eyebrow">Secure session</p>',
     "          <h1>Sign in</h1>",
-    '          <p className="ng-lede">Browser sessions use HttpOnly cookies from the configured authentication plugin. This UI never stores session secrets.</p>',
+    '          <p className="ng-lede">Browser sessions use HttpOnly cookies from the configured identity backend. This UI never stores session secrets.</p>',
     "        </div>",
     "        <SignInForm />",
     "      </section>",

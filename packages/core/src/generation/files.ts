@@ -27,4 +27,8 @@ export function collectFiles(
   return vfs;
 }
 /** Only these known initial scaffold files may be replaced in a new/empty target. */
-export const BACKEND_SCAFFOLD_OVERLAYS = ["src/index.ts", "wrangler.jsonc"] as const;
+export const BACKEND_SCAFFOLD_OVERLAYS = [
+  "src/index.ts",
+  "wrangler.jsonc",
+  ".dev.vars.example",
+] as const;

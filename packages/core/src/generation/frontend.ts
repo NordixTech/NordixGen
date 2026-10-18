@@ -14,6 +14,7 @@ import { frontendView } from "../project/views.js";
 import { collectFiles } from "./files.js";
 import { generateFrontendAccess, protectFrontendPage } from "./frontend-access.js";
 import { generateFrontendForms } from "./frontend-forms.js";
+import { frontendEnvironmentFile } from "./runtime-environment.js";
 export const FRONTEND_STACK = {
   runtime: {
     "@tanstack/react-query": "^5.80.7",
@@ -30,6 +31,7 @@ export const FRONTEND_SCAFFOLD_OVERLAYS = [
   "src/app/page.tsx",
   "src/app/globals.css",
   "postcss.config.mjs",
+  ".env.example",
 ] as const;
 export function frontendRenderContext(
   project: ResolvedProject,
@@ -47,6 +49,7 @@ export function generateFrontend(project: ResolvedProject, name: string) {
   const context = frontendRenderContext(project, name);
   const contributions = [
     { owner: "shell", files: generateFrontendShell(context) },
+    { owner: "runtime-environment", files: [frontendEnvironmentFile(context)] },
     { owner: "ui", files: generateUiFiles(context) },
     { owner: "tailwind", files: generateTailwindFiles(context) },
     { owner: "api", files: generateApiClientFiles(context) },

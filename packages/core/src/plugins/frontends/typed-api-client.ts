@@ -1,3 +1,4 @@
+import { backendBaseEnvironment } from "../../generation/frontend-access.js";
 import type {
   TransportField,
   TransportInput,
@@ -109,7 +110,7 @@ export function generateApiClientFiles(context: FrontendRenderContext): readonly
   const backendUrls = context.frontend.connections
     .map(
       (name) =>
-        `${JSON.stringify(name)}:process.env.NEXT_PUBLIC_${name.toUpperCase().replaceAll("-", "_")}_BASE_URL${context.frontend.connections.length === 1 ? ' ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? ""' : ' ?? ""'}`,
+        `${JSON.stringify(name)}:process.env.${backendBaseEnvironment(name)}${context.frontend.connections.length === 1 ? ' ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? ""' : ' ?? ""'}`,
     )
     .join(",");
   const methodFiles = endpoints.map((endpoint) => {
