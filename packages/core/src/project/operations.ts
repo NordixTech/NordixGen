@@ -188,7 +188,13 @@ export function resolveOperation(
           entity.fields[name].generated === "updated-at" ||
           (reference.operation === "create" && entity.fields[name].generated === "created-at"),
       )
-    : [];
+    : endpoint.method === "DELETE" && entity.softDelete
+      ? entity.generatedFields.filter(
+          (name) =>
+            entity.fields[name].generated === "updated-at" ||
+            (entity.softDelete === "timestamp" && entity.fields[name].generated === "soft-delete"),
+        )
+      : [];
   const id = `${entity.moduleId}.${endpoint.operationId}`;
   const access = {
     ...(backend.identity ? { authority: backend.name } : {}),

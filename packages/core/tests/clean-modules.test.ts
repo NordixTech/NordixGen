@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { generateBackend, moduleRenderContext } from "../src/generation/backend.js";
 import { resolvedFixture, targetConfig } from "./fixtures.js";
 import { generatedTypeErrors } from "./generated-types.js";
+import { constrainedPersistenceFixture } from "./persistence-fixture.js";
 function fixture() {
   const config = targetConfig();
   for (const businessModule of Object.values(config.backends[0].modules)) {
@@ -16,6 +17,16 @@ function fixture() {
 }
 
 describe("Clean business modules in one backend", () => {
+  it("compiles owned schemas, bounded unique seeds and declared SQL operations", async () => {
+    const result = generateBackend(resolvedFixture(constrainedPersistenceFixture()), "api");
+    if (!result.success) throw Error("Invalid persistence fixture");
+    const sources = Object.fromEntries(
+      Object.entries(result.virtualFileSystem.snapshot())
+        .filter(([name]) => name.endsWith(".ts"))
+        .map(([name, content]) => [name.slice("apps/api/".length), content]),
+    );
+    expect(await generatedTypeErrors(sources)).toEqual([]);
+  }, 20_000);
   it("typechecks two persisted modules with real Hono/Drizzle/Better Auth dependencies", async () => {
     const project = fixture();
     const output = generateBackend(project, "api");
@@ -27,6 +38,13 @@ describe("Clean business modules in one backend", () => {
         .filter(([path]) => path.endsWith(".ts"))
         .map(([path, content]) => [path.slice("apps/api/".length), content]),
     );
+    sources["src/modules/billing/infrastructure/database/scope.ts"] = `
+import type {DrizzleDatabase} from "./client.js";
+declare const db:DrizzleDatabase;
+db.query.InvoiceTable;
+// @ts-expect-error Another module's query is unavailable through this module's database type.
+db.query.CustomerTable;
+`;
     expect(await generatedTypeErrors(sources)).toEqual([]);
     expect(
       files["apps/api/src/modules/customers/domain/entities/Customer.entity.ts"],
@@ -79,6 +97,14 @@ describe("Clean business modules in one backend", () => {
       await mkdir(dirname(bad), { recursive: true });
       for (const [source, code] of [
         [`import {Hono} from "hono";`, "ARCHITECTURE_DEPENDENCY_INVALID"],
+        [
+          `import * as schema from "../../../platform/database/schema/index.js";`,
+          "MODULE_PRIVATE_SCHEMA_IMPORT",
+        ],
+        [
+          `import type {DrizzleDatabase} from "../../../platform/database/drizzle-database.js";`,
+          "MODULE_SHARED_DATABASE_IMPORT",
+        ],
         [
           `import type {Customer} from "../../customers/domain/entities/Customer.entity.js";`,
           "MODULE_PRIVATE_IMPORT",

@@ -2,13 +2,7 @@ import { describe, expect, it } from "vitest";
 import { NordixConfigSchema } from "../src/configuration/schema.js";
 import { backendRenderContext } from "../src/generation/backend.js";
 import { generateBackend } from "../src/generation/backend.js";
-import { resolveCleanArchitectureLayout } from "../src/plugins/architecture/clean.js";
-import type {
-  BackendPaths,
-  BackendRenderContext,
-  CleanLayout,
-  GeneratorPlugin,
-} from "../src/plugins/contracts.js";
+import type { BackendRenderContext } from "../src/plugins/contracts.js";
 import {
   generateDrizzleAdapterFiles,
   generateDrizzleMigrationFiles,
@@ -19,6 +13,12 @@ import { backendView } from "../src/project/views.js";
 import { resolvedFixture } from "./fixtures.js";
 import { createSecuredConfig, createValidConfig } from "./fixtures.js";
 
+function schemaSource(files: Record<string, string>) {
+  return Object.entries(files)
+    .filter(([path]) => path.includes("/database/schema/"))
+    .map(([, source]) => source)
+    .join("\n");
+}
 function createDrizzleContext(persistence = createValidPersistenceContext()): BackendRenderContext {
   return { ...backendRenderContext(resolvedFixture(), "core-api"), persistence };
 }
@@ -28,12 +28,13 @@ function createValidPersistenceContext(): NonNullable<BackendRenderContext["pers
     directories: {
       infrastructure: "apps/api-core/src/infrastructure",
       adapter: "apps/api-core/src/infrastructure/adapters",
+      schema: "apps/api-core/src/platform/database/schema",
     },
     connectionStringEnvironmentVariable: "DATABASE_URL",
   };
 }
 
-describe("Drizzle ORM plugin", () => {
+describe("owned Drizzle persistence", () => {
   it("generates Drizzle Kit configuration from the selected backend persistence context", () => {
     const config = NordixConfigSchema.parse(createValidConfig());
     const result = generateBackend(resolvedFixture(config), "core-api");
@@ -48,15 +49,9 @@ describe("Drizzle ORM plugin", () => {
     );
     expect(files["apps/api-core/drizzle.config.ts"]).toContain('dialect: "postgresql"');
     expect(files["apps/api-core/drizzle.config.ts"]).toContain("process.env.DATABASE_URL");
-    expect(files["apps/api-core/src/platform/database/schema/index.ts"]).toContain(
-      "export const OrderTable = pgTable(",
-    );
-    expect(files["apps/api-core/src/platform/database/schema/index.ts"]).toContain(
-      "export const CustomerTable = pgTable(",
-    );
-    expect(files["apps/api-core/src/platform/database/schema/index.ts"]).toContain(
-      "export const OrderStatusPgEnum = pgEnum(",
-    );
+    expect(schemaSource(files)).toContain("export const OrderTable = pgTable(");
+    expect(schemaSource(files)).toContain("export const CustomerTable = pgTable(");
+    expect(schemaSource(files)).toContain("export const OrderStatusPgEnum = pgEnum(");
     expect(
       files[
         "apps/api-core/src/modules/commerce/infrastructure/adapters/Order.drizzle.repository.ts"
@@ -122,7 +117,7 @@ describe("Drizzle ORM plugin", () => {
     if (!result.success) return;
 
     const files = result.virtualFileSystem.snapshot();
-    const schema = files["apps/api-core/src/platform/database/schema/index.ts"];
+    const schema = schemaSource(files);
     expect(schema).toBeDefined();
     expect(schema).toContain("export const OrderTable = pgTable(");
     expect(schema).toContain("export const OrderRelations = relations(");
@@ -139,7 +134,7 @@ describe("Drizzle ORM plugin", () => {
     expect(orderAdapter).toContain("findMany");
     expect(orderAdapter).toContain("save");
     expect(orderAdapter).toContain("delete");
-    expect(orderAdapter).toContain('"total": Number(row.total)');
+    expect(orderAdapter).toContain('"total": row.total == null ? null : Number(row.total)');
     expect(orderAdapter).toContain("items.map((row) => this.toDomain(row))");
     expect(
       files[
@@ -178,17 +173,15 @@ describe("Drizzle ORM plugin", () => {
       "class DrizzleGetOrderSummaryQueryAdapter implements GetOrderSummaryQueryPort",
     );
     expect(queryAdapter).toContain("execute(input: QueryExecution): Promise<Response>");
-    expect(queryAdapter).toContain("entity:  { ...row, total: Number(row.total) }");
+    expect(queryAdapter).toContain('"total":row.total == null ? null : Number(row.total)');
     expect(queryAdapter).toContain(
-      "OrderItem: Array.isArray(row.items) ? row.items.map((value: any) => ({ ...value, unitPrice: Number(value.unitPrice) })) : row.items ?? []",
+      '"unitPrice":value.unitPrice == null ? null : Number(value.unitPrice)',
     );
     expect(queryAdapter).toContain(
-      "conditions.push(inArray(schema.OrderTable.customer_id, matchingRows));",
+      "conditions.push(inArray(schema.OrderTable.customer_id,matchingRows));",
     );
-    expect(queryAdapter).toContain("conditions.push(inArray(schema.OrderTable.id, matchingRows));");
-    expect(queryAdapter).toContain(
-      "Customer: row.customer == null ? null : { ...row.customer, credit: Number(row.customer.credit) },",
-    );
+    expect(queryAdapter).toContain("conditions.push(inArray(schema.OrderTable.id,matchingRows));");
+    expect(queryAdapter).toContain('"credit":value.credit == null ? null : Number(value.credit)');
     expect(queryAdapter).toContain(
       "from(schema.OrderTable).where(conditions.length > 0 ? and(...conditions) : undefined)",
     );
@@ -232,7 +225,7 @@ describe("Drizzle ORM plugin", () => {
     if (!result.success) return;
 
     const files = result.virtualFileSystem.snapshot();
-    const schema = files["apps/api-core/src/platform/database/schema/index.ts"];
+    const schema = schemaSource(files);
     expect(schema).toContain('varchar("bio", { length: 200 })');
     expect(schema).toContain('integer("age").notNull().default(18)');
     expect(schema).toContain('numeric("rating", { precision: 5, scale: 2 }).notNull()');
@@ -333,9 +326,7 @@ describe("Drizzle ORM plugin", () => {
       files[
         "apps/api-core/src/modules/commerce/infrastructure/adapters/ListOrdersPublicly.drizzle.query.adapter.ts"
       ],
-    ).toContain(
-      'case "contains": conditions.push(ilike(column, `%${String(filter.value)}%`)); break;',
-    );
+    ).toContain('case "contains":return ilike(column,');
     expect(
       files[
         "apps/api-core/src/modules/commerce/infrastructure/adapters/CreateOrderEndpoint.drizzle.query.adapter.ts"
@@ -360,7 +351,7 @@ describe("Drizzle ORM plugin", () => {
       files[
         "apps/api-core/src/modules/commerce/infrastructure/adapters/DeleteOrderEndpoint.drizzle.query.adapter.ts"
       ],
-    ).toContain("this.db.delete(schema.OrderTable)");
+    ).toContain("this.db.update(schema.OrderTable).set({isDeleted:true");
   });
 
   it("handles entities without soft delete and timestamp soft delete query adapters", () => {
@@ -480,7 +471,7 @@ describe("Drizzle ORM plugin", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     const files = result.virtualFileSystem.snapshot();
-    const schema = files["apps/api-core/src/platform/database/schema/index.ts"];
+    const schema = schemaSource(files);
     expect(schema).toBeDefined();
     expect(schema).not.toContain("relations(");
   });
@@ -506,7 +497,7 @@ describe("Drizzle ORM plugin", () => {
       (file) => file.path.endsWith("GetOrdersByQuantity.drizzle.query.adapter.ts"),
     );
     expect(adapter?.content).toContain(
-      "conditions.push(inArray(schema.OrderTable.id, matchingRows));",
+      "conditions.push(inArray(schema.OrderTable.id,matchingRows));",
     );
   });
 

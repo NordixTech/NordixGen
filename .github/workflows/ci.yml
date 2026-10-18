@@ -11,6 +11,26 @@ jobs:
     name: Lint, Typecheck & Tests (Node.js 24)
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_USER: nordixgen_test
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: nordixgen_test
+        options: >-
+          --health-cmd "pg_isready -U nordixgen_test -d nordixgen_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      neon-proxy:
+        image: ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a
+        env:
+          PG_CONNECTION_STRING: postgres://nordixgen_test:test-only@postgres:5432/nordixgen_test
+        ports:
+          - 14444:4444
+    env:
+      NORDIXGEN_TEST_DATABASE_URL: postgresql://nordixgen_test:test-only@db.localtest.me:5432/nordixgen_test
+      NORDIXGEN_TEST_PROXY_PORT: 14444
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

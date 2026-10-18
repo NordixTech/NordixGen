@@ -27,6 +27,8 @@ for(const file of walk(resolve(root,"src"))){
   if(!ts.isStringLiteralLike(specifier)){fail(node,"MODULE_DYNAMIC_IMPORT_UNSUPPORTED","Use a static declared public application import.");return;}
   const name=specifier.text;const target=name.startsWith(".")?unix(relative(root,resolve(dirname(file),name))).replace(/\\.js$/,".ts"):name;const producer=owner(target);
   if(inward && (/^(hono|drizzle-orm|@neondatabase|better-auth)(\\/|$)/.test(name)||/(^|\\/)(infrastructure|presentation)\\//.test(target)||target.includes("/platform/database/")||target.includes("/platform/auth/")||target.includes("/platform/http/")))fail(node,"ARCHITECTURE_DEPENDENCY_INVALID","Reference "+name+" depends on HTTP/persistence/identity infrastructure. Inject an application port instead.");
+  if(target.includes("/platform/database/schema/index.ts"))fail(node,"MODULE_PRIVATE_SCHEMA_IMPORT","Reference "+name+" exposes all backend tables. Import this module's owned schema instead.");
+  if(target.endsWith("/platform/database/drizzle-database.ts") && local!=="infrastructure/database/client.ts")fail(node,"MODULE_SHARED_DATABASE_IMPORT","Reference "+name+" exposes another module\'s query types. Use the injected module database type.");
   if(producer && producer.id!==consumer.id){
    if(target!=="src/modules/"+producer.name+"/index.ts")fail(node,"MODULE_PRIVATE_IMPORT","Producer "+producer.id+" reference "+name+" is private. Import its public entry instead.");
    else if(!consumer.dependencies.includes(producer.id))fail(node,"MODULE_DEPENDENCY_UNDECLARED","Producer "+producer.id+" reference "+name+" is undeclared. Declare the permitted application dependency.");

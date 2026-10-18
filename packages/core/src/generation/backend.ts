@@ -9,7 +9,10 @@ import { generateAuthorizationFiles } from "../plugins/authorization/rbac-pbac.j
 import type { BackendRenderContext } from "../plugins/contracts.js";
 import { generateHonoFiles } from "../plugins/frameworks/hono-files.js";
 import { backendPaths } from "../plugins/frameworks/hono.js";
-import { generateDrizzleAdapterFiles } from "../plugins/orms/drizzle-files.js";
+import {
+  generateDrizzleAdapterFiles,
+  generateDrizzleSchemaFiles,
+} from "../plugins/orms/drizzle-files.js";
 import { generateDrizzleFiles } from "../plugins/orms/drizzle.js";
 import type { ResolvedProject } from "../project/types.js";
 import { backendView } from "../project/views.js";
@@ -57,6 +60,7 @@ export function backendRenderContext(project: ResolvedProject, name: string): Ba
                 architecture.directories.infrastructure,
               ),
               adapter: posix.join(framework.codeRoot, architecture.directories.adapter),
+              schema: posix.join(framework.codeRoot, "platform/database/schema"),
             },
             connectionStringEnvironmentVariable: "DATABASE_URL" as const,
           },
@@ -85,7 +89,10 @@ export function generateBackend(project: ResolvedProject, name: string) {
           ? [
               {
                 owner: `${module.id}:persistence`,
-                files: generateDrizzleAdapterFiles(scoped, scoped.persistence),
+                files: [
+                  ...generateDrizzleSchemaFiles(scoped, scoped.persistence),
+                  ...generateDrizzleAdapterFiles(scoped, scoped.persistence),
+                ],
               },
             ]
           : []),
@@ -159,7 +166,7 @@ export function moduleRenderContext(
     moduleId,
     framework,
     architecture,
-    sharedDatabaseFile: posix.join(parent.platformRoot, "database/drizzle-database.ts"),
+    sharedDatabaseFile: posix.join(codeRoot, "infrastructure/database/client.ts"),
     domainModel: {
       ...parent.domainModel,
       entities,
@@ -177,6 +184,7 @@ export function moduleRenderContext(
             directories: {
               infrastructure: parent.platformRoot,
               adapter: posix.join(codeRoot, "infrastructure/adapters"),
+              schema: posix.join(codeRoot, "infrastructure/database/schema"),
             },
           },
         }
