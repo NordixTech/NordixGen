@@ -221,11 +221,17 @@ describe("fixed-stack CLI preparation and execution", () => {
     const manifest = JSON.parse(await readFile(join(f.output, "package.json"), "utf8"));
     expect(manifest.name).toBe("api");
     expect(manifest.scripts.dev).toBe("wrangler dev");
+    expect(manifest.scripts["docker:up"]).toBe("docker compose up -d --build");
+    expect(manifest.scripts["docker:down"]).toBe("docker compose down -v");
+    expect(await readFile(join(f.output, "Dockerfile"), "utf8")).toContain("AS runner");
+    expect(await readFile(join(f.output, "docker-compose.yml"), "utf8")).toContain(
+      "postgres:16-alpine",
+    );
     expect(manifest.packageManager).toBe(WORKSPACE_TOOLING.packageManager);
     expect(await readFile(join(f.output, "pnpm-workspace.yaml"), "utf8")).toContain('"."');
     expect(await readFile(join(f.output, "src/index.ts"), "utf8")).toContain("new Hono");
   });
-  it.each(["scaffold", "install", "typecheck", "boundaries"])(
+  it.each(["scaffold", "install", "migrations", "typecheck", "boundaries"])(
     "contains %s failures and never initializes or publishes repositories afterward",
     async (stage) => {
       const f = await setup(true);
@@ -236,6 +242,7 @@ describe("fixed-stack CLI preparation and execution", () => {
         if (
           (stage === "scaffold" && args[1]?.startsWith("hono@")) ||
           (stage === "install" && args[0] === "install") ||
+          (stage === "migrations" && args.join(" ") === "run db:generate") ||
           (stage === "typecheck" && args.join(" ") === "run typecheck") ||
           (stage === "boundaries" && args.join(" ") === "run check:boundaries")
         )

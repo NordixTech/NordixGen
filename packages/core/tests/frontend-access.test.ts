@@ -53,6 +53,26 @@ function guard(
   };
 }
 describe("verified server page access", () => {
+  it("uses a private Docker authority for server session and IAM checks without changing browser origins", async () => {
+    vi.stubEnv("NEXT_PUBLIC_AUTH_BASE_URL", "http://localhost:8787");
+    vi.stubEnv("AUTH_INTERNAL_BASE_URL", "http://backend-api:8787");
+    try {
+      const f = guard();
+      f.fetchSession
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ session: { id: "s" }, user: { id: "u" } })),
+        )
+        .mockResolvedValueOnce(new Response(JSON.stringify({ permissions: ["*"] })));
+      await f.requireIam();
+      expect(f.fetchSession.mock.calls.map((call) => String(call[0]))).toEqual([
+        "http://backend-api:8787/api/auth/get-session",
+        "http://backend-api:8787/api/iam/me",
+      ]);
+      expect(process.env.NEXT_PUBLIC_AUTH_BASE_URL).toBe("http://localhost:8787");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it("checks IAM permissions on the server in public page mode and denies unavailable or insufficient authority", async () => {
     vi.stubEnv("NEXT_PUBLIC_AUTH_BASE_URL", "http://localhost:8787");
     try {

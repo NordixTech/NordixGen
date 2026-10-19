@@ -7,6 +7,36 @@ on:
     branches: [develop, main]
 
 jobs:
+  local-docker:
+    name: Generated Docker environment (${{ matrix.layout }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [monorepo, split]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm example:docker ${{ matrix.layout }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-acceptance-${{ matrix.layout }}
+          if-no-files-found: ignore
+          path: |
+            tmp/docker-acceptance/*/*.log
+            tmp/docker-acceptance/*/*.png
+            tmp/docker-acceptance/*/report.json
   validate:
     name: Lint, Typecheck & Tests (Node.js 24)
     runs-on: ubuntu-latest

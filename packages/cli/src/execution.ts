@@ -90,6 +90,14 @@ export async function executeGeneration(
   }
   for (const app of applications) {
     const directory = inside(inside(root, app.repository.path), app.path);
+    if (app.database)
+      await checkedCommand(
+        runner,
+        "pnpm",
+        ["run", "db:generate"],
+        directory,
+        `Application "${app.name}" initial migration preparation failed`,
+      );
     await checkedCommand(
       runner,
       "pnpm",

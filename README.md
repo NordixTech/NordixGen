@@ -24,7 +24,7 @@ Generated frontends support semantic design tokens with per-project light/dark p
 
 Business HTTP operations are described through endpoint declarations. Entity definitions describe data; they do not form the intended API contract by themselves. Health checks, Better Auth handlers and IAM administration are platform routes.
 
-NordixGen generates application scaffolding and source code. Cloud deployment configuration, infrastructure provisioning, generated CI/CD, and local Docker environments are separate capabilities and are not part of the generator's current product workflow.
+NordixGen generates application scaffolding, source code, and local Docker environments. Each application receives a multi-stage Dockerfile; each repository receives Compose orchestration for its own applications, dedicated PostgreSQL volumes and Neon HTTP proxies. Run `docker compose up -d --build` or `pnpm docker:up` in a generated repository. See [local Docker usage](docs/generation/CLI_WORKFLOW.md#local-docker-environments). Cloud deployment configuration, infrastructure provisioning and generated CI/CD remain separate capabilities.
 
 ## Use the CLI
 
