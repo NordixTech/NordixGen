@@ -16,6 +16,7 @@ import {
   provisionNeonProjects,
   publicOrigin,
   redact,
+  registerDeploymentToken,
   requestApi,
   validateTopology,
   validatedCredential,
@@ -48,6 +49,61 @@ function fixture(split = false) {
   return result.project;
 }
 describe("native deployment safety and contracts", () => {
+  it("registers the supplied user token for builds without creating a second API token", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ result: { id: "cf-id", status: "active" } })),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ result: [] })))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ result: { build_token_uuid: "build-id" } })),
+      );
+    vi.stubGlobal("fetch", fetcher);
+    await expect(
+      registerDeploymentToken("account", "supplied-token", "demo deployments"),
+    ).resolves.toBe("build-id");
+    expect(fetcher.mock.calls.map((call) => call[1].method)).toEqual(["GET", "GET", "POST"]);
+    expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual({
+      build_token_name: "demo deployments",
+      build_token_secret: "supplied-token",
+      cloudflare_token_id: "cf-id",
+    });
+    expect(fetcher.mock.calls[2][0]).toBe(
+      "https://api.cloudflare.com/client/v4/accounts/account/builds/tokens",
+    );
+  });
+  it("reuses a registration for the same token on repeated setup", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ result: { id: "cf-id", status: "active" } })),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            result: [{ cloudflare_token_id: "cf-id", build_token_uuid: "existing" }],
+          }),
+        ),
+      );
+    vi.stubGlobal("fetch", fetcher);
+    await expect(registerDeploymentToken("account", "supplied-token", "demo")).resolves.toBe(
+      "existing",
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it("does not register an inactive token", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ result: { id: "cf-id", status: "expired" } })),
+      );
+    vi.stubGlobal("fetch", fetcher);
+    await expect(registerDeploymentToken("account", "expired-token", "demo")).rejects.toThrow(
+      "not active",
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it("does not silently reuse a shell credential and retries a revoked credential without mutations", async () => {
     vi.stubEnv("NEON_API_KEY", "old-key");
     vi.mocked(confirm)

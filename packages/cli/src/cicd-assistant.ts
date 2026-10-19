@@ -2,8 +2,9 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { confirm, isCancel, password, select, text } from "@clack/prompts";
+import { confirm, intro, isCancel, log, note, outro, password, select, text } from "@clack/prompts";
 import { execa } from "execa";
+import pc from "picocolors";
 import type { DeploymentManifest, DeploymentProfile, Environment } from "./deployment-model.js";
 
 const environments = ["staging", "production"] as const;
@@ -88,40 +89,67 @@ async function input(message: string, initialValue = "", secret = false): Promis
   if (secret) secrets.add(value);
   return value;
 }
+function instructionCard(instructions: string) {
+  const [title, ...lines] = instructions.split("\n");
+  const body = lines.map((line) =>
+    line
+      .replace(/^(\d+\.)/, (step) => pc.cyan(pc.bold(step)))
+      .replace(/https:\/\/[^\s]+/g, (url) => pc.cyan(pc.underline(url))),
+  );
+  note(body.join("\n"), pc.bold(pc.cyan(title)));
+}
 export const accessInstructions = {
-  cloudflare: `Cloudflare setup access
-Open https://dash.cloudflare.com/profile/api-tokens
-Go to My Profile > API Tokens > Create Token > Create Custom Token.
-Name it NordixGen setup. Add Account permissions: Account Settings / Read,
-Workers Scripts / Edit, and Workers Builds Configuration / Edit.
-Limit Account Resources to the account you want to deploy to. Create the token,
-copy its secret, and paste it into the masked prompt below. Do not use the Global API Key.
-This token configures resources; it is different from the deployment token used by builds.`,
-  neon: `Neon setup access
-Open https://console.neon.tech
-Sign in, open the profile menu > Settings (or Account settings) > API keys.
-Create a personal API key named NordixGen setup and copy its secret now.
-A personal key can create projects in organizations you belong to. A project-scoped
-key cannot create a new project. Paste the key into the masked prompt below.
-No Neon-to-GitHub integration is required. This key is not uploaded to Workers or builds.
+  cloudflare: `1 / Cloudflare access
+Use one API token to configure and deploy this project.
+
+1. Open the token page:
+   https://dash.cloudflare.com/profile/api-tokens
+2. My Profile > API Tokens > Create Token > Create Custom Token.
+3. Name: NordixGen. Add these Account permissions:
+   • Account Settings — Read
+   • Workers Scripts — Edit
+   • Workers Builds Configuration — Edit
+4. Account Resources: select the account you want to deploy to.
+5. Create the token, copy its secret, then paste it below.
+
+Use an API token, not the Global API Key.
+You can reuse this token for automatic deployments in the next steps.`,
+  neon: `4 / Neon access
+The assistant creates the database through the Neon API.
+
+1. Open https://console.neon.tech and sign in.
+2. Profile menu > Settings (or Account settings) > API keys.
+3. Create a personal API key named NordixGen.
+4. Copy its secret now, then paste it into the masked prompt.
+
+A personal key can create projects in your organizations.
+A project-scoped key cannot create a new project.
+No Neon-to-GitHub integration is needed.
+The Neon key is never uploaded to Workers or builds.
+
 Help: https://neon.com/docs/manage/api-keys`,
 };
 export function githubAccessInstructions(accountId: string, repository: string): string {
-  return `Connect Cloudflare to GitHub
-Open https://dash.cloudflare.com/${accountId}/workers-and-pages
-Select a Worker > Settings > Builds > Connect > GitHub. If you have no Workers,
-create a temporary Hello World Worker first, then open its Settings > Builds.
-Authorize Cloudflare Workers and Pages for the GitHub account that owns ${repository}.
-If you choose Only select repositories, include ${repository.split("/")[1]} and save.
-Review access at https://github.com/settings/installations
-The assistant cannot grant this browser authorization. Repository access will be
-checked when applying configuration, before any Neon project is created.
-Help: https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/`;
+  return `2 / Connect GitHub
+Repository: ${repository}
+
+1. Open your Cloudflare Workers dashboard:
+   https://dash.cloudflare.com/${accountId}/workers-and-pages
+2. Select a Worker > Settings > Builds > Connect > GitHub.
+   No Workers yet? Create a temporary Hello World Worker first.
+3. Authorize Cloudflare Workers and Pages for the repository owner.
+4. If using Only select repositories, include:
+   ${repository.split("/")[1]}
+5. Save, then return to this assistant.
+
+Review installed apps: https://github.com/settings/installations
+Browser authorization is required once. The assistant cannot grant it.
+Repository connection is checked before creating any Neon project.`;
 }
 async function credential(name: string, instructions: string): Promise<string> {
-  console.log(instructions);
+  instructionCard(instructions);
   if (process.env[name]) {
-    console.log(`${name} is present in this shell. It may be an old or revoked credential.`);
+    log.warn(`${name} exists in this shell and may be old or revoked.`);
     if (answer(await confirm({ message: `Use ${name} from this shell?`, initialValue: false })))
       return process.env[name] as string;
   }
@@ -139,7 +167,7 @@ export async function validatedCredential(
       const response = await requestApi(base, path, token);
       return { token, response };
     } catch (error) {
-      console.error(redact(error instanceof Error ? error.message : "Credential check failed."));
+      log.error(redact(error instanceof Error ? error.message : "Credential check failed."));
       if (
         !answer(await confirm({ message: "Review the instructions and try another credential?" }))
       )
@@ -310,6 +338,28 @@ export async function connectRepository(profile: DeploymentProfile, cfToken: str
       `Cloudflare could not connect to the GitHub repository.\n${githubAccessInstructions(profile.accountId, profile.repository)}`,
     );
   }
+}
+export async function registerDeploymentToken(accountId: string, token: string, name: string) {
+  secrets.add(token);
+  const verified = object((await requestApi(cfBase, "/user/tokens/verify", token)).result);
+  if (verified.status !== "active")
+    throw Error("The deployment token is not active. Create a valid user API token and retry.");
+  const tokenId = field(verified.id);
+  const path = `/accounts/${accountId}/builds/tokens`;
+  const existing = items((await requestApi(cfBase, path, token)).result).find(
+    (entry) => entry.cloudflare_token_id === tokenId,
+  );
+  if (existing) return field(existing.build_token_uuid);
+  const registered = object(
+    (
+      await requestApi(cfBase, path, token, "POST", {
+        build_token_name: name,
+        build_token_secret: token,
+        cloudflare_token_id: tokenId,
+      })
+    ).result,
+  );
+  return field(registered.build_token_uuid);
 }
 export async function configure(
   manifest: DeploymentManifest,
@@ -560,6 +610,10 @@ async function chooseNeonProject(name: string, token: string, previous?: string)
 export async function setupDeployment(manifest: DeploymentManifest, profileName: string) {
   if (typeof profileName !== "string" || !/^[a-z][a-z0-9-]*$/.test(profileName))
     throw Error("Profile names use lowercase letters, numbers and hyphens.");
+  intro(pc.bgCyan(pc.black(" NordixGen · CI/CD setup ")));
+  log.info(
+    "develop → staging  •  main → production\nConfigure access, review destinations, then apply.",
+  );
   const profilePath = resolve(".nordixgen", `cicd.${profileName}.json`);
   let previous: Partial<DeploymentProfile> = {};
   try {
@@ -607,7 +661,7 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
         `GitHub branch ${branch} is unavailable. Install GitHub CLI from https://cli.github.com, run gh auth login and choose browser authentication. Publish main and develop with git push --atomic --set-upstream origin main develop, then retry.`,
       );
     });
-  console.log(githubAccessInstructions(accountId, repository));
+  instructionCard(githubAccessInstructions(accountId, repository));
   if (
     !answer(
       await confirm({
@@ -619,39 +673,43 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
     throw Error(
       "Complete the browser authorization above, then rerun setup. No resources were created.",
     );
-  let tokenData: Json[];
-  for (;;) {
-    tokenData = items(
+  instructionCard(
+    "3 / Automatic deployments\nYour API token can deploy the application after each push.\n\nRecommended: reuse the token you already entered.\nThe assistant registers it with Cloudflare Workers Builds.\nCloudflare retains this credential to deploy when your computer is off.\nIt is never saved in the repository or the public profile.\n\nYou do not need to create another token.",
+  );
+  const deploymentAccess = answer(
+    await select({
+      message: "How should Cloudflare authenticate deployments?",
+      options: [
+        {
+          value: "reuse",
+          label: "Use the API token I already entered",
+          hint: "recommended · no additional token",
+        },
+        { value: "existing", label: "Select a registered build token", hint: "advanced" },
+      ],
+    }),
+  );
+  let buildTokenId = "";
+  if (deploymentAccess === "existing") {
+    const tokenData = items(
       (await requestApi(cfBase, `/accounts/${accountId}/builds/tokens`, cfToken)).result,
     );
-    console.log(
-      `Build deployment token\nOpen https://dash.cloudflare.com/${accountId}/workers-and-pages\nSelect a Worker > Settings > Builds > API token. Create a new build token for this project.\nIf prompted to connect GitHub first, complete the authorization described above.\nThis token lets Cloudflare deploy your code; it is separate from the setup token.\nReturn here and refresh the list after saving. Existing tokens are only reused if you select one.`,
-    );
-    if (
-      tokenData.length &&
+    if (!tokenData.length)
+      throw Error(
+        "No registered build tokens were found. Rerun setup and choose Use the API token I already entered.",
+      );
+    buildTokenId = String(
       answer(
-        await confirm({ message: "Select a token from the current list?", initialValue: false }),
-      )
-    )
-      break;
-    if (
-      !answer(
-        await confirm({ message: "Refresh build tokens after completing the dashboard steps?" }),
-      )
-    )
-      throw Error("No build token selected. Complete the steps above and rerun setup.");
+        await select({
+          message: "Registered deployment token",
+          options: tokenData.map((t) => ({
+            value: field(t.build_token_uuid),
+            label: field(t.build_token_name),
+          })),
+        }),
+      ),
+    );
   }
-  const buildTokenId = String(
-    answer(
-      await select({
-        message: "Cloudflare managed build token",
-        options: tokenData.map((t) => ({
-          value: field(t.build_token_uuid),
-          label: field(t.build_token_name),
-        })),
-      }),
-    ),
-  );
   const profile: DeploymentProfile = {
     accountId,
     repository,
@@ -701,20 +759,41 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
       profile.neonProjects[app.name],
     );
   validateTopology(manifest, profile);
-  console.log(
-    `Target: ${accountId}; GitHub: ${repository}; apps: ${manifest.applications.map((a) => a.name).join(", ")}. This creates/updates Workers, build triggers and secrets. Existing databases are never reset or deleted.`,
+  note(
+    [
+      `Cloudflare account: ${accountId}`,
+      `GitHub repository:  ${repository}`,
+      `Applications:       ${manifest.applications.map((a) => a.name).join(", ")}`,
+      "",
+      "develop → staging · main → production",
+      deploymentAccess === "reuse"
+        ? "Cloudflare will retain your API token for automatic deployments."
+        : "Deployments use the registered token you selected.",
+      "Workers, build triggers and secrets will be created or updated.",
+      "Existing databases are never reset or deleted.",
+    ].join("\n"),
+    pc.bold(pc.cyan("Review configuration")),
   );
   if (!answer(await confirm({ message: "Apply this configuration?" }))) return;
   await mkdir(resolve(".nordixgen"), { recursive: true });
   const save = () =>
     writeFile(profilePath, `${JSON.stringify(profile, null, 2)}\n`, { mode: 0o600 });
-  await save();
   await connectRepository(profile, cfToken);
+  if (deploymentAccess === "reuse") {
+    profile.buildTokenId = await registerDeploymentToken(
+      accountId,
+      cfToken,
+      `${manifest.project} deployments`,
+    );
+    log.success("Your API token is registered for automatic deployments.");
+  }
+  await save();
   await provisionNeonProjects(manifest, profile, neonToken, save);
   await configure(manifest, profile, cfToken, neonToken);
-  console.log(
-    "Setup complete. Push main/develop to run native Cloudflare builds; verify both builds and application URLs. See docs/DEPLOYMENT.md for routes and recovery.",
+  log.info(
+    "Inspect build logs in Cloudflare > Worker > Builds.\nSee docs/DEPLOYMENT.md for routes and recovery.",
   );
+  outro(pc.green("Setup complete. Push develop to test staging, then main for production."));
 }
 async function main() {
   if (process.argv.includes("--help")) {
