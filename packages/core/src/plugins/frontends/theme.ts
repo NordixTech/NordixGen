@@ -32,8 +32,6 @@ export function initializeTheme(){
     document.documentElement.dataset.theme=theme;
     useTheme.setState({theme,resolvedTheme:resolve(theme)});
   };
-  const initial=document.documentElement.dataset.theme;
-  apply(valid(initial)?initial:defaultTheme);
   const media=window.matchMedia("(prefers-color-scheme: dark)");
   const changed=()=>{if(useTheme.getState().theme==="system")apply("system");};
   const storage=(event:StorageEvent)=>{
@@ -42,7 +40,16 @@ export function initializeTheme(){
   };
   media.addEventListener("change",changed);
   window.addEventListener("storage",storage);
-  return ()=>{media.removeEventListener("change",changed);window.removeEventListener("storage",storage);};
+  let saved:string|null=null;
+  try{saved=typeof localStorage!=="undefined"&&typeof localStorage.getItem==="function"?localStorage.getItem("nordix-theme"):null;}catch{}
+  const initial=valid(saved)?saved:document.documentElement.dataset.theme;
+  apply(valid(initial)?initial:defaultTheme);
+  document.documentElement.dataset.themeReady="true";
+  return ()=>{
+    media.removeEventListener("change",changed);
+    window.removeEventListener("storage",storage);
+    delete document.documentElement.dataset.themeReady;
+  };
 }
 `,
     },
