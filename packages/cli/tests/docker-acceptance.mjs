@@ -126,6 +126,7 @@ try {
     process.execPath,
     [join(root, "packages/cli/dist/index.js"), "generate", "-f", file, "-o", output],
     root,
+    env,
   );
   generated = true;
   for (const repo of repositories) {
