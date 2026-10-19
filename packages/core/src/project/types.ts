@@ -212,6 +212,8 @@ export interface ResolvedDatabase {
   readonly name: string;
   readonly engine: "postgres";
   readonly provider: "neon";
+  /** Exclusive owning backend; absent for an unused declared resource. */
+  readonly backend?: string;
 }
 export interface ResolvedIdentity {
   readonly permissions: readonly string[];

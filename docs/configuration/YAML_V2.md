@@ -50,7 +50,7 @@ Resolved identities are tuples: `(backend, module)` and `(backend, module, opera
 | `description` | Optional string | Project metadata |
 | `organizations` | `[]` | GitHub owner aliases; item fields: required `name`, `handle` (letters/digits/hyphens); no provider selector |
 | `repositories` | Required, nonempty array | See repository fields below |
-| `databases` | `{}` | Map from database slug to strict empty object `{}`; each is a named PostgreSQL/Neon resource, not a provisioned database |
+| `databases` | `{}` | Map from database slug to strict empty object `{}`; each is a named PostgreSQL/Neon resource exclusively owned by at most one backend, not a provisioned database |
 | `backends` | Required, nonempty array | See backend fields below |
 | `frontends` | `[]` | See frontend fields in section 9 |
 | `enums` | `{}` | Map to nonempty arrays of unique nonempty string literals |
@@ -73,12 +73,12 @@ Paths MUST use relative POSIX syntax, with no drive/UNC prefix, backslash, NUL, 
 | Backend field | Required / default | Contract |
 | --- | --- | --- |
 | `name`, `repository`, `path` | Required | App slug, existing repository, safe application path |
-| `persistence` | Optional | Strict `{ database: <existing database slug> }`; exactly one resource per backend |
+| `persistence` | Optional | Strict `{ database: <existing database slug> }`; exactly one dedicated resource per persisted backend; sharing across backends is rejected |
 | `modules` | Required, nonempty map | Explicit module declarations below |
 | `authentication` | Omitted = disabled | Better Auth settings, section 8; `{}` enables defaults |
 | `authorization` | Omitted = contextual defaults | Initial database roles/grants, section 8 |
 
-Persistence is optional for deliberately nonpersisted scaffolds. Generation readiness MUST reject a configured database operation that has no persistence implementation, rather than generate a permanently unconfigured HTTP handler. Entities without operations may still have domain artifacts without persistence. Better Auth requires backend persistence. Multiple backends may explicitly reference the same database resource, but readiness MUST reject colliding normalized business/auth SQL objects; separate resources are the supported default when independent identity schemas would collide. No connection per module or cross-database operation is implied.
+Persistence is optional for deliberately nonpersisted scaffolds. Generation readiness MUST reject a configured database operation that has no persistence implementation, rather than generate a permanently unconfigured HTTP handler. Entities without operations may still have domain artifacts without persistence. Better Auth requires backend persistence. Each persisted backend MUST select a distinct database resource. Sharing any resource across backends is rejected during semantic validation with `DATABASE_SHARED_ACROSS_BACKENDS`, even when their SQL objects would not collide. Consolidate modules into one modular monolith backend or declare a separate resource for each backend. Unused declared resources are allowed and have no `backend` owner in the resolved model. No connection per module or cross-database operation is implied.
 
 | Module field | Required / default | Contract |
 | --- | --- | --- |
