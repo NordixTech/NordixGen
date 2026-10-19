@@ -96,17 +96,23 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
     await expect(screen.getByRole("status", { name: /role admin/ })).toBeVisible();
     await expect(screen.getByRole("table")).toBeVisible();
     // Account reconciliation can replace the account-scoped subtree once after navigation.
-    // Opening a dialog is reversible; retry if that transition disposes the first click.
+    // Ensure the dialog lifecycle (open, verify and close) is resilient to transition teardown.
+    const dialog = screen.getByRole("dialog");
+    const newCustomerButton = screen.getByRole("button", { name: "+ New Customer", exact: true });
+    const closeDialogButton = screen.getByRole("button", { name: "Close dialog", exact: true });
     await expect(async () => {
-      await screen.getByRole("button", { name: "+ New Customer", exact: true }).click();
-      await expect(screen.getByRole("dialog")).toBeVisible({ timeout: 2000 });
+      if (!(await dialog.isVisible())) {
+        await newCustomerButton.click();
+        await expect(dialog).toBeVisible({ timeout: 2000 });
+      }
+      await expect(dialog).toHaveCSS("background-color", "rgb(17, 24, 39)");
+      await screen.screenshot({
+        path: join(directory, "verified-theme-form-dark.png"),
+        fullPage: true,
+      });
+      await closeDialogButton.click();
+      await expect(dialog).not.toBeVisible({ timeout: 2000 });
     }).toPass({ timeout: 15000 });
-    await expect(screen.getByRole("dialog")).toHaveCSS("background-color", "rgb(17, 24, 39)");
-    await screen.screenshot({
-      path: join(directory, "verified-theme-form-dark.png"),
-      fullPage: true,
-    });
-    await screen.getByRole("button", { name: "Close dialog", exact: true }).click();
     await screen.goto(`${web}/api-explorer`);
     await screen
       .getByRole("combobox", { name: "Select API operation" })

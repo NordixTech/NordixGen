@@ -118,6 +118,47 @@ describe("verified server page access", () => {
     expect(view()).toMatchObject({ user: null, isPending: false });
     expect(view().hasRole("viewer")).toBe(false);
   });
+  it("synchronizes shared IAM access across concurrent useSessionView consumers", async () => {
+    const files = fixture().output.virtualFileSystem.snapshot();
+    const session = { isPending: false, data: { user: { id: "u-1", role: "member" } } };
+    let calls = 0;
+    let finish: (val: unknown) => void = () => {};
+    const iamPromise = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const load = generatedRuntime(files, {
+      "@/lib/auth/client": { authClient: { useSession: () => session } },
+      react: {
+        useState: (init: unknown) => [
+          typeof init === "function" ? (init as () => unknown)() : init,
+          () => {},
+        ],
+        useEffect: (fn: () => (() => void) | undefined) => {
+          fn();
+        },
+      },
+      "@/lib/iam/client": {
+        iamRequest: async () => {
+          calls += 1;
+          return iamPromise;
+        },
+      },
+    });
+    const mod = load(`${root}/lib/auth/use-session-view.ts`) as {
+      useSessionView: () => {
+        user: unknown;
+        isPending: boolean;
+        hasPermission: (p: string) => boolean;
+      };
+    };
+    const c1 = mod.useSessionView();
+    const c2 = mod.useSessionView();
+    expect(calls).toBe(1);
+    expect(c1.isPending).toBe(true);
+    expect(c2.isPending).toBe(true);
+    finish({ id: "u-1", role: "admin", permissions: ["*"] });
+    await iamPromise;
+  });
   it("protects every resolved business page before rendering while retaining public auth entry pages", () => {
     const { output } = fixture();
     const files = output.virtualFileSystem.snapshot();
