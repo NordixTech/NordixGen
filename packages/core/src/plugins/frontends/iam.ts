@@ -1,4 +1,3 @@
-import { identityBaseUrl } from "../../generation/frontend-access.js";
 import type { GeneratedFile } from "../contracts.js";
 import type { FrontendRenderContext } from "../frontend-contracts.js";
 import { iamStyles } from "./iam-styles.js";
@@ -19,7 +18,7 @@ export interface AccessImpact {code:string;token:string;selfLoss:string[];lost:s
 export interface AuditEntry {id:string;actorId:string;action:string;targetId:string;before:unknown;after:unknown;createdAt:string;}
 export class IamError extends Error {constructor(message:string,public impact?:AccessImpact){super(message);}}
 export async function iamRequest<T>(path:string,init:RequestInit={}):Promise<T>{
- const response=await fetch(new URL("/api/iam"+path,${identityBaseUrl(context)}),{...init,headers:{"Content-Type":"application/json",...init.headers},credentials:"include",cache:"no-store"});
+ const response=await fetch("/api/iam"+path,{...init,headers:{"Content-Type":"application/json",...init.headers},credentials:"include",cache:"no-store"});
  if(!response.ok){const error=await response.json().catch(()=>null);throw new IamError(error?.detail??"Administration request failed.",error?.code?error:undefined);}
  return response.status===204?undefined as T:await response.json() as T;
 }

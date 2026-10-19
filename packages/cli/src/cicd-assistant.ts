@@ -6,6 +6,9 @@ import { confirm, intro, isCancel, log, note, outro, password, select, text } fr
 import { execa } from "execa";
 import pc from "picocolors";
 import type { DeploymentManifest, DeploymentProfile, Environment } from "./deployment-model.js";
+import { configureInfrastructureReview } from "./infrastructure-review.js";
+import { infrastructureStage } from "./infrastructure-runner.js";
+import { prepareInfrastructure } from "./infrastructure-setup.js";
 
 const environments = ["staging", "production"] as const;
 const branchFor = { staging: "develop", production: "main" } as const;
@@ -60,6 +63,19 @@ export async function requestApi(
   } catch {
     throw Error(
       "Provider request failed. Check connectivity and retry; credentials were not printed.",
+    );
+  }
+  if (!response.ok && response.status === 403 && path.includes("/r2/")) {
+    let code: unknown;
+    try {
+      code = ((await response.clone().json()) as { errors?: { code: number }[] }).errors?.[0]?.code;
+    } catch {}
+    if (code === 10042)
+      throw Error(
+        "R2 is not enabled in this Cloudflare account. Open Cloudflare Dashboard > R2 Object Storage and complete activation, then rerun setup. No R2 resources were created.",
+      );
+    throw Error(
+      "R2 access was denied. Add Account > Workers R2 Storage > Edit for the selected account, then rerun setup.",
     );
   }
   if (!response.ok)
@@ -236,6 +252,7 @@ export async function executeStage(
   checkDeploymentBranch(environment);
   const env = { CLOUDFLARE_ENV: environment };
   if (stage === "build") {
+    await infrastructureStage(manifest, environment);
     await run(["--dir", app.path, "run", "typecheck"], process.cwd(), env);
     if (app.kind === "backend") {
       await run(["--dir", app.path, "run", "check:boundaries"], process.cwd(), env);
@@ -376,6 +393,7 @@ export async function configure(
   profile: DeploymentProfile,
   cfToken: string,
   neonToken: string,
+  secretInput: (label: string) => Promise<string> = (label) => input(label, "", true),
 ) {
   validateTopology(manifest, profile);
   const cf = async (path: string, method = "GET", body?: unknown) =>
@@ -384,6 +402,14 @@ export async function configure(
   const neon = (path: string, method = "GET", body?: unknown) =>
     requestApi(neonBase, path, neonToken, method, body);
   const repoConnection = await connectRepository(profile, cfToken);
+  const infrastructure = await prepareInfrastructure(
+    manifest,
+    profile,
+    cfToken,
+    (path, method, body) => requestApi(cfBase, path, cfToken, method ?? "GET", body),
+    (label) => input(label, "", true),
+    (value) => secrets.add(value),
+  );
   const dbConnections: Record<string, Record<Environment, string>> = {};
   for (const app of manifest.applications.filter((a) => a.database)) {
     const project = profile.neonProjects[app.name];
@@ -407,10 +433,8 @@ export async function configure(
         ).join(",");
         if (app.identity) {
           values.BETTER_AUTH_URL = profile.urls[environment][app.name];
-          values.BETTER_AUTH_SECRET = await input(
+          values.BETTER_AUTH_SECRET = await secretInput(
             `${app.name}/${environment}: existing BETTER_AUTH_SECRET (reuse on rerun), or type generate for a new secret`,
-            "",
-            true,
           );
           if (values.BETTER_AUTH_SECRET === "generate")
             values.BETTER_AUTH_SECRET = randomBytes(32).toString("hex");
@@ -423,18 +447,6 @@ export async function configure(
             "",
             /SECRET|KEY/.test(key),
           );
-      } else {
-        for (const backend of app.connections) {
-          const key = `NEXT_PUBLIC_${backend.toUpperCase().replaceAll("-", "_")}_BASE_URL`;
-          values[key] = profile.urls[environment][backend];
-        }
-        if (app.identityBackend) {
-          values.NEXT_PUBLIC_AUTH_BASE_URL = profile.urls[environment][app.identityBackend];
-          if (values.NEXT_PUBLIC_AUTH_BASE_URL !== profile.urls[environment][app.name])
-            throw Error(
-              "Authenticated frontend and identity API must share an origin. Configure Cloudflare /api/* routes first; see docs/DEPLOYMENT.md.",
-            );
-        }
       }
       // Bootstrap a new Worker with a 503, never serve application code before secrets/migrations.
       const scripts = (await cf("/workers/scripts")) as Json[];
@@ -505,7 +517,12 @@ export async function configure(
         "PATCH",
         Object.fromEntries(
           Object.entries({
-            ...values,
+            ...Object.fromEntries(
+              Object.entries(values).filter(
+                ([key]) => !key.startsWith("R2_") && !key.includes("SECRET"),
+              ),
+            ),
+            ...(infrastructure ? infrastructure.build : {}),
             CLOUDFLARE_ENV: environment,
             NODE_VERSION: "24",
             PNPM_VERSION: "10.5.2",
@@ -524,19 +541,21 @@ export async function configure(
         `Ready for pushes to ${branchFor[environment]}. Dashboard: https://dash.cloudflare.com/${profile.accountId}/workers/services/view/${worker}/production`,
       );
     }
+  if (infrastructure)
+    await configureInfrastructureReview(
+      manifest,
+      profile,
+      infrastructure,
+      cfToken,
+      cf,
+      String(repoConnection.repo_connection_uuid),
+    );
 }
 export function validateTopology(manifest: DeploymentManifest, profile: DeploymentProfile) {
   for (const environment of environments)
     for (const app of manifest.applications) {
-      publicOrigin(profile.urls[environment][app.name]);
-      for (const backend of app.connections) publicOrigin(profile.urls[environment][backend]);
-      if (
-        app.identityBackend &&
-        profile.urls[environment][app.identityBackend] !== profile.urls[environment][app.name]
-      )
-        throw Error(
-          "Authenticated frontend and identity API must share an origin. Configure Cloudflare /api/* routes first; see docs/DEPLOYMENT.md.",
-        );
+      if (app.kind === "frontend" || app.identity)
+        publicOrigin(profile.urls[environment][app.name]);
     }
   const projects = manifest.applications
     .filter((a) => a.database)
@@ -667,6 +686,14 @@ export async function chooseNeonProject(
   );
   return `new:${org}:${region}`;
 }
+export function cloudflareSetupInstructions(infrastructure = false) {
+  return (
+    accessInstructions.cloudflare +
+    (infrastructure
+      ? "\n\nThis project declares R2 infrastructure. Enable R2 Object Storage in the Cloudflare dashboard. Also add Account > Workers R2 Storage > Edit and User > API Tokens > Edit/Read, or Account > Account API Tokens > Edit/Read for account-owned download credentials. The assistant reuses this setup token for infrastructure and PR plans; it creates only bucket-scoped backend download-signing credentials. Administrative keys never enter frontend or backend application code. Public bucket custom domains also require Zone > Zone > Read and the relevant domain permissions. GitHub access also needs repository webhook administration for PR plan events."
+      : "")
+  );
+}
 export async function setupDeployment(manifest: DeploymentManifest, profileName: string) {
   if (typeof profileName !== "string" || !/^[a-z][a-z0-9-]*$/.test(profileName))
     throw Error("Profile names use lowercase letters, numbers and hyphens.");
@@ -683,7 +710,7 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
   }
   const { token: cfToken, response: accountResponse } = await validatedCredential(
     "CLOUDFLARE_API_TOKEN",
-    accessInstructions.cloudflare,
+    cloudflareSetupInstructions(Boolean(manifest.infrastructure)),
     cfBase,
     "/accounts",
   );
@@ -792,8 +819,14 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
     );
   }
   for (const environment of environments)
-    for (const name of new Set(manifest.applications.flatMap((a) => [a.name, ...a.connections]))) {
-      const app = manifest.applications.find((a) => a.name === name);
+    for (const name of Object.keys(
+      manifest.publicFrontends ??
+        Object.fromEntries(
+          manifest.applications.filter((a) => a.kind === "frontend").map((a) => [a.name, {}]),
+        ),
+    )) {
+      const app =
+        manifest.publicFrontends?.[name] ?? manifest.applications.find((a) => a.name === name);
       const generatedOrigin = app
         ? `https://${app.worker}-${environment}.${subdomain}.workers.dev`
         : "";
@@ -812,6 +845,17 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
       profile.urls[environment][name] = publicOrigin(
         await input(`${name}/${environment}: public HTTPS origin`, suggestion),
       );
+    }
+  for (const environment of environments)
+    for (const app of manifest.applications.filter((a) => a.kind === "backend")) {
+      const consumers = Object.entries(manifest.publicFrontends ?? {}).filter(([, frontend]) =>
+        frontend.connections.includes(app.name),
+      );
+      profile.urls[environment][app.name] = consumers.length
+        ? profile.urls[environment][consumers[0][0]]
+        : app.identity
+          ? publicOrigin(await input(`${app.name}/${environment}: public frontend identity origin`))
+          : "https://internal.invalid";
     }
   const neonToken = manifest.applications.some((a) => a.database)
     ? (
@@ -866,6 +910,7 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
   await save();
   await provisionNeonProjects(manifest, profile, neonToken, save);
   await configure(manifest, profile, cfToken, neonToken);
+  await save();
   log.info(
     "Inspect build logs in Cloudflare > Worker > Builds.\nSee docs/DEPLOYMENT.md for routes and recovery.",
   );

@@ -182,6 +182,53 @@ export function validateNordixConfig(input: unknown): ConfigValidationResult {
     ...validateEndpoints(config),
     ...validatePersistence(config),
     ...validateAccess(config),
+    ...(config.iac?.repository &&
+    !config.repositories.some((repo) => repo.name === config.iac?.repository)
+      ? [
+          createDiagnostic(
+            "CONFIG_FIELD_INVALID",
+            "iac.repository",
+            "Select a declared repository to own the project infrastructure.",
+          ),
+        ]
+      : []),
+    ...config.backends.flatMap((backend, index) =>
+      (backend.iac?.r2_storage ?? []).flatMap((key) =>
+        Object.hasOwn(config.iac?.cloudflare.r2_storage ?? {}, key)
+          ? []
+          : [
+              createDiagnostic(
+                "CONFIG_FIELD_INVALID",
+                `backends[${index}].iac.r2_storage`,
+                `Unknown R2 storage "${key}". Declare it under iac.cloudflare.r2_storage.`,
+              ),
+            ],
+      ),
+    ),
+    ...Object.keys(config.iac?.cloudflare.r2_storage ?? {}).flatMap((key, index, keys) =>
+      keys.findIndex((other) => other.toUpperCase() === key.toUpperCase()) === index
+        ? []
+        : [
+            createDiagnostic(
+              "CONFIG_FIELD_INVALID",
+              `iac.cloudflare.r2_storage.${key}`,
+              "R2 keys must have distinct uppercase binding names.",
+            ),
+          ],
+    ),
+    ...Object.keys(config.iac?.cloudflare.r2_storage ?? {}).flatMap((key) =>
+      /^(DATABASE_URL|BETTER_AUTH_.*|AUTH_.*|CORS_.*|R2_.*|NODE_ENV|PORT|RESEND_API_KEY|GOOGLE_CLIENT_.*|GITHUB_CLIENT_.*)$/.test(
+        key.toUpperCase(),
+      )
+        ? [
+            createDiagnostic(
+              "CONFIG_FIELD_INVALID",
+              `iac.cloudflare.r2_storage.${key}`,
+              "Choose an R2 key that does not collide with a reserved runtime environment variable.",
+            ),
+          ]
+        : [],
+    ),
   ]);
   if (diagnostics.some((d) => d.severity === "error")) return { success: false, diagnostics };
   return {

@@ -115,6 +115,10 @@ export const BackendSchema = z
     repository: SlugSchema,
     path: z.string().min(1),
     persistence: z.object({ database: SlugSchema }).strict().optional(),
+    iac: z
+      .object({ r2_storage: unique(IdentifierSchema).default([]) })
+      .strict()
+      .optional(),
     modules: z
       .record(SlugSchema, ModuleSchema)
       .refine((v) => Object.keys(v).length > 0, "Declare at least one business module."),
@@ -239,6 +243,22 @@ export const NordixConfigSchema = z
     name: SlugSchema,
     version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
     description: z.string().optional(),
+    iac: z
+      .object({
+        repository: SlugSchema.optional(),
+        cloudflare: z
+          .object({
+            r2_storage: z
+              .record(
+                IdentifierSchema,
+                z.object({ visibility: z.enum(["private", "public"]).default("private") }).strict(),
+              )
+              .default({}),
+          })
+          .strict(),
+      })
+      .strict()
+      .optional(),
     organizations: z.array(OrganizationSchema).default([]),
     repositories: z.array(RepositorySchema).min(1),
     databases: z.record(SlugSchema, DatabaseSchema).default({}),

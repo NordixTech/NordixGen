@@ -18,6 +18,46 @@
     "description": {
       "type": "string"
     },
+    "iac": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "cloudflare": {
+          "type": "object",
+          "properties": {
+            "r2_storage": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "private",
+                      "public"
+                    ],
+                    "default": "private"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "propertyNames": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
+              "default": {}
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "cloudflare"
+      ],
+      "additionalProperties": false
+    },
     "organizations": {
       "type": "array",
       "items": {
@@ -123,6 +163,20 @@
             "required": [
               "database"
             ],
+            "additionalProperties": false
+          },
+          "iac": {
+            "type": "object",
+            "properties": {
+              "r2_storage": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                },
+                "default": []
+              }
+            },
             "additionalProperties": false
           },
           "modules": {

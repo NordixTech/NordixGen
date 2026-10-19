@@ -126,7 +126,17 @@ export async function finishWorkspace(
   const manifestPath = join(directory, "package.json");
   const rootManifest = JSON.parse(await readFile(manifestPath, "utf8")) as Manifest;
   const scripts = stringRecord(rootManifest.scripts, "scripts");
-  for (const [name, command] of Object.entries({ ...dockerScripts, ...deploymentScripts })) {
+  for (const [name, command] of Object.entries({
+    ...dockerScripts,
+    ...deploymentScripts,
+    ...(project.iac && Object.keys(project.iac.cloudflare.r2_storage).length
+      ? {
+          "infra:plan": "node scripts/infra.mjs plan",
+          "infra:apply": "node scripts/infra.mjs apply",
+          "infra:review": "node scripts/infra.mjs review",
+        }
+      : {}),
+  })) {
     if (scripts[name] !== undefined && scripts[name] !== command)
       throw Error(`Unexpected workspace script collision at "${name}".`);
     scripts[name] = command;
@@ -146,7 +156,7 @@ export async function finishWorkspace(
   const previous = (await exists(ignore)) ? await readFile(ignore, "utf8") : "";
   await writeFile(
     ignore,
-    `${previous.trimEnd()}\n\n# Generated workspace outputs and local runtime secrets\nnode_modules/\ndist/\n.next/\n.open-next/\n.wrangler/\n.nordixgen/\n.env\n.env.*\n!.env.example\n.dev.vars\n.dev.vars.*\n!.dev.vars.example\n`,
+    `${previous.trimEnd()}\n\n# Generated workspace outputs and local runtime secrets\nnode_modules/\ndist/\n.next/\n.open-next/\n.wrangler/\n.nordixgen/\n.local/\n.env\n.env.*\n!.env.example\n.dev.vars\n.dev.vars.*\n!.dev.vars.example\n`,
   );
   await writeFile(
     join(directory, "README.md"),

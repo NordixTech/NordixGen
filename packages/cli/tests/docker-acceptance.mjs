@@ -26,9 +26,11 @@ const config = {
       ]
     : [{ name: "app", path: "." }],
   databases: { primary: {} },
+  iac: { cloudflare: { r2_storage: { documents: { visibility: "private" } } } },
   backends: [
     {
       name: "api",
+      iac: { r2_storage: ["documents"] },
       repository: split ? "backend" : "app",
       path: split ? "." : "apps/api",
       persistence: { database: "primary" },
@@ -138,7 +140,7 @@ try {
       `${repo.name}-up`,
     );
   }
-  const api = `http://localhost:${apiPort}`;
+  const api = `http://localhost:${webPort}/api/backend/api`;
   const web = `http://localhost:${webPort}`;
   const initial = await fetch(`${api}/api/examples`).then((response) => response.json());
   assert.equal(initial.total, 5, "Expected one initial synthetic seed");
@@ -155,7 +157,7 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(web);
   assert.match(page.url(), /\/sign-in/);
-  const signup = await context.request.post(`${api}/api/auth/sign-up/email`, {
+  const signup = await context.request.post(`${web}/api/auth/sign-up/email`, {
     headers: { origin: web },
     data: {
       name: "Local Docker User",

@@ -24,6 +24,7 @@ import { generateLocalRuntime } from "./local-runtime.js";
 import { generateModuleComposition } from "./module-composition.js";
 import { generateModulePublicFiles } from "./module-public.js";
 import { backendEnvironmentFile } from "./runtime-environment.js";
+import { storageFiles } from "./storage.js";
 
 export function backendRenderContext(project: ResolvedProject, name: string): BackendRenderContext {
   const domainModel = backendView(project, name);
@@ -111,6 +112,7 @@ export function generateBackend(project: ResolvedProject, name: string) {
           { owner: "authorization", files: generateAuthorizationFiles(context) },
         ]
       : []),
+    { owner: "storage", files: storageFiles(project, name) },
     { owner: "hono-assembly", files: generateHonoFiles(context) },
     { owner: "module-boundary-check", files: [generateBoundaryCheck(context)] },
     { owner: "application-runtime", files: generateApplicationRuntime(context) },
@@ -129,7 +131,7 @@ export function generateBackend(project: ResolvedProject, name: string) {
         backendEnvironmentFile(context),
         {
           path: posix.join(view.backend.path, "wrangler.jsonc"),
-          content: `${JSON.stringify(cloudflareConfiguration(context.projectName, view.backend.name), null, 2)}\n`,
+          content: `${JSON.stringify(cloudflareConfiguration(context.projectName, view.backend.name, false, [], view.backend.storage), null, 2)}\n`,
         },
       ],
     },
@@ -139,6 +141,15 @@ export function generateBackend(project: ResolvedProject, name: string) {
     virtualFileSystem: collectFiles(view.backend.path, contributions),
     frameworkContext: context.framework,
     ...backendDependencies(Boolean(context.persistence), Boolean(context.identity)),
+    ...(view.backend.storage.length
+      ? {
+          runtimeDependencies: {
+            ...backendDependencies(Boolean(context.persistence), Boolean(context.identity))
+              .runtimeDependencies,
+            miniflare: "4.20260730.0",
+          },
+        }
+      : {}),
     diagnostics: [] as ConfigDiagnostic[],
   };
 }

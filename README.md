@@ -60,6 +60,8 @@ The [approved YAML reference](docs/configuration/YAML_V2.md) defines the target 
 
 ## Development requirements
 
+Generated applications deploy to Cloudflare Workers with private frontend-to-backend service bindings. Optional R2 infrastructure uses OpenTofu, separate staging/production state and native PR plan comments. See [deployment](docs/DEPLOYMENT.md) and [infrastructure](docs/INFRASTRUCTURE.md).
+
 - Node.js `>=24`
 - pnpm `>=10`
 

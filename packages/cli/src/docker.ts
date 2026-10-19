@@ -12,7 +12,6 @@ export const dockerScripts = {
 const proxyImage =
   "ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a";
 const environmentName = (name: string) => name.toUpperCase().replaceAll("-", "_");
-const publicVariable = (name: string) => `NEXT_PUBLIC_${environmentName(name)}_BASE_URL`;
 const portVariable = (kind: string, name: string) => `${kind}_${environmentName(name)}_PORT`;
 const interpolation = (name: string, fallback: string | number) => `\${${name}:-${fallback}}`;
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
@@ -86,10 +85,9 @@ export function dockerFiles(
       `http://localhost:${topology.backendPort(name)}`,
     );
   const publicFrontend = (name: string) => `http://localhost:${topology.frontendPort(name)}`;
-  const internalBackend = (name: string) =>
-    project.backends[name].repository.name === repository.name
-      ? `http://backend-${name}:8787`
-      : `http://host.docker.internal:${topology.backendPort(name)}`;
+  const internalBackend = (name: string) => `http://backend-${name}:8787`;
+  const networkOwner = Object.values(project.backends)[0].repository.name;
+  const debugServices: Record<string, unknown> = {};
   const build = (path: string, args?: Record<string, string>) => ({
     context: ".",
     dockerfile: posix.join(path, "Dockerfile"),
@@ -112,6 +110,9 @@ export function dockerFiles(
       copy("/out/package.json", "./package.json", "builder"),
       copy(`${directory}/.docker-dist`, "./dist", "builder"),
       ...(db ? [copy(`${directory}/drizzle`, "./drizzle", "builder")] : []),
+      ...(app.storage.length
+        ? ["RUN mkdir -p /app/.local/r2 && chown -R nextjs:nodejs /app/.local"]
+        : []),
       "USER nextjs",
       "ENV PORT=8787",
       "EXPOSE 8787",
@@ -124,7 +125,7 @@ export function dockerFiles(
       .join(",");
     const environment: Record<string, string> = { PORT: "8787" };
     if (app.identity) {
-      environment.BETTER_AUTH_URL = publicBackend(app.name);
+      environment.BETTER_AUTH_URL = origins.split(",")[0] || publicBackend(app.name);
       environment.BETTER_AUTH_SECRET = interpolation(
         `BACKEND_${environmentName(app.name)}_AUTH_SECRET`,
         `local-development-only-${app.name}-change-before-sharing-0123456789`,
@@ -194,12 +195,15 @@ export function dockerFiles(
       depends[postgres] = { condition: "service_healthy" };
       depends[proxy] = { condition: "service_started" };
     }
+    if (app.storage.length) volumes.r2_data = {};
+    debugServices[`backend-${app.name}`] = {
+      ports: [`127.0.0.1:${topology.backendPort(app.name)}:8787`],
+    };
     services[`backend-${app.name}`] = {
       build: build(app.path),
       environment,
-      ports: [
-        `${interpolation(`BACKEND_${environmentName(app.name)}_BIND_ADDRESS`, Object.values(project.frontends).some((frontend) => frontend.repository.name !== repository.name && frontend.connections.includes(app.name)) ? "0.0.0.0" : "127.0.0.1")}:${topology.backendPort(app.name)}:8787`,
-      ],
+      expose: ["8787"],
+      ...(app.storage.length ? { volumes: ["r2_data:/app/.local/r2"] } : {}),
       ...(db ? { depends_on: depends } : {}),
       healthcheck: healthcheck(8787, "/health"),
       networks: network,
@@ -211,10 +215,7 @@ export function dockerFiles(
     (app) => app.repository.name === repository.name,
   )) {
     const directory = appDirectory(app.path);
-    const args = Object.fromEntries(
-      app.connections.map((name) => [publicVariable(name), publicBackend(name)]),
-    );
-    if (app.identity) args.NEXT_PUBLIC_AUTH_BASE_URL = publicBackend(app.identity.backend);
+    const args: Record<string, string> = {};
     files[posix.join(app.path, "Dockerfile")] = [
       ...base,
       ...Object.keys(args).flatMap((name) => [`ARG ${name}`, `ENV ${name}=$${name}`]),
@@ -246,19 +247,20 @@ export default config;
       build: build(app.path, args),
       environment: {
         PORT: "3000",
+        NORDIX_LOCAL_RUNTIME: "1",
+        ...Object.fromEntries(
+          app.connections.map((name) => [
+            `BACKEND_${environmentName(name)}_INTERNAL_URL`,
+            interpolation(
+              `FRONTEND_${environmentName(app.name)}_${environmentName(name)}_INTERNAL_URL`,
+              internalBackend(name),
+            ),
+          ]),
+        ),
         HOSTNAME: "0.0.0.0",
-        ...(app.identity
-          ? {
-              AUTH_INTERNAL_BASE_URL: interpolation(
-                `FRONTEND_${environmentName(app.name)}_AUTH_INTERNAL_URL`,
-                internalBackend(app.identity.backend),
-              ),
-            }
-          : {}),
       },
       ports: [`127.0.0.1:${topology.frontendPort(app.name)}:3000`],
       ...(Object.keys(dependencies).length ? { depends_on: dependencies } : {}),
-      extra_hosts: ["host.docker.internal:host-gateway"],
       healthcheck: healthcheck(3000, "/"),
       networks: network,
     };
@@ -267,7 +269,12 @@ export default config;
     name: `${project.project.name}-${repository.name}`.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
     services,
     ...(Object.keys(volumes).length ? { volumes } : {}),
-    networks: { "nordix-local-net": { driver: "bridge" } },
+    networks: {
+      "nordix-local-net": {
+        name: `${project.project.name}-local-net`,
+        ...(repository.name === networkOwner ? { driver: "bridge" } : { external: true }),
+      },
+    },
   });
   files[".dockerignore"] = [
     "**/node_modules",
@@ -288,6 +295,8 @@ export default config;
     "**/*.log",
     "",
   ].join("\n");
+  if (Object.keys(debugServices).length)
+    files["docker-compose.debug.yml"] = stringify({ services: debugServices });
   return files;
 }
 
@@ -301,7 +310,7 @@ export function dockerDocumentation(project: ResolvedProject, repository: Reposi
       .filter((app) => app.repository.name === repository.name)
       .map(
         (app) =>
-          `- Backend \`${app.name}\`: http://localhost:${8787 + Object.keys(project.backends).indexOf(app.name)} (override \`${portVariable("BACKEND", app.name)}\`).${
+          `- Backend \`${app.name}\`: private Docker service; use the frontend /api/backend/${app.name}/ routes. Optional debugging: docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d (loopback port ${8787 + Object.keys(project.backends).indexOf(app.name)}).${
             app.database
               ? ` Dedicated PostgreSQL 16 volume plus a Neon HTTP proxy; database host port defaults to ${
                   5432 +
@@ -321,9 +330,9 @@ export function dockerDocumentation(project: ResolvedProject, repository: Reposi
     "",
     "Set overrides in the repository-root `.env` (ignored by Git). Port defaults are assigned across the whole generated project, including split repositories. Unrelated projects can override ports independently. Never reuse these development-only database credentials or authentication defaults for production.",
     "",
-    "Browser API URLs use localhost and are passed as Next.js build arguments. Override `BACKEND_<NAME>_PUBLIC_URL` when using another hostname, and rebuild the frontend. Server-side session/IAM checks use the private `AUTH_INTERNAL_BASE_URL`; Docker service names never enter browser URLs. Backend CORS/trusted origins default to connected frontend localhost ports; override `BACKEND_<NAME>_TRUSTED_ORIGINS` if needed. Names in environment variables use uppercase with hyphens replaced by underscores.",
+    "Browser requests use the frontend origin. The frontend proxy and server session/IAM calls use BACKEND_<NAME>_INTERNAL_URL on the private Docker bridge. NORDIX_LOCAL_RUNTIME=1 enables this local transport only. Backends publish no host ports by default; docker-compose.debug.yml explicitly enables loopback debugging ports. Backend trusted origins use connected frontend origins.",
     "",
-    "Each repository runs only its own applications/databases. For split repositories, start the backend repository first, then the frontend repository. Each has its own isolated Compose network and volumes; no external network or sibling checkout is needed. The frontend reaches an external backend through `host.docker.internal` and its published port for server-side identity checks. A backend consumed from another repository binds its published port to all host interfaces so Linux host-gateway routing works (override `BACKEND_<NAME>_BIND_ADDRESS`); other backends default to loopback. Cross-repository availability cannot be expressed with Compose depends_on. Keep port/public-origin overrides consistent in both repositories; override `FRONTEND_<NAME>_AUTH_INTERNAL_URL` for a backend on another machine. External backend availability remains required to use connected features.",
+    "Each repository runs only its own applications/databases. Split repositories join the same project-named private bridge. Start the first backend repository (the bridge owner) before the remaining repositories. Stop frontend consumers before removing the owner network. No host-gateway routing or public backend origin is required. External repository readiness cannot be expressed with depends_on.",
     "",
     "Generation prepares the initial SQL migration and journal once. Keep them in Git; after schema changes run `pnpm db:generate` and review/commit the new SQL before building. Docker builds reuse that migration history, so rebuilding an image never fabricates a fresh initial migration against an existing volume. Startup applies pending migrations and initializes IAM roles. Synthetic business seeds run once per database, recorded in `nordix_local_bootstrap`. A failed/interrupted seed stops subsequent starts with an explicit error instead of inserting duplicates; inspect the database before recovery. Seeds do not create login accounts. Register an operator and promote it with the backend's `auth:create-admin` command when needed. Provider/email credentials must be supplied separately for those optional authentication journeys.",
     "",

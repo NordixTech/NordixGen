@@ -10,6 +10,9 @@ export function generateModuleComposition(
   return {
     path,
     content: [
+      ...(context.domainModel.backend.storage.length
+        ? ['import type {StoragePorts} from "../storage/create-storage.js";']
+        : []),
       'import {createDrizzleDatabase,type DrizzleDatabase} from "./drizzle-database.js";',
       'import type {AccessGuard,OperationBoundary} from "../application/access.js";',
       'import {ApplicationFailure} from "../application/contracts.js";',
@@ -17,7 +20,7 @@ export function generateModuleComposition(
         (module, index) =>
           `import {createModule as module${index}} from "../../modules/${module.name}/bootstrap.js";`,
       ),
-      "export function composeModules(db:DrizzleDatabase,authorize:AccessGuard) {",
+      `export function composeModules(db:DrizzleDatabase,authorize:AccessGuard${context.domainModel.backend.storage.length ? ",storage:StoragePorts" : ""}) {`,
       ...modules.map(
         (module, i) =>
           `const instance${i}=module${i}(db,{${module.imports
@@ -30,12 +33,14 @@ export function generateModuleComposition(
                   })
                   .join(",")}}`,
             )
-            .join(",")}},authorize);`,
+            .join(
+              ",",
+            )}},authorize${context.domainModel.backend.storage.length ? ",storage" : ""});`,
       ),
       `return Object.freeze({${modules.map((module, i) => `${JSON.stringify(module.name)}:instance${i}`).join(",")}});`,
       "}",
-      "export function createRouteDependencies(connectionString:string,boundary:OperationBoundary,headers:Headers) {",
-      "const db=createDrizzleDatabase(connectionString);const modules=composeModules(db,boundary.authorize);",
+      `export function createRouteDependencies(connectionString:string,boundary:OperationBoundary,headers:Headers${context.domainModel.backend.storage.length ? ",storage:StoragePorts" : ""}) {`,
+      `const db=createDrizzleDatabase(connectionString);const modules=composeModules(db,boundary.authorize${context.domainModel.backend.storage.length ? ",storage" : ""});`,
       "return {modules,endpoints:{",
       ...context.domainModel.endpoints.map((operation) => {
         const name = project.modules[operation.moduleId].name;

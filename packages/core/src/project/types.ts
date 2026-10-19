@@ -227,6 +227,7 @@ export interface ResolvedIdentity {
   readonly rolePermissions: Readonly<Record<string, readonly string[]>>;
 }
 export interface ResolvedBackend {
+  readonly storage: readonly string[];
   readonly name: string;
   readonly repository: Readonly<NordixConfig["repositories"][number]>;
   readonly path: string;
@@ -329,6 +330,7 @@ export interface ResolvedFrontend {
   readonly origin: ConfigurationOrigin;
 }
 export interface ResolvedProject {
+  readonly iac?: NordixConfig["iac"];
   readonly formatVersion: 5;
   readonly project: {
     readonly name: string;

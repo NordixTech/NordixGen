@@ -1,4 +1,3 @@
-import { backendBaseEnvironment } from "../../generation/frontend-access.js";
 import type {
   TransportField,
   TransportInput,
@@ -126,20 +125,18 @@ export function generateApiClientFiles(context: FrontendRenderContext): readonly
     `export type ${names.get(endpoint)}Response = ${responseType(endpoint)};`,
   ]);
   const backendUrls = context.frontend.connections
-    .map(
-      (name) =>
-        `${JSON.stringify(name)}:process.env.${backendBaseEnvironment(name)}${context.frontend.connections.length === 1 ? ' ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? ""' : ' ?? ""'}`,
-    )
+    .map((name) => `${JSON.stringify(name)}:${JSON.stringify(`/api/backend/${name}`)}`)
     .join(",");
   const methodFiles = endpoints.map((endpoint) => {
     const name = names.get(endpoint) as string;
     const path = endpointPath(endpoint);
     const search = [
+      "  const query=new URLSearchParams();",
       "  for (const [key, value] of Object.entries(input.query ?? {}) as [string, unknown][]) {",
       "    if (value === undefined) continue;",
       `    const encode=(item:unknown)=>(${JSON.stringify(endpoint.queryParams.filter((parameter) => parameter.definition.type === "json").map((parameter) => parameter.name))} as readonly string[]).includes(key)?JSON.stringify(item):String(item);`,
-      "    if (Array.isArray(value)) for (const item of value) url.searchParams.append(key, encode(item));",
-      "    else url.searchParams.set(key, encode(value));",
+      "    if (Array.isArray(value)) for (const item of value) query.append(key, encode(item));",
+      "    else query.set(key, encode(value));",
       "  }",
     ].join("\n");
     const body = endpoint.body.kind !== "none" ? "body: JSON.stringify(input.body)," : "";
@@ -147,7 +144,7 @@ export function generateApiClientFiles(context: FrontendRenderContext): readonly
       endpoint.pathParams.length > 0 ||
       endpoint.queryParams.some((parameter) => parameter.required) ||
       endpoint.body.kind !== "none";
-    return `export async function ${name}(input: ${name}Input${inputRequired ? "" : " = {}"}, options:{signal?:AbortSignal}={}): Promise<${name}Response> {\n  const path = \`${path}\`;\n  const base=backendBaseUrl(${JSON.stringify(endpoint.backend)});\n  const url = new URL(path, base);\n${search}\n  return request<${name}Response>(url, { method: ${JSON.stringify(endpoint.method)}, ${body} signal:options.signal });\n}`;
+    return `export async function ${name}(input: ${name}Input${inputRequired ? "" : " = {}"}, options:{signal?:AbortSignal}={}): Promise<${name}Response> {\n  const path = \`${path}\`;\n  const base=backendBaseUrl(${JSON.stringify(endpoint.backend)});\n  const url = base+path;\n${search}\n  return request<${name}Response>(url+(query.size?"?"+query.toString():""), { method: ${JSON.stringify(endpoint.method)}, ${body} signal:options.signal });\n}`;
   });
   const explorerMetadata = endpoints.map((endpoint) => ({
     name: names.get(endpoint),
@@ -194,7 +191,7 @@ export function generateApiClientFiles(context: FrontendRenderContext): readonly
     },
     {
       path: `${framework.codeRoot}/lib/api/client.ts`,
-      content: `export interface ProblemDetails { type?: string; title?: string; status?: number; detail?: string; instance?: string; [extension: string]: unknown }\n\nexport class ApiError extends Error {\n  constructor(readonly status: number, readonly problem: ProblemDetails, readonly response: Response) {\n    super(problem.detail ?? problem.title ?? \`Request failed with status \${status}\`);\n    this.name = "ApiError";\n  }\n}\n\nconst backendUrls:Readonly<Record<string,string>>={${backendUrls}};\nexport function backendBaseUrl(backend:string):string { const base=backendUrls[backend];if(base)return base;${context.frontend.connections.length === 1 ? 'if(typeof window!=="undefined")return window.location.origin;' : ""}throw new Error("Configure the public API base URL for backend "+backend+".");}\n\nexport async function request<T>(url: URL | string, init: RequestInit = {}): Promise<T> {\n  const headers = new Headers(init.headers);\n  if (!headers.has("Accept")) headers.set("Accept", "application/json");\n  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");\n  const response = await fetch(url, { credentials: "include", ...init, headers });\n  if (!response.ok) {\n    const contentType = response.headers.get("content-type") ?? "";\n    const problem: ProblemDetails = contentType.includes("json") ? await response.json().catch(() => ({})) : { title: response.statusText };\n    throw new ApiError(response.status, problem, response);\n  }\n  if (response.status === 204) return undefined as T;\n  return response.json() as Promise<T>;\n}\n`,
+      content: `export interface ProblemDetails { type?: string; title?: string; status?: number; detail?: string; instance?: string; [extension: string]: unknown }\n\nexport class ApiError extends Error {\n  constructor(readonly status: number, readonly problem: ProblemDetails, readonly response: Response) {\n    super(problem.detail ?? problem.title ?? \`Request failed with status \${status}\`);\n    this.name = "ApiError";\n  }\n}\n\nconst backendUrls:Readonly<Record<string,string>>={${backendUrls}};\nexport function backendBaseUrl(backend:string):string { const base=backendUrls[backend];if(!base)throw new Error("Unknown backend");return base;}\n\nexport async function request<T>(url: URL | string, init: RequestInit = {}): Promise<T> {\n  const headers = new Headers(init.headers);\n  if (!headers.has("Accept")) headers.set("Accept", "application/json");\n  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");\n  const response = await fetch(url, { credentials: "include", ...init, headers });\n  if (!response.ok) {\n    const contentType = response.headers.get("content-type") ?? "";\n    const problem: ProblemDetails = contentType.includes("json") ? await response.json().catch(() => ({})) : { title: response.statusText };\n    throw new ApiError(response.status, problem, response);\n  }\n  if (response.status === 204) return undefined as T;\n  return response.json() as Promise<T>;\n}\n`,
     },
     {
       path: `${framework.codeRoot}/lib/api/endpoints.ts`,

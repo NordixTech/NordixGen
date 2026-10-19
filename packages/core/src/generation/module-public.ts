@@ -136,9 +136,14 @@ export function generateModulePublicFiles(
               'import type {ModuleDependencies} from "./application/ports/module-dependencies.js";',
               `import type {DrizzleDatabase} from "${importPath(bootstrap, context.sharedDatabaseFile as string)}";`,
               `import type {AccessGuard} from "${importPath(bootstrap, access)}";`,
-              "export function createModule(db:DrizzleDatabase,dependencies:ModuleDependencies,authorize:AccessGuard) {",
+              ...(context.domainModel.backend.storage.length
+                ? [
+                    `import type {StoragePort} from "${importPath(bootstrap, posix.join(context.platformRoot, "../application/ports/storage-port.ts"))}";`,
+                  ]
+                : []),
+              `export function createModule(db:DrizzleDatabase,dependencies:ModuleDependencies,authorize:AccessGuard${context.domainModel.backend.storage.length ? ",storage:Readonly<Record<string,StoragePort>>" : ""}) {`,
               "const executions=createRouteDependencies(db);",
-              "return {...createApplicationApi(executions.endpoints,authorize),dependencies};",
+              `return {...createApplicationApi(executions.endpoints,authorize),dependencies${context.domainModel.backend.storage.length ? ",storage" : ""}};`,
               "}",
               "",
             ].join("\n"),

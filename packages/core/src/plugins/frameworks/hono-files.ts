@@ -25,6 +25,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
   const routesPath = posix.join(controllerDirectory, "routes.ts");
   const hasAuthentication = Boolean(context.identity);
   const hasDrizzle = Boolean(context.persistence);
+  const hasStorage = Boolean(context.domainModel.backend.storage.length);
   const infrastructureDirectory = posix.join(
     framework.codeRoot,
     architecture.directories.infrastructure,
@@ -273,6 +274,11 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
   files.push({
     path: entryPoint,
     content: [
+      ...(hasStorage
+        ? [
+            'import {createStorage,type StorageEnvironment} from "./platform/storage/create-storage.js";',
+          ]
+        : []),
       'import { Hono } from "hono";',
       'import { HTTPException } from "hono/http-exception";',
       'import { cors } from "hono/cors";',
@@ -299,12 +305,16 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
         : [`import routes from "${routesImport}";`]),
       "",
       ...(hasAuthentication
-        ? ["const app = new Hono<{ Bindings: AuthEnvironment }>();"]
+        ? [
+            `const app = new Hono<{ Bindings: AuthEnvironment${hasStorage ? " & StorageEnvironment" : ""} }>();`,
+          ]
         : hasDrizzle
           ? [
-              "const app = new Hono<{ Bindings: { DATABASE_URL: string;CORS_ALLOWED_ORIGINS?:string } }>();",
+              `const app = new Hono<{ Bindings: { DATABASE_URL: string;CORS_ALLOWED_ORIGINS?:string }${hasStorage ? " & StorageEnvironment" : ""} }>();`,
             ]
-          : ["const app = new Hono<{Bindings:{CORS_ALLOWED_ORIGINS?:string}}>();"]),
+          : [
+              `const app = new Hono<{Bindings:{CORS_ALLOWED_ORIGINS?:string}${hasStorage ? " & StorageEnvironment" : ""}}>();`,
+            ]),
       "",
       "// Global RFC 7807 error handler",
       "app.onError((error, c) => {",
@@ -339,7 +349,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
             hasAuthentication
               ? "  const verifySession=async(headers:Headers)=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers});return session?(await createIamRepository(createDrizzleDatabase(c.env.DATABASE_URL)).principal(session.user.id)??null):null;};let verified:ReturnType<typeof verifySession>|undefined;const boundary=createOperationBoundary(headers=>verified??=verifySession(headers));"
               : "  const boundary=createOperationBoundary(async()=>null);",
-            "  const routes = createRoutes(createRouteDependencies(c.env.DATABASE_URL,boundary,c.req.raw.headers));",
+            `  const routes = createRoutes(createRouteDependencies(c.env.DATABASE_URL,boundary,c.req.raw.headers${hasStorage ? ",createStorage(c.env)" : ""}));`,
             "  return routes.fetch(c.req.raw, c.env, c.executionCtx);",
             "});",
           ]
