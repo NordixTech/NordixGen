@@ -88,8 +88,64 @@ async function input(message: string, initialValue = "", secret = false): Promis
   if (secret) secrets.add(value);
   return value;
 }
-async function credential(name: string): Promise<string> {
-  return process.env[name] || input(name, "", true);
+export const accessInstructions = {
+  cloudflare: `Cloudflare setup access
+Open https://dash.cloudflare.com/profile/api-tokens
+Go to My Profile > API Tokens > Create Token > Create Custom Token.
+Name it NordixGen setup. Add Account permissions: Account Settings / Read,
+Workers Scripts / Edit, and Workers Builds Configuration / Edit.
+Limit Account Resources to the account you want to deploy to. Create the token,
+copy its secret, and paste it into the masked prompt below. Do not use the Global API Key.
+This token configures resources; it is different from the deployment token used by builds.`,
+  neon: `Neon setup access
+Open https://console.neon.tech
+Sign in, open the profile menu > Settings (or Account settings) > API keys.
+Create a personal API key named NordixGen setup and copy its secret now.
+A personal key can create projects in organizations you belong to. A project-scoped
+key cannot create a new project. Paste the key into the masked prompt below.
+No Neon-to-GitHub integration is required. This key is not uploaded to Workers or builds.
+Help: https://neon.com/docs/manage/api-keys`,
+};
+export function githubAccessInstructions(accountId: string, repository: string): string {
+  return `Connect Cloudflare to GitHub
+Open https://dash.cloudflare.com/${accountId}/workers-and-pages
+Select a Worker > Settings > Builds > Connect > GitHub. If you have no Workers,
+create a temporary Hello World Worker first, then open its Settings > Builds.
+Authorize Cloudflare Workers and Pages for the GitHub account that owns ${repository}.
+If you choose Only select repositories, include ${repository.split("/")[1]} and save.
+Review access at https://github.com/settings/installations
+The assistant cannot grant this browser authorization. Repository access will be
+checked when applying configuration, before any Neon project is created.
+Help: https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/`;
+}
+async function credential(name: string, instructions: string): Promise<string> {
+  console.log(instructions);
+  if (process.env[name]) {
+    console.log(`${name} is present in this shell. It may be an old or revoked credential.`);
+    if (answer(await confirm({ message: `Use ${name} from this shell?`, initialValue: false })))
+      return process.env[name] as string;
+  }
+  return input(`Paste ${name} (masked; kept in memory only)`, "", true);
+}
+export async function validatedCredential(
+  name: string,
+  instructions: string,
+  base: string,
+  path: string,
+) {
+  for (;;) {
+    const token = await credential(name, instructions);
+    try {
+      const response = await requestApi(base, path, token);
+      return { token, response };
+    } catch (error) {
+      console.error(redact(error instanceof Error ? error.message : "Credential check failed."));
+      if (
+        !answer(await confirm({ message: "Review the instructions and try another credential?" }))
+      )
+        throw Error("Access could not be verified. No cloud resources were created.");
+    }
+  }
 }
 export function publicOrigin(value: string): string {
   const url = new URL(value);
@@ -227,6 +283,34 @@ export async function ensureNeonBranches(
   if (!staging?.id) throw Error("Neon did not return a staging branch ID.");
   return { production: main.id as string, staging: staging.id as string };
 }
+export async function connectRepository(profile: DeploymentProfile, cfToken: string) {
+  try {
+    const repo = JSON.parse(
+      (await execa("gh", ["api", `repos/${profile.repository}`])).stdout,
+    ) as Json;
+    return object(
+      (
+        await requestApi(
+          cfBase,
+          `/accounts/${profile.accountId}/builds/repos/connections`,
+          cfToken,
+          "PUT",
+          {
+            provider_type: "github",
+            provider_account_id: String(object(repo.owner).id),
+            provider_account_name: field(object(repo.owner).login),
+            repo_id: String(repo.id),
+            repo_name: field(repo.name),
+          },
+        )
+      ).result,
+    );
+  } catch {
+    throw Error(
+      `Cloudflare could not connect to the GitHub repository.\n${githubAccessInstructions(profile.accountId, profile.repository)}`,
+    );
+  }
+}
 export async function configure(
   manifest: DeploymentManifest,
   profile: DeploymentProfile,
@@ -239,18 +323,7 @@ export async function configure(
       .result;
   const neon = (path: string, method = "GET", body?: unknown) =>
     requestApi(neonBase, path, neonToken, method, body);
-  const repo = JSON.parse(
-    (await execa("gh", ["api", `repos/${profile.repository}`])).stdout,
-  ) as Json;
-  const repoConnection = object(
-    await cf("/builds/repos/connections", "PUT", {
-      provider_type: "github",
-      provider_account_id: String(object(repo.owner).id),
-      provider_account_name: field(object(repo.owner).login),
-      repo_id: String(repo.id),
-      repo_name: repo.name,
-    }),
-  );
+  const repoConnection = await connectRepository(profile, cfToken);
   const dbConnections: Record<string, Record<Environment, string>> = {};
   for (const app of manifest.applications.filter((a) => a.database)) {
     const project = profile.neonProjects[app.name];
@@ -494,8 +567,13 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw Error("Saved profile is invalid.");
   }
-  const cfToken = await credential("CLOUDFLARE_API_TOKEN");
-  const accounts = (await requestApi(cfBase, "/accounts", cfToken)).result as Json[];
+  const { token: cfToken, response: accountResponse } = await validatedCredential(
+    "CLOUDFLARE_API_TOKEN",
+    accessInstructions.cloudflare,
+    cfBase,
+    "/accounts",
+  );
+  const accounts = items(accountResponse.result);
   if (!accounts.length)
     throw Error("No Cloudflare accounts are visible. Check Account Settings Read permission.");
   const accountId = String(
@@ -526,15 +604,43 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
       stderr: "pipe",
     }).catch(() => {
       throw Error(
-        `GitHub branch ${branch} is unavailable. Publish both branches and authenticate gh first.`,
+        `GitHub branch ${branch} is unavailable. Install GitHub CLI from https://cli.github.com, run gh auth login and choose browser authentication. Publish main and develop with git push --atomic --set-upstream origin main develop, then retry.`,
       );
     });
-  const tokenData = (await requestApi(cfBase, `/accounts/${accountId}/builds/tokens`, cfToken))
-    .result as Json[];
-  if (!tokenData.length)
+  console.log(githubAccessInstructions(accountId, repository));
+  if (
+    !answer(
+      await confirm({
+        message: "Have you authorized Cloudflare for this GitHub repository?",
+        initialValue: false,
+      }),
+    )
+  )
     throw Error(
-      "Create a Workers Builds deployment token in Cloudflare Settings > Builds first. Authorize the Cloudflare GitHub App there too.",
+      "Complete the browser authorization above, then rerun setup. No resources were created.",
     );
+  let tokenData: Json[];
+  for (;;) {
+    tokenData = items(
+      (await requestApi(cfBase, `/accounts/${accountId}/builds/tokens`, cfToken)).result,
+    );
+    console.log(
+      `Build deployment token\nOpen https://dash.cloudflare.com/${accountId}/workers-and-pages\nSelect a Worker > Settings > Builds > API token. Create a new build token for this project.\nIf prompted to connect GitHub first, complete the authorization described above.\nThis token lets Cloudflare deploy your code; it is separate from the setup token.\nReturn here and refresh the list after saving. Existing tokens are only reused if you select one.`,
+    );
+    if (
+      tokenData.length &&
+      answer(
+        await confirm({ message: "Select a token from the current list?", initialValue: false }),
+      )
+    )
+      break;
+    if (
+      !answer(
+        await confirm({ message: "Refresh build tokens after completing the dashboard steps?" }),
+      )
+    )
+      throw Error("No build token selected. Complete the steps above and rerun setup.");
+  }
   const buildTokenId = String(
     answer(
       await select({
@@ -556,10 +662,17 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
         ? previous.urls
         : { staging: {}, production: {} },
   };
-  const subdomain = field(
-    object((await requestApi(cfBase, `/accounts/${accountId}/workers/subdomain`, cfToken)).result)
-      .subdomain,
-  );
+  let subdomain: string;
+  try {
+    subdomain = field(
+      object((await requestApi(cfBase, `/accounts/${accountId}/workers/subdomain`, cfToken)).result)
+        .subdomain,
+    );
+  } catch {
+    throw Error(
+      `A workers.dev subdomain could not be read. Open https://dash.cloudflare.com/${accountId}/workers-and-pages, complete the first-time workers.dev subdomain registration, and check the setup token permissions. Then rerun setup.`,
+    );
+  }
   for (const environment of environments)
     for (const name of new Set(manifest.applications.flatMap((a) => [a.name, ...a.connections])))
       profile.urls[environment][name] = publicOrigin(
@@ -572,7 +685,14 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
         ),
       );
   const neonToken = manifest.applications.some((a) => a.database)
-    ? await credential("NEON_API_KEY")
+    ? (
+        await validatedCredential(
+          "NEON_API_KEY",
+          accessInstructions.neon,
+          neonBase,
+          "/users/me/organizations",
+        )
+      ).token
     : "";
   for (const app of manifest.applications.filter((a) => a.database))
     profile.neonProjects[app.name] = await chooseNeonProject(
@@ -589,6 +709,7 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
   const save = () =>
     writeFile(profilePath, `${JSON.stringify(profile, null, 2)}\n`, { mode: 0o600 });
   await save();
+  await connectRepository(profile, cfToken);
   await provisionNeonProjects(manifest, profile, neonToken, save);
   await configure(manifest, profile, cfToken, neonToken);
   console.log(

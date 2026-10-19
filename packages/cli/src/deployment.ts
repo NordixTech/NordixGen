@@ -109,6 +109,17 @@ One persistent Worker per application/environment. Feature branches do not deplo
 - A Cloudflare user API token scoped to the target account: Workers Scripts Edit, Workers Builds Configuration Edit, Account Settings Read; Workers Routes Edit and Zone Read when managing custom routes. Add permissions required by additional bindings you introduce. The Builds API currently requires a user token, not an account-owned token.
 - For assistant-managed Neon creation/branch setup, a Neon API key with access to the intended organization/project. A project-scoped key can manage existing branches but cannot create a new project. No Neon administrative API key is stored in builds or Workers.
 
+## First-time account access (no existing integration required)
+
+1. **GitHub:** install the GitHub CLI from https://cli.github.com and run gh auth login. Choose GitHub.com and browser authentication. Publish main and develop to your repository before setup.
+2. **Cloudflare setup token:** open https://dash.cloudflare.com/profile/api-tokens. Navigate to My Profile > API Tokens > Create Token > Create Custom Token. Name it NordixGen setup. Add Account Settings / Read, Workers Scripts / Edit, and Workers Builds Configuration / Edit under Account permissions. Limit Account Resources to the target account. Create the token and copy its secret into the assistant's masked prompt. Do not use the Global API Key.
+3. **Cloudflare GitHub authorization:** open https://dash.cloudflare.com, select your account > Workers & Pages > a Worker > Settings > Builds > Connect > GitHub. If the account has no Workers, create a temporary Hello World Worker to reach this screen. Authorize Cloudflare Workers and Pages for the repository owner. If using Only select repositories, select this repository. Review the installation at https://github.com/settings/installations. An API token cannot grant this browser authorization. The assistant checks repository connection access when applying configuration, before creating Neon projects.
+4. **Build deployment token:** in that Worker, open Settings > Builds > API token and create a new token for this project. This is separate from the setup token. Return to the assistant and refresh the list; you do not need a token from another project. A temporary onboarding Worker can be removed after setup; do not revoke the deployment token selected for your generated applications.
+5. **Cloudflare workers.dev address:** under Workers & Pages, finish the first-time workers.dev subdomain registration if prompted. The generated demo uses that account subdomain for its public URLs.
+6. **Neon API key:** open https://console.neon.tech, sign in, then open the profile menu > Settings (or Account settings) > API keys. Create a personal key named NordixGen setup and copy its secret into the masked prompt. Use a personal key with organization access to create new projects. No Neon-to-GitHub integration is required. See https://neon.com/docs/manage/api-keys for the current Console navigation.
+
+The assistant displays these instructions during setup. Existing shell credentials are offered explicitly and default to not being reused. Invalid or revoked credentials show a retry prompt. Tokens remain in memory and are not saved in public profiles. A browser confirmation alone is not proof of repository access: the provider connection must also succeed. If it fails, follow the displayed authorization instructions and rerun setup.
+
 ## Option 1: guided CLI
 
 Run from this repository root:
@@ -119,7 +130,7 @@ pnpm cicd:setup
 pnpm cicd:setup --profile other-client
 \`\`\`
 
-Tokens can be provided through \`CLOUDFLARE_API_TOKEN\` and \`NEON_API_KEY\` in the local shell, or entered in masked prompts. They are never stored in a profile or manifest. Do not paste credentials into command arguments or Git. Profiles in ignored \`.nordixgen/\` contain destination IDs and URLs only. Keep any environment configuration files outside Git too.
+With your explicit confirmation, tokens can be provided through \`CLOUDFLARE_API_TOKEN\` and \`NEON_API_KEY\` in the local shell, or entered in masked prompts. They are never stored in a profile or manifest. Do not paste credentials into command arguments or Git. Profiles in ignored \`.nordixgen/\` contain destination IDs and URLs only. Keep any environment configuration files outside Git too.
 
 The assistant lists Cloudflare accounts, detects the GitHub remote, lists managed build tokens and proposes workers.dev origins. For each persisted backend, choose an existing Neon project or create a new one by selecting its organization and region. The project is created with root branch main and a persistent staging child with plan-default scale-to-zero enabled (normally 300 seconds). Existing main must already be a root; an existing staging must be its direct child. Existing databases are never reset or deleted. The assistant obtains each connection, configures separate runtime/build secrets and upserts named push triggers. It bootstraps new Workers with a 503 response until a real build succeeds. Public profiles are saved before subsequent steps so a failed setup can resume.
 

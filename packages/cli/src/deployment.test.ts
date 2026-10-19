@@ -1,3 +1,4 @@
+import { confirm, password } from "@clack/prompts";
 import {
   generateBackend,
   generateFrontend,
@@ -9,6 +10,7 @@ import { execa } from "execa";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkDeploymentBranch,
+  connectRepository,
   ensureNeonBranches,
   executeStage,
   provisionNeonProjects,
@@ -16,11 +18,17 @@ import {
   redact,
   requestApi,
   validateTopology,
+  validatedCredential,
 } from "./cicd-assistant.js";
 import { deploymentManifest } from "./deployment.js";
 import { createStarterConfiguration } from "./orchestrator.js";
 
 vi.mock("execa", () => ({ execa: vi.fn() }));
+vi.mock("@clack/prompts", async (original) => ({
+  ...(await original<typeof import("@clack/prompts")>()),
+  confirm: vi.fn(),
+  password: vi.fn(),
+}));
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -40,6 +48,43 @@ function fixture(split = false) {
   return result.project;
 }
 describe("native deployment safety and contracts", () => {
+  it("does not silently reuse a shell credential and retries a revoked credential without mutations", async () => {
+    vi.stubEnv("NEON_API_KEY", "old-key");
+    vi.mocked(confirm)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    vi.mocked(password).mockResolvedValueOnce("revoked-key").mockResolvedValueOnce("new-key");
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ organizations: [] })));
+    vi.stubGlobal("fetch", fetcher);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await validatedCredential(
+      "NEON_API_KEY",
+      "Create a key in the Console",
+      "https://console.neon.tech/api/v2",
+      "/users/me/organizations",
+    );
+    expect(result.token).toBe("new-key");
+    expect(fetcher.mock.calls.map((call) => call[1].method)).toEqual(["GET", "GET"]);
+    expect(fetcher.mock.calls[0][1].headers.Authorization).toBe("Bearer revoked-key");
+    expect(fetcher.mock.calls[1][1].headers.Authorization).toBe("Bearer new-key");
+  });
+  it("explains browser authorization when Cloudflare cannot connect the repository", async () => {
+    vi.mocked(execa).mockResolvedValueOnce({
+      stdout: JSON.stringify({ id: 1, name: "demo", owner: { id: 2, login: "owner" } }),
+    } as never);
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response("{}", { status: 403 }));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(
+      connectRepository({ accountId: "account", repository: "owner/demo" } as never, "token"),
+    ).rejects.toThrow("https://github.com/settings/installations");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][0]).toContain("/builds/repos/connections");
+  });
   it("generates distinct environment Workers and OpenNext output for a monorepo", () => {
     const project = fixture();
     for (const [name, result] of [
