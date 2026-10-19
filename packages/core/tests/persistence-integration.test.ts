@@ -806,7 +806,9 @@ describe
       expect(
         await (await authRequest("/api/auth/get-session", undefined, cookie)).json(),
       ).toBeNull();
-    }, 60_000);
+      // This full IAM journey makes many sequential requests through the real Neon proxy.
+      // Allow slower CI runners to finish before teardown removes the auth tables.
+    }, 120_000);
     it("applies a decimal database default when an insert omits the numeric column", async () => {
       const [row] = await sql("INSERT INTO invoice (customer_id) VALUES ($1) RETURNING id, total", [
         "11111111-1111-4111-8111-111111111111",
