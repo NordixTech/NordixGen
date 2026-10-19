@@ -138,12 +138,15 @@ describe("fixed-stack CLI preparation and execution", () => {
   it("rejects remote publication without local Git through the shared located validation path", async () => {
     const f = await setup();
     publication(f);
-    f.config.repositories[0].initializeGit = false;
-    await writeFile(f.file, JSON.stringify(f.config));
-    const runner = vi.fn(readyCommand);
-    await expect(runGenerate(f.file, f.output, runner)).rejects.toThrow(
-      /REMOTE_REQUIRES_LOCAL_GIT.*source.yaml/,
+    await writeFile(
+      f.file,
+      JSON.stringify({
+        ...f.config,
+        repositories: f.config.repositories.map((r) => ({ ...r, initializeGit: false })),
+      }),
     );
+    const runner = vi.fn(readyCommand);
+    await expect(runGenerate(f.file, f.output, runner)).rejects.toThrow(/source.yaml/);
     expect(runner).not.toHaveBeenCalled();
   });
   it("emits independent split workspaces and installs only after all application preparation", async () => {
@@ -157,14 +160,14 @@ describe("fixed-stack CLI preparation and execution", () => {
       {
         name: "backend",
         path: "backend",
-        initializeGit: false,
+        initializeGit: true,
         createRemote: false,
         visibility: "private",
       },
       {
         name: "frontend",
         path: "frontend",
-        initializeGit: false,
+        initializeGit: true,
         createRemote: false,
         visibility: "private",
       },
@@ -173,14 +176,14 @@ describe("fixed-stack CLI preparation and execution", () => {
     f.config.frontends[0].repository = "frontend";
     await save(f);
     const runner = vi.fn(async (file: string, args: string[], cwd: string) => {
-      await fixtureCommand(file, args, cwd);
+      const result = await fixtureCommand(file, args, cwd);
       if (args[1]?.startsWith("hono@") || args[1]?.startsWith("create-next-app@")) {
         expect(args[2]).toBe("app");
         expect(await readFile(join(cwd, "pnpm-workspace.yaml"), "utf8")).toContain('"app"');
         await mkdir(join(cwd, "app", "node_modules"));
         await writeFile(join(cwd, "app", "node_modules", "discard"), "not copied");
       }
-      return "";
+      return result;
     });
     await runGenerate(f.file, f.output, runner);
     const installs = runner.mock.calls.filter((call) => call[1][0] === "install");
@@ -273,6 +276,7 @@ describe("fixed-stack CLI preparation and execution", () => {
       const f = await setup();
       await save(f);
       const runner = vi.fn(async (file: string, args: string[], cwd: string) => {
+        if (file === "git") return fixtureCommand(file, args, cwd);
         if (kind !== "missing") await fixtureCommand(file, args, cwd);
         if (args[1]?.startsWith("hono@")) {
           if (kind === "script") {
@@ -315,7 +319,8 @@ describe("fixed-stack CLI preparation and execution", () => {
     const push = runner.mock.calls.findIndex((call) => call[1].includes("--set-upstream"));
     expect(dry).toBeGreaterThan(-1);
     expect(push).toBeGreaterThan(dry);
-    expect(runner.mock.calls[push][1]).toContain("HEAD:refs/heads/main");
+    expect(runner.mock.calls[push][1]).toContain("main:refs/heads/main");
+    expect(runner.mock.calls[push][1]).toContain("develop:refs/heads/develop");
   });
   it("refuses mismatched origins and failed dry-run pushes", async () => {
     for (const wrongOrigin of [true, false]) {
@@ -358,6 +363,13 @@ describe("fixed-stack CLI preparation and execution", () => {
     expect(files).toContain(".dev.vars.example");
     expect(files).not.toMatch(/(^|\n).*\.dev\.vars(\n|$)|(^|\n)\.env\.local(\n|$)/);
     expect(await runCommand("git", ["status", "--porcelain"], f.output)).toBe("");
+    await expect(
+      runCommand(process.execPath, ["scripts/cicd.mjs", "--help"], f.output),
+    ).resolves.toContain("pnpm cicd:setup");
+    expect(await runCommand("git", ["branch", "--show-current"], f.output)).toBe("main");
+    expect(await runCommand("git", ["rev-parse", "main"], f.output)).toBe(
+      await runCommand("git", ["rev-parse", "develop"], f.output),
+    );
   }, 20_000);
   it("verifies only the configured GitHub remote and redacts inherited secret values", () => {
     expect(

@@ -1,0 +1,58 @@
+schemaVersion: 2
+name: nordix-cicd-demo
+version: 1.0.0
+repositories:
+  - name: app
+    path: .
+    createRemote: false
+databases:
+  primary: {}
+backends:
+  - name: api
+    repository: app
+    path: apps/api
+    persistence:
+      database: primary
+    modules:
+      examples:
+        architecture: clean
+        entities: [Example]
+frontends:
+  - name: web
+    repository: app
+    path: apps/web
+    connectsTo: [api]
+    access:
+      mode: public
+entities:
+  Example:
+    backend: api
+    fields:
+      name:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 120
+    timestamps:
+      createdAt: true
+      updatedAt: true
+pagination:
+  standard: {}
+endpoints:
+  - backend: api
+    entity: Example
+    operationId: listExamples
+    method: GET
+    path: /api/examples
+    authRequired: false
+    pagination: standard
+  - backend: api
+    entity: Example
+    operationId: createExample
+    method: POST
+    path: /api/examples
+    authRequired: false
+    requestBody:
+      useCase:
+        entity: Example
+        operation: create

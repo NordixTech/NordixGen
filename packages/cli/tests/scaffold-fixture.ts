@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 export async function fixtureCommand(file: string, args: string[], cwd: string): Promise<string> {
+  if (file === "git" && args[0] === "config" && args[1] === "--get")
+    return args[2] === "user.email" ? "fixture@example.test" : "Fixture";
   if (file === "pnpm" && args[0] === "--version") return "10.5.2";
   if (
     file === "pnpm" &&

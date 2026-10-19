@@ -275,6 +275,8 @@ export default config;
     "**/dist",
     "**/.docker-dist",
     "**/.wrangler",
+    "**/.open-next",
+    "**/.nordixgen",
     "**/.git",
     "**/coverage",
     "**/.env",

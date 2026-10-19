@@ -24,7 +24,20 @@ Generated frontends support semantic design tokens with per-project light/dark p
 
 Business HTTP operations are described through endpoint declarations. Entity definitions describe data; they do not form the intended API contract by themselves. Health checks, Better Auth handlers and IAM administration are platform routes.
 
-NordixGen generates application scaffolding, source code, and local Docker environments. Each application receives a multi-stage Dockerfile; each repository receives Compose orchestration for its own applications, dedicated PostgreSQL volumes and Neon HTTP proxies. Run `docker compose up -d --build` or `pnpm docker:up` in a generated repository. See [local Docker usage](docs/generation/CLI_WORKFLOW.md#local-docker-environments). Cloud deployment configuration, infrastructure provisioning and generated CI/CD remain separate capabilities.
+NordixGen generates application scaffolding, source code, and local Docker environments. Each application receives a multi-stage Dockerfile; each repository receives Compose orchestration for its own applications, dedicated PostgreSQL volumes and Neon HTTP proxies. Run `docker compose up -d --build` or `pnpm docker:up` in a generated repository. See [local Docker usage](docs/generation/CLI_WORKFLOW.md#local-docker-environments). Generated repositories also include Cloudflare native CI/CD commands, a guided account setup assistant, a manual deployment guide and Neon PITR recovery instructions. `develop` deploys staging and `main` deploys production; no generated GitHub Actions runners are required.
+
+## Configure CI/CD with a database
+
+Every generated repository starts with an initial commit on `main` and `develop` pointing to that commit. Creating a GitHub remote remains optional. Publish both branches before connecting deployments.
+
+From the generated repository root, choose either:
+
+1. **Guided assistant:** run `pnpm cicd:setup`. Select your Cloudflare account, GitHub repository, build token and Neon project (or create one). Run `pnpm cicd:setup --profile client-name` to configure another destination. Tokens are masked input or shell environment values; account profiles are ignored by Git.
+2. **Manual setup:** follow the generated `docs/DEPLOYMENT.md` to create Neon branches, configure build/runtime secrets and connect each Cloudflare Worker to its Git branch. The guide lists the same build/deploy commands used by the assistant.
+
+Pushes to `develop` deploy staging; pushes to `main` deploy production using native Cloudflare builds. Better Auth remains in the backend. The generated `docs/DISASTER_RECOVERY.md` explains Neon point-in-time recovery. See [the CLI workflow](docs/generation/CLI_WORKFLOW.md#native-cloudflare-cicd-and-neon) for scope and verification.
+
+Try the [Cloudflare CI/CD example](examples/cloudflare-cicd/README.md) for a small public list/create application you can connect to your own accounts.
 
 ## Use the CLI
 
@@ -41,7 +54,7 @@ node packages/cli/dist/index.js validate -f nordix.config.yaml
 node packages/cli/dist/index.js generate -f nordix.config.yaml -o ./my-client-project
 ```
 
-The initializer emits a public database-backed example with list/create operations and an optional frontend. Generation prepares supported output, checks prerequisites, runs pinned official scaffolds, installs each repository workspace, and verifies application types and backend boundaries before optional Git/GitHub publication. Configure the emitted environment examples and apply database migrations before starting the applications. See [CLI workflow and evidence](docs/generation/CLI_WORKFLOW.md).
+The initializer emits a public database-backed example with list/create operations and an optional frontend. Generation prepares supported output, checks prerequisites, runs pinned official scaffolds, installs each repository workspace, and verifies application types and backend boundaries before mandatory local Git initialization (initial commit on `main`, `develop` at the same commit) and optional GitHub publication of both branches. Configure the emitted environment examples and apply database migrations before starting the applications. See [CLI workflow and evidence](docs/generation/CLI_WORKFLOW.md).
 
 The [approved YAML reference](docs/configuration/YAML_V2.md) defines the target contract. [Validation behavior and evidence](docs/configuration/VALIDATION.md) explains what currently works, how to run checks, diagnostic categories and supported scope and limitations. The core resolution API builds the [shared project model](docs/configuration/RESOLVED_MODEL.md) independently of generation readiness.
 

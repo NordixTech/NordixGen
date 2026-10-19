@@ -124,7 +124,7 @@ describe("canonical configuration initialization and command preflight", () => {
       /framework:|plugin:|orm:|styling:|stateManagement:|createRemote: true/,
     );
     expect(result.config.repositories[0]).toMatchObject({
-      initializeGit: false,
+      initializeGit: true,
       createRemote: false,
     });
     expect(() => createStarterConfiguration("Bad Name", frontend)).toThrow(/Project name/);

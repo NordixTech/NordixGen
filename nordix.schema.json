@@ -59,7 +59,8 @@
           },
           "initializeGit": {
             "type": "boolean",
-            "default": false
+            "const": true,
+            "default": true
           },
           "createRemote": {
             "type": "boolean",

@@ -88,6 +88,11 @@ const webPort = await freePort();
 const dbPort = await freePort();
 const env = {
   ...process.env,
+  GIT_CONFIG_COUNT: "2",
+  GIT_CONFIG_KEY_0: "user.name",
+  GIT_CONFIG_VALUE_0: "NordixGen acceptance",
+  GIT_CONFIG_KEY_1: "user.email",
+  GIT_CONFIG_VALUE_1: "acceptance@example.test",
   BACKEND_API_PORT: String(apiPort),
   FRONTEND_WEB_PORT: String(webPort),
   POSTGRES_API_PORT: String(dbPort),

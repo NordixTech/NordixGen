@@ -113,11 +113,12 @@ export async function finishRepositories(
     if (repository.initializeGit) {
       const identity = settings.identity;
       if (!identity) throw Error("Git identity preflight was not completed.");
-      await run("git", ["init"], "initialization failed");
+      await run("git", ["init", "--initial-branch=main"], "initialization failed");
       await run("git", ["config", "user.name", identity.name], "identity setup failed");
       await run("git", ["config", "user.email", identity.email], "identity setup failed");
       await run("git", ["add", "."], "staging failed");
       await run("git", ["commit", "-m", "Initialize generated project"], "initial commit failed");
+      await run("git", ["branch", "develop"], "develop branch creation failed");
     }
     if (repository.createRemote) {
       const slug = settings.remotes.get(repository.name);
@@ -151,9 +152,18 @@ export async function finishRepositories(
         "branch verification failed",
       );
       await run("git", ["check-ref-format", "--branch", branch], "branch verification failed");
-      const ref = `HEAD:refs/heads/${branch}`;
-      await run("git", ["push", "--dry-run", "origin", ref], "push preflight failed");
-      await run("git", ["push", "--set-upstream", "origin", ref], "push failed");
+      const refs = ["main:refs/heads/main", "develop:refs/heads/develop"];
+      await run(
+        "git",
+        ["push", "--atomic", "--dry-run", "origin", ...refs],
+        "push preflight failed",
+      );
+      await run("git", ["push", "--atomic", "--set-upstream", "origin", ...refs], "push failed");
+      await run(
+        "gh",
+        ["repo", "edit", slug, "--default-branch", "main"],
+        "default branch configuration failed",
+      );
     }
   }
 }

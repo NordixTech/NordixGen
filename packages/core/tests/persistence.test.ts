@@ -141,7 +141,7 @@ describe("named fixed-stack resources and safe project placement", () => {
     config.repositories.push({
       name: "client",
       path: "client",
-      initializeGit: false,
+      initializeGit: true,
       createRemote: false,
       visibility: "private",
     });
@@ -188,7 +188,7 @@ describe("named fixed-stack resources and safe project placement", () => {
     config.repositories.push({
       name: "nested",
       path: "repos/nested",
-      initializeGit: false,
+      initializeGit: true,
       createRemote: false,
       visibility: "private",
     });

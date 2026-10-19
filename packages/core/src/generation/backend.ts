@@ -17,6 +17,7 @@ import type { ResolvedProject } from "../project/types.js";
 import { backendView } from "../project/views.js";
 import { generateApplicationRuntime } from "./application-runtime.js";
 import { generateBoundaryCheck } from "./boundaries.js";
+import { cloudflareConfiguration } from "./cloudflare.js";
 import { backendDependencies } from "./dependencies.js";
 import { collectFiles } from "./files.js";
 import { generateLocalRuntime } from "./local-runtime.js";
@@ -128,7 +129,7 @@ export function generateBackend(project: ResolvedProject, name: string) {
         backendEnvironmentFile(context),
         {
           path: posix.join(view.backend.path, "wrangler.jsonc"),
-          content: `${JSON.stringify({ name: view.backend.name, main: "src/index.ts", compatibility_date: "2025-04-01", compatibility_flags: ["nodejs_compat"] }, null, 2)}\n`,
+          content: `${JSON.stringify(cloudflareConfiguration(context.projectName, view.backend.name), null, 2)}\n`,
         },
       ],
     },

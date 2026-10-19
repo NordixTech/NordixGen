@@ -19,7 +19,7 @@ The product requirements remain in [the specification](../SPECIFICATION.md). Thi
 
 Clean is the executable architecture target for v1.1.0. Hexagonal/Onion are specified names and boundary contracts for later implementations, not prerequisites to complete that milestone. A structurally/semantically valid mixed-family example is **not generation-ready** until its renderers exist. Public `validate` and `generate` MUST share readiness diagnostics and reject an unimplemented family before side effects.
 
-No v1 converter, second generation engine, in-place regeneration, deployment, IaC, generated CI/CD, Docker, AI, event bus, distributed transaction or arbitrary plugin system is specified.
+No v1 converter, second generation engine, in-place regeneration, general IaC, AI, event bus, distributed transaction or arbitrary plugin system is specified. Local Docker and native Cloudflare CI/CD are generated operational capabilities; see the CLI workflow.
 
 ### The initial export limitation
 
@@ -62,7 +62,7 @@ Resolved identities are tuples: `(backend, module)` and `(backend, module, opera
 | --- | --- | --- |
 | `name`, `path` | Required | Slug and safe path relative to the chosen output directory |
 | `organization` | Optional | Existing organization alias |
-| `initializeGit` | `false` | Local repository initialization |
+| `initializeGit` | `true` | Git is mandatory. Omit this field or use `true`; `false` is rejected. Creates initial `main` commit and `develop` from it. |
 | `createRemote` | `false` | Explicit opt-in GitHub creation; requires `organization` |
 | `visibility` | `private` | `private` or `public`; used only for remote creation |
 

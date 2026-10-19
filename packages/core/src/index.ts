@@ -39,3 +39,4 @@ export {
   stringifyNordixYaml,
 } from "./configuration/validate.js";
 export * from "./virtual-file-system.js";
+export { cloudflareWorkerName } from "./generation/cloudflare.js";
