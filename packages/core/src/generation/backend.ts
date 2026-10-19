@@ -19,6 +19,7 @@ import { generateApplicationRuntime } from "./application-runtime.js";
 import { generateBoundaryCheck } from "./boundaries.js";
 import { backendDependencies } from "./dependencies.js";
 import { collectFiles } from "./files.js";
+import { generateLocalRuntime } from "./local-runtime.js";
 import { generateModuleComposition } from "./module-composition.js";
 import { generateModulePublicFiles } from "./module-public.js";
 import { backendEnvironmentFile } from "./runtime-environment.js";
@@ -112,6 +113,7 @@ export function generateBackend(project: ResolvedProject, name: string) {
     { owner: "hono-assembly", files: generateHonoFiles(context) },
     { owner: "module-boundary-check", files: [generateBoundaryCheck(context)] },
     { owner: "application-runtime", files: generateApplicationRuntime(context) },
+    { owner: "local-runtime", files: generateLocalRuntime(context) },
     ...(context.persistence
       ? [
           {

@@ -34,7 +34,7 @@ export async function requirePageSession(path:string):Promise<VerifiedPageSessio
  let session:VerifiedPageSession|null;
  try {
   const base=${identityBaseUrl(context)};
-  const authority=new URL(base);
+  const authority=new URL(process.env.AUTH_INTERNAL_BASE_URL??base);
   if(!["http:","https:"].includes(authority.protocol)||authority.username||authority.password||authority.pathname!=="/"||authority.search||authority.hash)throw new IdentityUnavailable();
   const response=await fetch(new URL("/api/auth/get-session",authority),{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});
   if(response.status===401)session=null;
@@ -53,7 +53,7 @@ export async function requireIamAccess():Promise<void>{
  await requirePageSession("/admin/roles");
  const cookie=(await headers()).get("cookie")??"";
  let response:Response;
- try{response=await fetch(new URL("/api/iam/me",${identityBaseUrl(context)}),{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});}catch{throw new IdentityUnavailable();}
+ try{response=await fetch(new URL("/api/iam/me",process.env.AUTH_INTERNAL_BASE_URL??(${identityBaseUrl(context)})),{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});}catch{throw new IdentityUnavailable();}
  if(response.status===401)redirect("/sign-in");
  if(response.status===403)redirect("/");
  if(!response.ok)throw new IdentityUnavailable();
