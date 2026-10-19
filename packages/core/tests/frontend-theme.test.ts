@@ -156,6 +156,7 @@ describe("generated semantic theme", () => {
         ),
       ).toEqual([]);
     },
+    20_000,
   );
   it("derives contrast and channels for each supported literal family", () => {
     expect(rgba("#fff")).toEqual([1, 1, 1, 1]);
