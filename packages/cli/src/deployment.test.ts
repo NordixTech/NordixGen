@@ -1,4 +1,4 @@
-import { confirm, password } from "@clack/prompts";
+import { confirm, password, select } from "@clack/prompts";
 import {
   generateBackend,
   generateFrontend,
@@ -10,6 +10,7 @@ import { execa } from "execa";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkDeploymentBranch,
+  chooseNeonProject,
   connectRepository,
   ensureNeonBranches,
   executeStage,
@@ -29,12 +30,16 @@ vi.mock("@clack/prompts", async (original) => ({
   ...(await original<typeof import("@clack/prompts")>()),
   confirm: vi.fn(),
   password: vi.fn(),
+  select: vi.fn(),
 }));
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.mocked(execa).mockReset();
+  vi.mocked(confirm).mockReset();
+  vi.mocked(password).mockReset();
+  vi.mocked(select).mockReset();
 });
 function fixture(split = false) {
   const parsed = parseNordixYaml(createStarterConfiguration("cloud-demo", true));
@@ -49,6 +54,53 @@ function fixture(split = false) {
   return result.project;
 }
 describe("native deployment safety and contracts", () => {
+  it("selects a real Neon ID from named projects and validates it before applying", async () => {
+    vi.mocked(select)
+      .mockResolvedValueOnce("existing")
+      .mockResolvedValueOnce("org-demo")
+      .mockResolvedValueOnce("red-breeze-123");
+    const project = { id: "red-breeze-123", name: "my-friendly-project" };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ organizations: [{ id: "org-demo", name: "Personal" }] })),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ projects: [project] })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ project })));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(chooseNeonProject("api", "key")).resolves.toBe("red-breeze-123");
+    expect(vi.mocked(select).mock.calls[2][0].options[0]).toEqual({
+      value: "red-breeze-123",
+      label: "my-friendly-project",
+      hint: "ID: red-breeze-123",
+    });
+    expect(fetcher.mock.calls[2][0]).toContain("/projects/red-breeze-123");
+    expect(fetcher.mock.calls.every((call) => call[1].method === "GET")).toBe(true);
+  });
+  it("does not offer a stale saved Neon ID and prepares a new project without creating resources", async () => {
+    vi.mocked(select)
+      .mockResolvedValueOnce("new")
+      .mockResolvedValueOnce("org-demo")
+      .mockResolvedValueOnce("aws-us-east-1");
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 404 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ organizations: [{ id: "org-demo", name: "Personal" }] })),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ regions: [{ region_id: "aws-us-east-1", name: "US East" }] }),
+        ),
+      );
+    vi.stubGlobal("fetch", fetcher);
+    await expect(chooseNeonProject("api", "key", "typed-friendly-name")).resolves.toBe(
+      "new:org-demo:aws-us-east-1",
+    );
+    expect(confirm).not.toHaveBeenCalled();
+    expect(vi.mocked(select).mock.calls[0][0].options[0].value).toBe("new");
+    expect(fetcher.mock.calls.every((call) => call[1].method === "GET")).toBe(true);
+  });
   it("registers the supplied user token for builds without creating a second API token", async () => {
     const fetcher = vi
       .fn()

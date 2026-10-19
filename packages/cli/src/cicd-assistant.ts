@@ -89,6 +89,16 @@ async function input(message: string, initialValue = "", secret = false): Promis
   if (secret) secrets.add(value);
   return value;
 }
+function visibleNote(message: string, title: string) {
+  // Clack dims each note line; reset that style so body text uses the terminal foreground.
+  note(
+    message
+      .split("\n")
+      .map((line) => pc.reset(line))
+      .join("\n"),
+    title,
+  );
+}
 function instructionCard(instructions: string) {
   const [title, ...lines] = instructions.split("\n");
   const body = lines.map((line) =>
@@ -96,7 +106,7 @@ function instructionCard(instructions: string) {
       .replace(/^(\d+\.)/, (step) => pc.cyan(pc.bold(step)))
       .replace(/https:\/\/[^\s]+/g, (url) => pc.cyan(pc.underline(url))),
   );
-  note(body.join("\n"), pc.bold(pc.cyan(title)));
+  visibleNote(body.join("\n"), pc.bold(pc.cyan(title)));
 }
 export const accessInstructions = {
   cloudflare: `1 / Cloudflare access
@@ -553,37 +563,58 @@ export async function provisionNeonProjects(
         branch: { name: "main" },
       },
     });
-    profile.neonProjects[app.name] = field(object(data.project).id);
+    const created = object(data.project);
+    profile.neonProjects[app.name] = field(created.id);
+    log.success(
+      `Neon project created: ${field(created.name ?? `${manifest.project}-${app.name}`)} (ID: ${field(created.id)})`,
+    );
     await save();
   }
 }
-async function chooseNeonProject(name: string, token: string, previous?: string): Promise<string> {
+export async function chooseNeonProject(
+  name: string,
+  token: string,
+  previous?: string,
+): Promise<string> {
   if (previous && !previous.startsWith("new:")) {
+    let project: Json | undefined;
+    try {
+      project = object(
+        (await requestApi(neonBase, `/projects/${encodeURIComponent(previous)}`, token)).project,
+      );
+    } catch {
+      log.warn(
+        "The saved Neon project is unavailable or inaccessible. Select a destination again.",
+      );
+    }
     if (
+      project &&
       answer(
         await confirm({
-          message: `Reuse Neon project ${previous} for ${name}?`,
+          message: `Reuse ${field(project.name)} for ${name}? (ID: ${field(project.id)})`,
           initialValue: true,
         }),
       )
     )
-      return previous;
+      return field(project.id);
   }
-  const mode = answer(
+  let mode = answer(
     await select({
       message: `Database for ${name}`,
       options: [
-        { value: "existing", label: "Use an existing Neon project" },
-        { value: "new", label: "Create a new Neon project" },
+        {
+          value: "new",
+          label: "Create a new Neon project",
+          hint: "recommended for a new deployment",
+        },
+        { value: "existing", label: "Select an existing Neon project" },
       ],
     }),
   );
-  if (mode === "existing") return input(`${name}: Neon project ID`, previous);
-  const orgs = (await requestApi(neonBase, "/users/me/organizations", token))
-    .organizations as Json[];
+  const orgs = items((await requestApi(neonBase, "/users/me/organizations", token)).organizations);
   if (!orgs.length)
     throw Error(
-      "No Neon organization is available; use an existing project or a key with organization access.",
+      "No Neon organization is available. Use a personal API key with organization access.",
     );
   const org = String(
     answer(
@@ -593,6 +624,35 @@ async function chooseNeonProject(name: string, token: string, previous?: string)
       }),
     ),
   );
+  if (mode === "existing") {
+    const projects = items(
+      (await requestApi(neonBase, `/projects?org_id=${encodeURIComponent(org)}`, token)).projects,
+    );
+    if (projects.length) {
+      const id = String(
+        answer(
+          await select({
+            message: "Select the database project (name and internal ID)",
+            options: projects.map((p) => ({
+              value: field(p.id),
+              label: field(p.name),
+              hint: `ID: ${field(p.id)}`,
+            })),
+          }),
+        ),
+      );
+      const project = object(
+        (await requestApi(neonBase, `/projects/${encodeURIComponent(id)}`, token)).project,
+      );
+      if (field(project.id) !== id)
+        throw Error("Neon returned an unexpected project. Retry setup.");
+      return id;
+    }
+    log.info(
+      "This organization has no projects. Choose a region to prepare a new project instead.",
+    );
+    mode = "new";
+  }
   const regions = (await requestApi(neonBase, "/regions", token)).regions as Json[];
   const region = String(
     answer(
@@ -732,16 +792,27 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
     );
   }
   for (const environment of environments)
-    for (const name of new Set(manifest.applications.flatMap((a) => [a.name, ...a.connections])))
+    for (const name of new Set(manifest.applications.flatMap((a) => [a.name, ...a.connections]))) {
+      const app = manifest.applications.find((a) => a.name === name);
+      const generatedOrigin = app
+        ? `https://${app.worker}-${environment}.${subdomain}.workers.dev`
+        : "";
+      let suggestion = profile.urls[environment][name] ?? generatedOrigin;
+      if (
+        app &&
+        suggestion &&
+        new URL(suggestion).hostname.endsWith(".workers.dev") &&
+        suggestion !== generatedOrigin
+      ) {
+        log.warn(
+          "The saved workers.dev URL does not match this generated Worker. The suggested URL has been corrected.",
+        );
+        suggestion = generatedOrigin;
+      }
       profile.urls[environment][name] = publicOrigin(
-        await input(
-          `${name}/${environment}: public HTTPS origin`,
-          profile.urls[environment][name] ??
-            (manifest.applications.some((a) => a.name === name) && subdomain
-              ? `https://${manifest.applications.find((a) => a.name === name)?.worker}-${environment}.${subdomain}.workers.dev`
-              : ""),
-        ),
+        await input(`${name}/${environment}: public HTTPS origin`, suggestion),
       );
+    }
   const neonToken = manifest.applications.some((a) => a.database)
     ? (
         await validatedCredential(
@@ -759,13 +830,18 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
       profile.neonProjects[app.name],
     );
   validateTopology(manifest, profile);
-  note(
+  visibleNote(
     [
       `Cloudflare account: ${accountId}`,
       `GitHub repository:  ${repository}`,
       `Applications:       ${manifest.applications.map((a) => a.name).join(", ")}`,
       "",
       "develop → staging · main → production",
+      ...Object.entries(profile.neonProjects).map(([app, id]) =>
+        id.startsWith("new:")
+          ? `Neon ${app}: create project ${manifest.project}-${app}`
+          : `Neon ${app}: existing project ID ${id}`,
+      ),
       deploymentAccess === "reuse"
         ? "Cloudflare will retain your API token for automatic deployments."
         : "Deployments use the registered token you selected.",
