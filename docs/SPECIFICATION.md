@@ -64,7 +64,7 @@ An import declaration grants a typed dependency and wiring opportunity. It does 
 
 ## 6. Database and persistence requirements
 
-PostgreSQL on Neon is the supported database engine/provider combination, and Drizzle is the supported ORM. A project may declare multiple named databases for separate backends or applications. The initial backend model uses one selected database resource per backend; multiple live database connections inside a single backend and cross-database transactions are outside the initial contract.
+PostgreSQL on Neon is the supported database engine/provider combination, and Drizzle is the supported ORM. A project may declare multiple named databases for separate backends or applications. The Golden Path strictly rejects sharing a named database resource across multiple backends. Each persisted backend exclusively owns one dedicated resource; consolidate business modules into one modular monolith or declare separate resources. The initial backend model uses one selected database resource per backend; multiple live database connections inside a single backend and cross-database transactions are outside the initial contract.
 
 The generator should create schemas, repository/query adapters, migrations, and seed support for declared entities and supported relationships. Migrations should be reproducible and include platform-owned authentication tables where needed. Generated queries should honor declared pagination and supported filters, ordering, soft-delete rules, and endpoint projection constraints.
 

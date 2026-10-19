@@ -7,10 +7,12 @@ import { resolvedFixture, targetConfig } from "./fixtures.js";
 
 function twoBackends() {
   const config = targetConfig("single-module");
+  config.databases.other = {};
   config.backends.push({
     ...structuredClone(config.backends[0]),
     name: "other-api",
     path: "apps/other",
+    persistence: { database: "other" },
     modules: { notes: { architecture: "clean", entities: ["Other"], imports: {}, exports: [] } },
   });
   config.entities.Other = { ...structuredClone(config.entities.Note), backend: "other-api" };

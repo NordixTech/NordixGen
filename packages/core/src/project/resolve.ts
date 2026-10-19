@@ -55,10 +55,20 @@ function resolveValidated(
       for (const name of module.entities) owners.set(name, id);
     }
   const entities = resolveEntities(config, owners, origin);
+  const databaseOwners = new Map(
+    config.backends.flatMap((backend) =>
+      backend.persistence ? [[backend.persistence.database, backend.name] as const] : [],
+    ),
+  );
   const databases = sortedRecord<ResolvedDatabase>(
     Object.keys(config.databases).map((name) => [
       name,
-      { name, engine: "postgres", provider: "neon" },
+      {
+        name,
+        engine: "postgres",
+        provider: "neon",
+        ...(databaseOwners.has(name) ? { backend: databaseOwners.get(name) } : {}),
+      },
     ]),
   );
   const backends = sortedRecord<ResolvedBackend>(

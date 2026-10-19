@@ -24,6 +24,7 @@ Messages are English, identify a configuration path, explain the failure and pro
 | Cyclic or excessive configuration data | `CONFIG_DATA_CYCLE`, `CONFIG_DATA_LIMIT` |
 | Version, required/type/unknown/removed fields | `CONFIG_VERSION_UNSUPPORTED`, `CONFIG_FIELD_REQUIRED`, `CONFIG_FIELD_TYPE_INVALID`, `CONFIG_FIELD_UNKNOWN`, `CONFIG_FIELD_REMOVED` |
 | Unsupported enum/literal, malformed shape/identifier | `CONFIG_VALUE_UNSUPPORTED`, `CONFIG_FIELD_INVALID`; architecture spelling uses `MODULE_ARCHITECTURE_INVALID` |
+| Database ownership | `DATABASE_SHARED_ACROSS_BACKENDS` rejects every colliding `backends[i].persistence.database` reference, names all owners and recommends distinct resources or one modular monolith; unknown resources retain `UNKNOWN_BACKEND_DATABASE` |
 | Ownership | `ENTITY_OWNER_MISSING`, `ENTITY_OWNER_DUPLICATE`, `ENTITY_OWNER_BACKEND_MISMATCH`, `UNKNOWN_MODULE_ENTITY` |
 | Imports/exports and module graph | `MODULE_IMPORT_UNKNOWN`, `MODULE_IMPORT_NOT_EXPORTED`, `MODULE_IMPORT_SELF`, `MODULE_EXPORT_UNKNOWN`, `MODULE_EXPORT_OWNER_MISMATCH`, `MODULE_DEPENDENCY_CYCLE` |
 | Cross-module data access | `CROSS_MODULE_RELATION`, `CROSS_MODULE_JOIN`, `CROSS_MODULE_FIELD_REFERENCE` |
@@ -33,6 +34,8 @@ Messages are English, identify a configuration path, explain the failure and pro
 | Frontend authority/pages | `FRONTEND_BACKEND_UNKNOWN`, `FRONTEND_IDENTITY_REQUIRED`, `FRONTEND_IDENTITY_INVALID`, `FRONTEND_IDENTITY_AMBIGUOUS`, `FRONTEND_IDENTITY_MISMATCH`, `FRONTEND_ACCESS_ROUTE_INVALID` |
 
 The reference's `MODULE_PRIVATE_IMPORT`, `MODULE_DEPENDENCY_UNDECLARED` and `ARCHITECTURE_DEPENDENCY_INVALID` concern generated/authored source boundaries, not YAML declarations. Those source checks belong with module generation. Module cycles and stored-foreign-key cycles have separate resolved graphs. `RELATION_CYCLE` identifies an actual stored cycle, including self-cycles, at its source relation; inverse relations and scalar identifiers do not create stored dependencies.
+
+Unused declared databases are allowed. Their resolved database record omits `backend`; used resources record their exclusive backend name. Shared resources fail configuration validation and project resolution before readiness, regardless of `requireGeneration`.
 
 ## Executable evidence
 

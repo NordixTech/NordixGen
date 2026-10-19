@@ -6,6 +6,8 @@
 
 The model contains project/resources, backend-qualified modules and operations, effective entities/fields/relations, public application contracts, frontend transport contracts and precomputed page/feature metadata. `backendView(project, name)`, `moduleView(project, backendQualifiedModuleId)` and `frontendView(project, name)` select existing resolved data. They never reparse, revalidate or reconstruct configuration. Unknown targets fail explicitly.
 
+Each resolved database records its exclusive owner in optional `backend`. An absent owner marks an unused declared resource. Multiple backends selecting the same resource fail semantic validation before a model can be built; backend database references point to the same resolved resource record.
+
 All data is deeply frozen and typed readonly, including nested defaults and collections. Resolving an object does not mutate or freeze caller-owned defaults. Dictionaries have no inherited keys, so an undeclared reference such as `constructor` is an unknown reference. Serialization sorts object keys, preserves meaningful array order and includes source metadata; identical source/model input produces identical output.
 
 Effective fields include generated identity/audit/soft-delete fields, SQL names, nullability, write visibility and absent/literal/trusted-clock defaults. Numeric fields have resolved numeric formats and decimal precision/scale. Relations carry resolved owning entity, target, foreign key and deletion semantics; scalar identifiers never create module dependencies. Generated fields cannot silently become caller-writable fields.
