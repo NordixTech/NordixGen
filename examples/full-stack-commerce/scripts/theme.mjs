@@ -6,6 +6,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
   const button = (theme) => page.getByRole("button", { name: `${theme} theme`, exact: true });
   const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme-ready", "true");
   await expect(button("System")).toHaveAttribute("aria-pressed", "true");
   await expect.poll(background).toBe("rgb(248, 250, 252)");
   await button("Dark").focus();
@@ -13,6 +14,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
   await expect(button("Dark")).toHaveAttribute("aria-pressed", "true");
   await expect.poll(background).toBe("rgb(11, 15, 25)");
   await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-ready", "true");
   await expect(button("Dark")).toHaveAttribute("aria-pressed", "true");
   await expect.poll(background).toBe("rgb(11, 15, 25)");
   await page.screenshot({ path: join(directory, "verified-theme-dark.png"), fullPage: true });
@@ -27,6 +29,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
   const other = await page.context().newPage();
   try {
     await other.goto(web);
+    await expect(other.locator("html")).toHaveAttribute("data-theme-ready", "true");
     await button("Dark").click();
     await expect(other.getByRole("button", { name: "Dark theme", exact: true })).toHaveAttribute(
       "aria-pressed",
@@ -64,6 +67,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
     const errors = [];
     fallback.on("pageerror", (error) => errors.push(error.message));
     await fallback.goto(web);
+    await expect(fallback.locator("html")).toHaveAttribute("data-theme-ready", "true");
     await fallback.getByRole("button", { name: "Dark theme", exact: true }).click();
     await expect(fallback.locator("html")).toHaveAttribute("data-theme", "dark");
     expect(errors).toEqual([]);
@@ -80,6 +84,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
         errors.push(message.text());
     });
     await screen.goto(`${web}/sign-in`);
+    await expect(screen.locator("html")).toHaveAttribute("data-theme-ready", "true");
     await screen.getByRole("button", { name: "Dark theme", exact: true }).click();
     await expect(screen.locator("html")).toHaveAttribute("data-theme", "dark");
     await screen.screenshot({

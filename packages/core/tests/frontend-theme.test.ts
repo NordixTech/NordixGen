@@ -226,10 +226,14 @@ describe("generated semantic theme", () => {
         Reflect.deleteProperty(listeners, "media");
       },
     };
-    const dataset = { theme: "dark" };
+    const dataset: Record<string, string | undefined> = { theme: "dark" };
     const saved: Record<string, string> = {};
     let blocked = false;
     const storage = {
+      getItem: (key: string) => {
+        if (blocked) throw Error("blocked");
+        return saved[key] ?? null;
+      },
       setItem: (key: string, value: string) => {
         if (blocked) throw Error("blocked");
         saved[key] = value;
@@ -269,6 +273,7 @@ describe("generated semantic theme", () => {
       initializeTheme: () => () => void;
     };
     const stop = runtime.initializeTheme();
+    expect(dataset.themeReady).toBe("true");
     expect(runtime.useTheme.getState()).toMatchObject({ theme: "dark", resolvedTheme: "dark" });
     runtime.useTheme.getState().setTheme("system");
     expect(saved["nordix-theme"]).toBe("system");
@@ -291,8 +296,13 @@ describe("generated semantic theme", () => {
     expect(dataset.theme).toBe("dark");
     stop();
     expect(listeners).toEqual({});
+    expect(dataset.themeReady).toBeUndefined();
     dataset.theme = "invalid";
     runtime.initializeTheme()();
     expect(dataset.theme).toBe("system");
+    blocked = false;
+    saved["nordix-theme"] = "dark";
+    runtime.initializeTheme()();
+    expect(dataset.theme).toBe("dark");
   });
 });
