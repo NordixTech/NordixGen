@@ -79,7 +79,7 @@ if (cleanupId) {
     if (/^(NEXT_PUBLIC_|BETTER_AUTH_|AUTH_TRUSTED_ORIGINS$|DATABASE_URL$)/.test(key))
       delete env[key];
   env.NORDIX_LOCAL_RUNTIME = "1";
-  env.BACKEND_API_INTERNAL_URL = `http://localhost:${state.apiPort}`;
+  env.BACKEND_API_INTERNAL_URL = `http://127.0.0.1:${state.apiPort}`;
   const pnpmCommand = (args, cwd = root) => command(process.execPath, [pnpm, ...args], cwd, env);
   const runStage = async (name, action) => {
     stage = name;
@@ -332,7 +332,7 @@ if (cleanupId) {
     await runStage("build-generated-frontend", async () => {
       await writeFile(
         join(web, ".env.local"),
-        `NORDIX_LOCAL_RUNTIME=1\nBACKEND_API_INTERNAL_URL=http://localhost:${state.apiPort}\n`,
+        `NORDIX_LOCAL_RUNTIME=1\nBACKEND_API_INTERNAL_URL=http://127.0.0.1:${state.apiPort}\n`,
       );
       await pnpmCommand(["run", "typecheck"], web);
       return pnpmCommand(["run", "build"], web);

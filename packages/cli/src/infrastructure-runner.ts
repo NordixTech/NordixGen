@@ -81,9 +81,8 @@ export class InfrastructureRunner {
   private readonly endpoint: string;
   private async dataClient() {
     return new AwsClient({
-      accessKeyId: process.env.R2_INFRA_ACCESS_KEY_ID ?? required("R2_STATE_ACCESS_KEY_ID"),
-      secretAccessKey:
-        process.env.R2_INFRA_SECRET_ACCESS_KEY ?? required("R2_STATE_SECRET_ACCESS_KEY"),
+      accessKeyId: required("R2_STATE_ACCESS_KEY_ID"),
+      secretAccessKey: required("R2_STATE_SECRET_ACCESS_KEY"),
       service: "s3",
       region: "auto",
     });
