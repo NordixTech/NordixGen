@@ -228,7 +228,7 @@ export const RepositorySchema = z
     name: SlugSchema,
     path: z.string().min(1),
     organization: SlugSchema.optional(),
-    initializeGit: z.boolean().default(false),
+    initializeGit: z.literal(true).default(true),
     createRemote: z.boolean().default(false),
     visibility: z.enum(["private", "public"]).default("private"),
   })

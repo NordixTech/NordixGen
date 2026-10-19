@@ -1,5 +1,7 @@
 # @nordixgen/cli
 
+Generated repositories include a standalone CI/CD assistant: `pnpm cicd:setup` (or `pnpm cicd:setup --profile client-name`). Their README also offers manual Cloudflare/Neon setup in `docs/DEPLOYMENT.md` and PITR procedures in `docs/DISASTER_RECOVERY.md`. Both paths use native Cloudflare builds for `develop`/staging and `main`/production. Local Git initialization is mandatory; GitHub remote creation remains optional.
+
 Initialize new Nordix projects from strict YAML v2 using the fixed TypeScript/Hono/Next.js/Drizzle/Neon/Better Auth stack. Node.js 24+ and pnpm 10.5.2 are required. Install Git and authenticate GitHub CLI only when the configuration opts into repository publication.
 
 From a source checkout, install with `pnpm install --frozen-lockfile`, then `pnpm build`:

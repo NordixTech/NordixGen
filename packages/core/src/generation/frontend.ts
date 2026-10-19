@@ -13,6 +13,7 @@ import { generateApiClientFiles } from "../plugins/frontends/typed-api-client.js
 import { generateTailwindFiles } from "../plugins/styling/tailwind.js";
 import type { ResolvedProject } from "../project/types.js";
 import { frontendView } from "../project/views.js";
+import { frontendCloudflareFiles } from "./cloudflare.js";
 import { collectFiles } from "./files.js";
 import { generateFrontendAccess, protectFrontendPage } from "./frontend-access.js";
 import { generateFrontendForms } from "./frontend-forms.js";
@@ -25,7 +26,12 @@ export const FRONTEND_STACK = {
     "react-hook-form": "^7.54.2",
     "@hookform/resolvers": "^3.10.0",
   },
-  development: { tailwindcss: "^4.0.0", "@tailwindcss/postcss": "^4.0.0" },
+  development: {
+    tailwindcss: "^4.0.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@opennextjs/cloudflare": "1.20.12",
+    wrangler: "4.151.2",
+  },
   identity: { "better-auth": "^1.7.7" },
 } as const;
 export const FRONTEND_SCAFFOLD_OVERLAYS = [
@@ -53,6 +59,10 @@ export function generateFrontend(project: ResolvedProject, name: string) {
     { owner: "shell", files: generateFrontendShell(context) },
     { owner: "theme", files: generateThemeFiles(context) },
     { owner: "runtime-environment", files: [frontendEnvironmentFile(context)] },
+    {
+      owner: "cloudflare",
+      files: frontendCloudflareFiles(project.project.name, name, context.framework.applicationRoot),
+    },
     { owner: "ui", files: generateUiFiles(context) },
     { owner: "tailwind", files: generateTailwindFiles(context) },
     { owner: "api", files: generateApiClientFiles(context) },

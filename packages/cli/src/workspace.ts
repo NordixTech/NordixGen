@@ -1,7 +1,8 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { type ResolvedProject, WORKSPACE_TOOLING } from "@nordixgen/core";
 import { type ParseError, parse } from "jsonc-parser";
+import { deploymentFiles, deploymentReadme, deploymentScripts } from "./deployment.js";
 import { dockerDocumentation, dockerFiles, dockerScripts } from "./docker.js";
 import { exists } from "./filesystem.js";
 import type { PreparedApplication } from "./generation-types.js";
@@ -125,7 +126,7 @@ export async function finishWorkspace(
   const manifestPath = join(directory, "package.json");
   const rootManifest = JSON.parse(await readFile(manifestPath, "utf8")) as Manifest;
   const scripts = stringRecord(rootManifest.scripts, "scripts");
-  for (const [name, command] of Object.entries(dockerScripts)) {
+  for (const [name, command] of Object.entries({ ...dockerScripts, ...deploymentScripts })) {
     if (scripts[name] !== undefined && scripts[name] !== command)
       throw Error(`Unexpected workspace script collision at "${name}".`);
     scripts[name] = command;
@@ -133,6 +134,10 @@ export async function finishWorkspace(
   await writeFile(manifestPath, `${JSON.stringify({ ...rootManifest, scripts }, null, 2)}\n`);
   for (const [path, content] of Object.entries(dockerFiles(project, repository)))
     await writeFile(join(directory, path), content);
+  for (const [path, content] of Object.entries(await deploymentFiles(project, repository))) {
+    await mkdir(dirname(join(directory, path)), { recursive: true });
+    await writeFile(join(directory, path), content);
+  }
   await writeFile(
     join(directory, "pnpm-workspace.yaml"),
     `packages:\n${apps.map((app) => `  - ${JSON.stringify(app.path)}`).join("\n")}\n`,
@@ -141,7 +146,7 @@ export async function finishWorkspace(
   const previous = (await exists(ignore)) ? await readFile(ignore, "utf8") : "";
   await writeFile(
     ignore,
-    `${previous.trimEnd()}\n\n# Generated workspace outputs and local runtime secrets\nnode_modules/\ndist/\n.next/\n.wrangler/\n.env\n.env.*\n!.env.example\n.dev.vars\n.dev.vars.*\n!.dev.vars.example\n`,
+    `${previous.trimEnd()}\n\n# Generated workspace outputs and local runtime secrets\nnode_modules/\ndist/\n.next/\n.open-next/\n.wrangler/\n.nordixgen/\n.env\n.env.*\n!.env.example\n.dev.vars\n.dev.vars.*\n!.dev.vars.example\n`,
   );
   await writeFile(
     join(directory, "README.md"),
@@ -159,6 +164,7 @@ export async function finishWorkspace(
       "Dependencies are installed and application TypeScript/boundary checks run during generation.",
       "",
       ...dockerDocumentation(project, repository),
+      ...deploymentReadme,
       "## Local setup without Docker",
       "- Backends: copy `.dev.vars.example` to `.dev.vars` inside the application and set the indicated runtime values. These files are ignored; never commit real credentials.",
       "- Database tooling runs in Node: also provide `DATABASE_URL` in your shell before `pnpm db:migrate` or `pnpm db:seed`. Generate SQL with `pnpm db:generate`, review it, then migrate before serving business/auth requests. Seeds create synthetic business data, not login identities.",

@@ -42,3 +42,4 @@ sandbox/
 tmp/
 examples/*
 !examples/full-stack-commerce/
+!examples/cloudflare-cicd/

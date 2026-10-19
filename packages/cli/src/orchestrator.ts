@@ -14,7 +14,7 @@ export function createStarterConfiguration(name: string, includeFrontend: boolea
     schemaVersion: 2,
     name,
     version: "1.0.0",
-    repositories: [{ name: "app", path: ".", initializeGit: false, createRemote: false }],
+    repositories: [{ name: "app", path: ".", initializeGit: true, createRemote: false }],
     databases: { primary: {} },
     backends: [
       {

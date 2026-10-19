@@ -61,6 +61,11 @@ if (cleanupId) {
   let success = false;
   const env = {
     ...process.env,
+    GIT_CONFIG_COUNT: "2",
+    GIT_CONFIG_KEY_0: "user.name",
+    GIT_CONFIG_VALUE_0: "NordixGen acceptance",
+    GIT_CONFIG_KEY_1: "user.email",
+    GIT_CONFIG_VALUE_1: "acceptance@example.test",
     NORDIXGEN_ACCEPTANCE_STATE: stateFile,
     NEXT_TELEMETRY_DISABLED: "1",
     WRANGLER_SEND_METRICS: "false",
