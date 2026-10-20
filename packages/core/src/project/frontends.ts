@@ -211,11 +211,18 @@ export function resolveFrontend(
     inventory.add("/admin/roles");
     inventory.add("/sign-in");
     inventory.add("/sign-up");
+    if (identity.methods.includes("email-password")) {
+      inventory.add("/forgot-password");
+      inventory.add("/reset-password");
+    }
+    if (identity.methods.includes("phone-number")) inventory.add("/profile");
   }
   const publicPage = (path: string) =>
     frontend.access.mode === "public" ||
     path === "/sign-in" ||
     path === "/sign-up" ||
+    path === "/forgot-password" ||
+    path === "/reset-password" ||
     (frontend.access.mode === "mixed" &&
       (frontend.access.publicRoutes ?? []).some((pattern) =>
         pattern.endsWith("/**")
@@ -232,9 +239,10 @@ export function resolveFrontend(
     connections: [...frontend.connectsTo].sort(),
     ...(identity ? { identity } : {}),
     access: { ...frontend.access, ...(identity ? { backend: identity.backend } : {}) },
-    pages: [...inventory]
-      .sort()
-      .map((path) => ({ path, authenticated: path === "/admin/roles" || !publicPage(path) })),
+    pages: [...inventory].sort().map((path) => ({
+      path,
+      authenticated: path === "/admin/roles" || path === "/profile" || !publicPage(path),
+    })),
     operations: visible.map((operation) => operation.id),
     operationNames: names,
     endpoints,

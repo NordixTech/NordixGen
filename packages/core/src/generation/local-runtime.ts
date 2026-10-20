@@ -16,7 +16,8 @@ const storageBindings=await emulator.getBindings();
     : ""
 }
 ${context.persistence ? 'import {prepareLocalDatabase} from "./platform/database/local-bootstrap.js";\nawait prepareLocalDatabase();' : ""}
-const server=serve({hostname:"0.0.0.0",port:Number(process.env.PORT??8787),fetch(request){
+const server=serve({hostname:"0.0.0.0",port:Number(process.env.PORT??8787),fetch(request,bindings){
+ if(!request.headers.has("x-nordix-client-ip"))request.headers.set("x-nordix-client-ip",bindings.incoming.socket.remoteAddress??"127.0.0.1");
  return app.fetch(request,${context.domainModel.backend.storage.length ? "{...process.env,...storageBindings}" : "process.env"} as Parameters<typeof app.fetch>[1],{
   waitUntil(promise:Promise<unknown>){void promise.catch(console.error);},
   passThroughOnException(){},props:{},

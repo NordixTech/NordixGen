@@ -38,6 +38,7 @@ process.env.DATABASE_URL = connection;
 process.env.NEON_HTTP_PROXY_URL = `http://127.0.0.1:${state.proxyPort}/sql`;
 const sql = neon(connection);
 const environment = {
+  NODE_ENV: "test",
   DATABASE_URL: connection,
   BETTER_AUTH_SECRET: state.secret,
   BETTER_AUTH_URL: `http://localhost:${state.apiPort}`,

@@ -50,6 +50,8 @@ export async function backendFetch(backend:string,path:string,init:RequestInit={
 export async function proxyBackend(backend:string,request:Request,path:string):Promise<Response>{
  try{
   const url=new URL(request.url);const headers=new Headers(request.headers);
+  headers.delete("x-nordix-client-ip");
+  headers.set("x-nordix-client-ip",process.env.NODE_ENV==="development"||process.env.NORDIX_LOCAL_RUNTIME==="1"?"127.0.0.1":request.headers.get("cf-connecting-ip")??"unknown");
   for(const name of ["host","connection","content-length","forwarded","x-forwarded-host","x-forwarded-proto"])headers.delete(name);
   const init:RequestInit & {duplex?:"half"}={method:request.method,headers,signal:request.signal};
   if(!["GET","HEAD"].includes(request.method)){init.body=request.body;init.duplex="half";}

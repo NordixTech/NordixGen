@@ -123,7 +123,7 @@ export function dockerFiles(
       .filter((frontend) => frontend.connections.includes(app.name))
       .map((frontend) => publicFrontend(frontend.name))
       .join(",");
-    const environment: Record<string, string> = { PORT: "8787" };
+    const environment: Record<string, string> = { PORT: "8787", NODE_ENV: "development" };
     if (app.identity) {
       environment.BETTER_AUTH_URL = origins.split(",")[0] || publicBackend(app.name);
       environment.BETTER_AUTH_SECRET = interpolation(
@@ -134,6 +134,14 @@ export function dockerFiles(
         `BACKEND_${environmentName(app.name)}_TRUSTED_ORIGINS`,
         origins,
       );
+      if (app.identity.identityProviders.includes("microsoft"))
+        environment.MICROSOFT_TENANT_ID = interpolation(
+          `${environmentName(app.name)}_MICROSOFT_TENANT_ID`,
+          "common",
+        );
+      if (app.identity.methods.includes("phone-number"))
+        for (const key of ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"])
+          environment[key] = interpolation(`${environmentName(app.name)}_${key}`, "");
       for (const provider of app.identity.identityProviders)
         for (const suffix of ["CLIENT_ID", "CLIENT_SECRET"])
           environment[`${provider.toUpperCase()}_${suffix}`] = interpolation(
@@ -141,6 +149,8 @@ export function dockerFiles(
             "",
           );
       if (
+        app.identity.methods.includes("email-password") ||
+        app.identity.allowedEmailDomains?.length ||
         app.identity.features.some(
           (feature) => feature === "email-verification" || feature === "password-recovery",
         )
@@ -151,8 +161,25 @@ export function dockerFiles(
         );
         environment.AUTH_EMAIL_FROM = interpolation(
           `${environmentName(app.name)}_AUTH_EMAIL_FROM`,
-          "",
+          "Nordix <auth@localhost>",
         );
+        const mailpit = `mailpit-${app.name}`;
+        services[mailpit] = {
+          image: "axllent/mailpit:v1.27.4",
+          expose: ["1025"],
+          ports: [
+            `127.0.0.1:${interpolation(`MAILPIT_${environmentName(app.name)}_PORT`, 8025 + Object.keys(project.backends).indexOf(app.name))}:8025`,
+          ],
+          networks: network,
+        };
+        environment.SMTP_HOST = interpolation(`${environmentName(app.name)}_SMTP_HOST`, mailpit);
+        environment.SMTP_PORT = interpolation(`${environmentName(app.name)}_SMTP_PORT`, "1025");
+        environment.SMTP_SECURE = interpolation(
+          `${environmentName(app.name)}_SMTP_SECURE`,
+          "false",
+        );
+        environment.SMTP_USER = interpolation(`${environmentName(app.name)}_SMTP_USER`, "");
+        environment.SMTP_PASSWORD = interpolation(`${environmentName(app.name)}_SMTP_PASSWORD`, "");
       }
     } else
       environment.CORS_ALLOWED_ORIGINS = interpolation(

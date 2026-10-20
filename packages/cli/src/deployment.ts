@@ -41,16 +41,22 @@ export function deploymentManifest(
           storage: [...a.storage],
           connections: [],
           runtimeKeys: [
+            ...(a.identity?.identityProviders.includes("microsoft") ? ["MICROSOFT_TENANT_ID"] : []),
+            ...(a.identity?.methods.includes("phone-number")
+              ? ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]
+              : []),
             ...(a.identity?.identityProviders.flatMap((p) => [
               `${p.toUpperCase()}_CLIENT_ID`,
               `${p.toUpperCase()}_CLIENT_SECRET`,
             ]) ?? []),
-            ...(a.identity?.features.some(
-              (f) => f === "email-verification" || f === "password-recovery",
-            )
-              ? ["RESEND_API_KEY", "AUTH_EMAIL_FROM"]
-              : []),
           ],
+          emailDelivery: Boolean(
+            a.identity?.methods.includes("email-password") ||
+              a.identity?.allowedEmailDomains?.length ||
+              a.identity?.features.some(
+                (f) => f === "email-verification" || f === "password-recovery",
+              ),
+          ),
         })),
       ...Object.values(project.frontends)
         .filter((a) => a.repository.name === repository.name)

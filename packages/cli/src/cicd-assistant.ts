@@ -445,8 +445,40 @@ export async function configure(
           values[key] = await input(
             `${app.name}/${environment}: ${key}`,
             "",
-            /SECRET|KEY/.test(key),
+            /SECRET|KEY|TOKEN|PASSWORD/.test(key),
           );
+        if (app.emailDelivery) {
+          const provider = answer(
+            await select({
+              message: `${app.name}/${environment}: authentication email delivery`,
+              options: [
+                { value: "resend", label: "Resend API" },
+                { value: "smtp", label: "SMTP (Google Workspace, SES, Resend SMTP)" },
+              ],
+            }),
+          );
+          values.AUTH_EMAIL_FROM = await input(`${app.name}/${environment}: AUTH_EMAIL_FROM`);
+          if (provider === "resend")
+            values.RESEND_API_KEY = await input(
+              `${app.name}/${environment}: RESEND_API_KEY`,
+              "",
+              true,
+            );
+          else {
+            values.SMTP_HOST = await input(`${app.name}/${environment}: SMTP_HOST`);
+            values.SMTP_PORT = await input(
+              `${app.name}/${environment}: SMTP_PORT (465 or 587)`,
+              "587",
+            );
+            values.SMTP_SECURE = values.SMTP_PORT === "465" ? "true" : "false";
+            values.SMTP_USER = await input(`${app.name}/${environment}: SMTP_USER`);
+            values.SMTP_PASSWORD = await input(
+              `${app.name}/${environment}: SMTP_PASSWORD`,
+              "",
+              true,
+            );
+          }
+        }
       }
       // Bootstrap a new Worker with a 503, never serve application code before secrets/migrations.
       const scripts = (await cf("/workers/scripts")) as Json[];

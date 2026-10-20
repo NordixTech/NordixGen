@@ -9,6 +9,43 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
     diagnostics.push(createDiagnostic(code, path, message));
   for (const [bi, backend] of config.backends.entries()) {
     const path = `backends[${bi}]`;
+    const auth = backend.authentication;
+    if (auth) {
+      if (auth.identityProviders.length && !auth.methods.includes("email-password"))
+        add(
+          "OAUTH_REQUIRES_EMAIL_AUTHENTICATION",
+          `${path}.authentication.identityProviders`,
+          "OAuth providers require email-password authentication.",
+        );
+      if (auth.allowedEmailDomains && !auth.methods.includes("email-password"))
+        add(
+          "EMAIL_DOMAIN_REQUIRES_EMAIL_AUTHENTICATION",
+          `${path}.authentication.allowedEmailDomains`,
+          "Restricted registration requires email-password authentication; phones may only be linked to an existing company account.",
+        );
+      if (auth.passwordPolicy.minLength > auth.passwordPolicy.maxLength)
+        add(
+          "PASSWORD_POLICY_INVALID",
+          `${path}.authentication.passwordPolicy`,
+          "minLength must not exceed maxLength.",
+        );
+      if (auth.passwordPolicy.numericOnly)
+        for (const flag of [
+          "requireUppercase",
+          "requireLowercase",
+          "requireNumber",
+          "requireSpecialChar",
+        ] as const)
+          if (auth.passwordPolicy[flag])
+            diagnostics.push(
+              createDiagnostic(
+                "PASSWORD_COMPLEXITY_IGNORED",
+                `${path}.authentication.passwordPolicy.${flag}`,
+                "This complexity requirement is ignored in numeric-only mode.",
+                "warning",
+              ),
+            );
+    }
     if (
       backend.authentication?.methods.includes("username-password") &&
       !backend.authentication.methods.includes("email-password")
@@ -117,6 +154,13 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
         "Protected pages require a connected authentication authority. Enable/select one or use public mode.",
       );
     if (selected)
+      if (frontend.access.publicRoutes?.some((pattern) => pattern === "/profile"))
+        add(
+          "FRONTEND_ACCESS_ROUTE_INVALID",
+          `${path}.access.publicRoutes`,
+          "Profile pages always require a verified session.",
+        );
+    if (selected)
       for (const backend of authorities)
         if (
           backend.name !== selected.name &&
@@ -157,6 +201,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
       operations.set(name, `${endpoint.backend}.${endpoint.operationId}`);
     }
     if (visible.length) inventory.add("/api-explorer");
+    if (selected?.authentication?.methods.includes("phone-number")) inventory.add("/profile");
     const slugs = new Map<string, string>();
     for (const endpoint of visible) {
       const slug = entitySlug(endpoint.entity);
@@ -196,6 +241,8 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
         !routePath(base) ||
         pattern === "/sign-in" ||
         pattern === "/sign-up" ||
+        pattern === "/forgot-password" ||
+        pattern === "/reset-password" ||
         ![...inventory].some((page) => matches(pattern, page))
       )
         add(

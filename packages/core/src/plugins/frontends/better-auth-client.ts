@@ -1,5 +1,7 @@
+import { authJourneyFiles } from "../../generation/auth-journeys.js";
+import { passwordPolicySource } from "../../generation/auth-policy.js";
 import { identityBaseUrl } from "../../generation/frontend-access.js";
-import { ACCOUNT_POLICY } from "../../project/account-policy.js";
+import { DEFAULT_PASSWORD_POLICY } from "../../project/account-policy.js";
 import type { GeneratedFile } from "../contracts.js";
 import type {
   FrontendAuthenticationContract,
@@ -20,6 +22,10 @@ function authClientContent(context: FrontendRenderContext): string {
   const apiBaseUrl = identityBaseUrl(context);
   const pluginImports: string[] = [];
   const pluginInits: string[] = [];
+  if (config.methods.includes("phone-number")) {
+    pluginImports.push('import {phoneNumberClient} from "better-auth/client/plugins";');
+    pluginInits.push("phoneNumberClient()");
+  }
   if (config.methods.includes("username-password")) {
     pluginImports.push('import { usernameClient } from "better-auth/client/plugins";');
     pluginInits.push("usernameClient()");
@@ -192,7 +198,7 @@ function signOutButtonContent(): string {
     "}",
   ]);
 }
-function authControlsContent(): string {
+function authControlsContent(config: FrontendAuthenticationContract): string {
   return source([
     '"use client";',
     "",
@@ -208,6 +214,7 @@ function authControlsContent(): string {
     '      <span aria-hidden="true" className="ng-account-icon ng-account-icon--signed-in">♙</span>',
     '      <span>{user.name ?? user.email} · {user.role ?? "no role"}</span>',
     "      <SignOutButton />",
+    ...(config.methods.includes("phone-number") ? ['      <a href="/profile">Profile</a>'] : []),
     '      {(hasPermission("iam:roles:manage")||hasPermission("iam:users:manage-roles"))&&<a href="/admin/roles">Administration</a>}',
     "    </div>",
     "  );",
@@ -215,6 +222,8 @@ function authControlsContent(): string {
   ]);
 }
 function signInFormContent(config: FrontendAuthenticationContract): string {
+  if (!config.methods.includes("email-password"))
+    return '"use client";\nimport {PhoneForm} from "@/components/auth/phone-form";\nexport function SignInForm(){return <PhoneForm/>;}\n';
   const username = config.methods.includes("username-password");
   const providers = config.identityProviders;
   return source([
@@ -226,6 +235,9 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
     'import { Input } from "@/components/ui/input";',
     'import { Notice } from "@/components/ui/notice";',
     'import { authClient } from "@/lib/auth/client";',
+    ...(config.methods.includes("phone-number")
+      ? ['import {PhoneForm} from "@/components/auth/phone-form";']
+      : []),
     "",
     "export function SignInForm() {",
     "  const router = useRouter();",
@@ -261,7 +273,7 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
     "    }",
     "  }",
     "  return (",
-    '    <form className="ng-panel" onSubmit={submit}>',
+    '    <> <form className="ng-panel" onSubmit={submit}>',
     '      {error ? <Notice tone="alert">{error}</Notice> : null}',
     ...(username
       ? [
@@ -276,6 +288,7 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
         ]),
     '      <Input autoComplete="current-password" id="password" label="Password" name="password" required type="password" />',
     '      <Button disabled={pending} type="submit">Sign in</Button>',
+    '      <a href="/forgot-password">Forgot your password?</a>',
     '      <p className="ng-panel-note">New here? <a className="ng-text-link" href="/sign-up">Create an account</a></p>',
     ...providers.flatMap((provider) => [
       "      <Button",
@@ -291,11 +304,16 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
       "      </Button>",
     ]),
     "    </form>",
+    ...(config.methods.includes("phone-number") ? ["    <PhoneForm/>"] : []),
+    "    </>",
     "  );",
     "}",
   ]);
 }
-function signUpFormContent(): string {
+function signUpFormContent(config: FrontendAuthenticationContract): string {
+  if (!config.methods.includes("email-password"))
+    return '"use client";\nimport {PhoneForm} from "@/components/auth/phone-form";\nexport function SignUpForm(){return <PhoneForm/>;}\n';
+  const policy = config.passwordPolicy ?? DEFAULT_PASSWORD_POLICY;
   return source([
     '"use client";',
     "",
@@ -305,6 +323,10 @@ function signUpFormContent(): string {
     'import { Input } from "@/components/ui/input";',
     'import { Notice } from "@/components/ui/notice";',
     'import { authClient } from "@/lib/auth/client";',
+    ...(config.methods.includes("phone-number")
+      ? ['import {PhoneForm} from "@/components/auth/phone-form";']
+      : []),
+    'import {passwordSchema} from "@/lib/auth/password-policy";',
     "",
     "export function SignUpForm() {",
     "  const router = useRouter();",
@@ -316,7 +338,8 @@ function signUpFormContent(): string {
     "    setPending(true);",
     "    setError(undefined);",
     "    try {",
-    '      const result = await authClient.signUp.email({ name: String(form.get("name") ?? ""), email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") });',
+    '      const password=String(form.get("password")??"");const parsed=passwordSchema.safeParse(password);if(!parsed.success){setError(parsed.error.issues[0].message);return;}',
+    '      const result = await authClient.signUp.email({ name: String(form.get("name") ?? ""), email: String(form.get("email") ?? ""), password });',
     "      if (result.error) {",
     '        setError(result.error.message ?? "Sign-up failed.");',
     "        return;",
@@ -331,14 +354,16 @@ function signUpFormContent(): string {
     "    }",
     "  }",
     "  return (",
-    '    <form className="ng-panel" onSubmit={submit}>',
+    '    <> <form className="ng-panel" onSubmit={submit}>',
     '      {error ? <Notice tone="alert">{error}</Notice> : null}',
     '      <Input autoComplete="name" id="name" label="Name" name="name" required />',
     '      <Input autoComplete="email" id="email" label="Email" name="email" required type="email" />',
-    `      <Input autoComplete="new-password" id="password" label="Password (at least ${ACCOUNT_POLICY.minPasswordLength} characters)" name="password" minLength={${ACCOUNT_POLICY.minPasswordLength}} required type="password" />`,
+    `      <Input autoComplete="new-password" id="password" label="${policy.numericOnly ? "PIN" : "Password"} (at least ${policy.minLength} characters)" name="password" minLength={${policy.minLength}} maxLength={${policy.maxLength}} ${policy.numericOnly ? 'inputMode="numeric" pattern="[0-9]+" ' : ""}required type="password" />`,
     '      <Button disabled={pending} type="submit">Create account</Button>',
     '      <p className="ng-panel-note">Already registered? <a className="ng-text-link" href="/sign-in">Sign in</a></p>',
     "    </form>",
+    ...(config.methods.includes("phone-number") ? ["    <PhoneForm/>"] : []),
+    "    </>",
     "  );",
     "}",
   ]);
@@ -409,6 +434,11 @@ export function generateFrontendAuthFiles(
   const config = authentication(context);
   const root = context.framework.codeRoot;
   const files = [
+    ...authJourneyFiles(root, config),
+    {
+      path: `${root}/lib/auth/password-policy.ts`,
+      content: passwordPolicySource(config.passwordPolicy),
+    },
     { path: `${root}/lib/auth/client.ts`, content: authClientContent(context) },
     { path: `${root}/lib/auth/permissions.ts`, content: permissionsContent(config) },
     { path: `${root}/lib/auth/use-session-view.ts`, content: sessionViewContent() },
@@ -417,9 +447,9 @@ export function generateFrontendAuthFiles(
   ];
   if (context.api.authentication) {
     files.push(
-      { path: `${root}/components/auth/auth-controls.tsx`, content: authControlsContent() },
+      { path: `${root}/components/auth/auth-controls.tsx`, content: authControlsContent(config) },
       { path: `${root}/components/auth/sign-in-form.tsx`, content: signInFormContent(config) },
-      { path: `${root}/components/auth/sign-up-form.tsx`, content: signUpFormContent() },
+      { path: `${root}/components/auth/sign-up-form.tsx`, content: signUpFormContent(config) },
       { path: `${root}/app/sign-in/page.tsx`, content: signInPageContent() },
       { path: `${root}/app/sign-up/page.tsx`, content: signUpPageContent() },
     );

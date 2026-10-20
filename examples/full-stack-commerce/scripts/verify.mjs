@@ -799,6 +799,78 @@ export async function verifyApplication(state, directory, expireAccountant) {
       "Expired sessions and replayed signed cookies after logout fail at both page/API boundaries",
     );
     expect([...browserOrigins]).toEqual([web]);
+    const authContext = await browser.newContext();
+    const authPage = await authContext.newPage();
+    const lastDevValue = async (pattern) => {
+      let value;
+      await expect
+        .poll(async () => {
+          const log = await readFile(join(directory, "backend.log"), "utf8");
+          value = [...log.matchAll(pattern)].at(-1)?.[1];
+          return Boolean(value);
+        })
+        .toBe(true);
+      return value;
+    };
+    await authPage.goto(`${web}/sign-up`);
+    await authPage.getByLabel("Name", { exact: true }).fill("Recovery member");
+    await authPage.getByLabel("Email", { exact: true }).fill("recovery@acceptance.example.test");
+    await authPage
+      .getByLabel("Password (at least 8 characters)", { exact: true })
+      .fill("original-password-2026");
+    await authPage.getByRole("button", { name: "Create account", exact: true }).click();
+    await expect(authPage).toHaveURL(`${web}/`);
+    await authPage.goto(`${web}/forgot-password`);
+    await authPage.getByLabel("Email", { exact: true }).fill("recovery@acceptance.example.test");
+    await authPage.getByRole("button", { name: "Send reset link", exact: true }).click();
+    await expect(
+      authPage.getByText("If an account exists, check your email for a password reset link.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    const resetLink = await lastDevValue(
+      /\[DEV AUTH\] Email for recovery@acceptance\.example\.test: (\S+)/g,
+    );
+    const resetResponse = await authContext.request.get(resetLink, { maxRedirects: 0 });
+    const resetLocation = resetResponse.headers().location;
+    assert.ok(resetLocation?.startsWith(`${web}/reset-password`));
+    await authPage.goto(resetLocation);
+    await authPage.getByLabel("New password", { exact: true }).fill("updated-password-2026");
+    await authPage
+      .getByLabel("Confirm password / PIN", { exact: true })
+      .fill("updated-password-2026");
+    await authPage.getByRole("button", { name: "Save password", exact: true }).click();
+    await expect(
+      authPage.getByText("Password updated. You can now sign in.", { exact: true }),
+    ).toBeVisible();
+    await authContext.clearCookies();
+    await authPage.goto(`${web}/sign-in`);
+    await authPage
+      .getByLabel("Phone number (e.g. +51999999999)", { exact: true })
+      .fill("+51999111001");
+    await authPage.getByRole("button", { name: "Send code", exact: true }).click();
+    const otp = await lastDevValue(/\[DEV AUTH\] SMS OTP for \+51999111001: (\d{6})/g);
+    await authPage.getByLabel("Verification code", { exact: true }).fill(otp);
+    await authPage.getByRole("button", { name: "Verify code", exact: true }).click();
+    await expect(authPage).toHaveURL(`${web}/`);
+    await authPage.goto(`${web}/profile`);
+    await expect(
+      authPage.getByRole("heading", { name: "Your profile", exact: true }),
+    ).toBeVisible();
+    await authPage
+      .getByLabel("Phone number (e.g. +51999999999)", { exact: true })
+      .fill("+51999111002");
+    await authPage.getByRole("button", { name: "Send code", exact: true }).click();
+    const linkedOtp = await lastDevValue(/\[DEV AUTH\] SMS OTP for \+51999111002: (\d{6})/g);
+    await authPage.getByLabel("Verification code", { exact: true }).fill(linkedOtp);
+    await authPage.getByRole("button", { name: "Verify code", exact: true }).click();
+    await expect(
+      authPage.getByText("Phone number linked. You can use it to sign in.", { exact: true }),
+    ).toBeVisible();
+    await authContext.close();
+    await passed(
+      "Browser signup, password recovery/reset, phone OTP registration and protected profile linking use real generated handlers",
+    );
     expect(browserErrors).toEqual([]);
     await passed("The connected browser journey completes without uncaught application errors");
     return behaviors;
