@@ -20,6 +20,8 @@ From a `nordix.config.yaml` file, NordixGen scaffolds a Next.js frontend and Hon
 
 Authentication screens and access control are separate concerns. The generated sign-in/sign-up UI lets users authenticate; the backend validates sessions and enforces static capability requirements using current database roles/grants. The generated `/admin/roles` screen and `/api/auth/iam/*` platform endpoints administer roles and user assignments with separate permissions. Migrations seed initial roles without overwriting later edits; `pnpm auth:create-admin operator@example.com` promotes an existing account. See [identity and IAM](docs/generation/IDENTITY_ACCESS.md).
 
+Authentication and IAM changes are recorded asynchronously in a unified audit store. Declare `audit: true` on a business endpoint to include it; the protected Activity tab provides actor/action/date filters, pagination and before/after inspection. Audit failures do not roll back the primary operation. See [audit logging](docs/generation/AUDIT_LOGGING.md).
+
 Generated frontends support semantic design tokens with per-project light/dark palettes and a persistent Light/Dark/System switcher. Each mode accepts either all seven main colors or none; status colors default individually. See [theme configuration](docs/configuration/YAML_V2.md#frontend-design-tokens-and-theme).
 
 Business HTTP operations are described through endpoint declarations. Entity definitions describe data; they do not form the intended API contract by themselves. Health checks, Better Auth handlers and IAM administration are platform routes.

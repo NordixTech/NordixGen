@@ -191,6 +191,7 @@ function endpointDtoFiles(
       : ["export const QueryFilterBindings = [] as const;"]),
     "export interface FilterCondition { entity: string; field: string; operator: string; value: unknown; }",
     "export interface QueryExecution {",
+    "  captureAudit?:(change:{before:unknown;after:unknown;resourceIds:readonly string[]})=>void;",
     `  request: Input${requestBodyDynamicDefaults.length ? ` & { ${requestBodyDynamicDefaults.map((name) => `${JSON.stringify(name)}: Date${endpoint.body.fields[name]?.nullable ? " | null" : ""}`).join("; ")} }` : ""};`,
     "  filters: readonly FilterCondition[];",
     ...(pagination ? ["  pagination: { offset: number; limit: number };"] : []),
@@ -234,6 +235,11 @@ function endpointDtoFiles(
     "",
   ].join("\n");
   const useCaseContent = [
+    ...(endpoint.audit
+      ? [
+          `import type {OperationContext} from "${importPath(useCasePath, posix.join(useCaseDirectory, "../../../../platform/application/contracts.ts"))}";`,
+        ]
+      : []),
     `import { InputSchema, ResponseSchema } from "${importPath(useCasePath, dtoPath)}";`,
     `import type { ${name}QueryPort } from "${importPath(useCasePath, portPath)}";`,
     ...(requestBodyDynamicDefaults.length > 0
@@ -244,7 +250,7 @@ function endpointDtoFiles(
     "",
     `export class ${name}UseCase {`,
     `  constructor(private readonly query: ${name}QueryPort${requestBodyDynamicDefaults.length > 0 ? ", private readonly clock: Clock" : ""}) {}`,
-    "  async execute(rawInput: unknown) {",
+    `  async execute(rawInput: unknown${endpoint.audit ? ",context?:OperationContext" : ""}) {`,
     "    const input = InputSchema.parse(rawInput);",
     ...(requestBodyDynamicDefaults.length > 0
       ? [
@@ -260,7 +266,12 @@ function endpointDtoFiles(
     "    const filters: { entity: string; field: string; operator: string; value: unknown }[] = [",
     ...filterConditions,
     "    ];",
-    `    const result = await this.query.execute({ request, filters${pagination ? `, pagination: { offset: (input[${JSON.stringify(pagination.pageParam)}] - 1) * input[${JSON.stringify(pagination.pageSizeParam)}], limit: input[${JSON.stringify(pagination.pageSizeParam)}] }` : ""} });`,
+    `    const result = await this.query.execute({ request, filters${endpoint.audit ? `,captureAudit:change=>{try{context?.captureAudit?.({operationId:${JSON.stringify(endpoint.operationId)},...change});}catch{console.error("Audit capture failed.");}}` : ""}${pagination ? `, pagination: { offset: (input[${JSON.stringify(pagination.pageParam)}] - 1) * input[${JSON.stringify(pagination.pageSizeParam)}], limit: input[${JSON.stringify(pagination.pageSizeParam)}] }` : ""} });`,
+    ...(endpoint.audit && (endpoint.action === "query" || endpoint.action === "custom")
+      ? [
+          `    try{context?.captureAudit?.({operationId:${JSON.stringify(endpoint.operationId)},before:null,after:result,resourceIds:[]});}catch{console.error("Audit capture failed.");}`,
+        ]
+      : []),
     "    return ResponseSchema.parse(result);",
     "  }",
     "}",

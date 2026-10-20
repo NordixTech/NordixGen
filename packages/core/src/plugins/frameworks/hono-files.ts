@@ -25,6 +25,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
   const routesPath = posix.join(controllerDirectory, "routes.ts");
   const hasAuthentication = Boolean(context.identity);
   const hasDrizzle = Boolean(context.persistence);
+  const hasAudit = modelAudit(context).length > 0;
   const hasStorage = Boolean(context.domainModel.backend.storage.length);
   const infrastructureDirectory = posix.join(
     framework.codeRoot,
@@ -279,6 +280,12 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
             'import {createStorage,type StorageEnvironment} from "./platform/storage/create-storage.js";',
           ]
         : []),
+      ...(hasAudit
+        ? [
+            'import {beginBusinessAudit,createAuditService} from "./platform/audit/runtime.js";',
+            'import {createAuditWriter} from "./platform/audit/store.js";',
+          ]
+        : []),
       'import { Hono } from "hono";',
       'import { HTTPException } from "hono/http-exception";',
       'import { cors } from "hono/cors";',
@@ -343,12 +350,21 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
         : []),
       ...(hasDrizzle
         ? [
-            'app.all("*", (c) => {',
+            'app.all("*", async (c) => {',
+            ...(hasAudit
+              ? [
+                  `const audit=beginBusinessAudit(c.req.raw,${JSON.stringify(modelAudit(context))},createAuditService(createAuditWriter(c.env.DATABASE_URL),c.executionCtx));`,
+                ]
+              : []),
             hasAuthentication
-              ? "  const verifySession=async(headers:Headers)=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers});return session?(await createIamRepository(createDrizzleDatabase(c.env.DATABASE_URL)).principal(session.user.id)??null):null;};let verified:ReturnType<typeof verifySession>|undefined;const boundary=createOperationBoundary(headers=>verified??=verifySession(headers));"
-              : "  const boundary=createOperationBoundary(async()=>null);",
+              ? `  const verifySession=async(headers:Headers)=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers});${hasAudit ? 'audit.actor(session?.user.id??"anonymous");' : ""}return session?(await createIamRepository(createDrizzleDatabase(c.env.DATABASE_URL)).principal(session.user.id)??null):null;};let verified:ReturnType<typeof verifySession>|undefined;const boundary=createOperationBoundary(headers=>verified??=verifySession(headers)${hasAudit ? ",audit.capture" : ""});`
+              : `  const boundary=createOperationBoundary(async()=>null${hasAudit ? ",audit.capture" : ""});`,
             `  const routes = createRoutes(createRouteDependencies(c.env.DATABASE_URL,boundary,c.req.raw.headers${hasStorage ? ",createStorage(c.env)" : ""}));`,
-            "  return routes.fetch(c.req.raw, c.env, c.executionCtx);",
+            ...(hasAudit
+              ? [
+                  "const response=await routes.fetch(c.req.raw,c.env,c.executionCtx);audit.finish(response.status);return response;",
+                ]
+              : ["  return routes.fetch(c.req.raw, c.env, c.executionCtx);"]),
             "});",
           ]
         : ['app.route("/", routes);']),
@@ -359,4 +375,24 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
   });
 
   return files;
+}
+
+function modelAudit(context: BackendRenderContext) {
+  return context.domainModel.endpoints
+    .filter((operation) => operation.audit)
+    .map((operation) => ({
+      operationId: operation.operationId,
+      method: operation.method,
+      path: operation.path,
+      resourceType: operation.entity.toLowerCase(),
+      action: `${operation.entity.toLowerCase()}.${
+        {
+          create: "created",
+          update: "updated",
+          delete: "deleted",
+          query: "read",
+          custom: "executed",
+        }[operation.action]
+      }`,
+    }));
 }

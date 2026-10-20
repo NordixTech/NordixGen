@@ -97,6 +97,13 @@ function fixture() {
       }),
     },
     zod,
+    [`${root}/platform/audit/store.ts`]: {
+      readAudit: async (_connection: unknown, filters: unknown) => ({
+        items: [],
+        total: 0,
+        ...(filters as object),
+      }),
+    },
     [`${root}/platform/database/drizzle-database.ts`]: { createDrizzleDatabase: () => ({}) },
     [`${root}/platform/authorization/repository.ts`]: { createIamRepository: () => repository },
     [`${root}/platform/authorization/mutations.ts`]: {
@@ -330,9 +337,9 @@ describe("generated dynamic IAM", () => {
       expect(response.status).toBe(status);
       expect(await response.json()).toMatchObject({ code, token: "impact-token" });
     }
-    expect((await f.request("/audit")).status).toBe(404);
+    expect((await f.request("/audit")).status).toBe(200);
     f.setPrincipal({ id: "hr", role: "hr", permissions: ["iam:users:manage-roles"] });
-    expect((await f.request("/audit")).status).toBe(404);
+    expect((await f.request("/audit")).status).toBe(403);
   });
   it("checks verified sessions, current grants and mutation origin before writes", async () => {
     const f = fixture();

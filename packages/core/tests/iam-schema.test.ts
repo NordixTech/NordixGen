@@ -25,6 +25,7 @@ describe("native IAM plugin contracts", () => {
         ([path]) =>
           path.endsWith(".ts") &&
           (path.includes("/platform/auth/") ||
+            path.includes("/platform/audit/") ||
             path.includes("/platform/authorization/") ||
             path.includes("/platform/database/schema/") ||
             path.endsWith("/platform/database/drizzle-database.ts") ||

@@ -700,7 +700,61 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await expect(selfWarning).toContainText("Assign user roles");
     await selfWarning.getByRole("button", { name: "Confirm access change" }).click();
     await expect(supportPage).toHaveURL(`${web}/`);
-    expect((await admin.get("/api/auth/iam/audit")).status()).toBe(404);
+    await expect
+      .poll(async () => {
+        const response = await admin.get("/api/auth/iam/audit?action=iam.role.updated");
+        expect(response.status()).toBe(200);
+        return (await response.json()).total;
+      })
+      .toBeGreaterThan(0);
+    const businessAudit = await admin.get("/api/auth/iam/audit?action=invoice.created&pageSize=1");
+    expect((await businessAudit.json()).items[0]).toMatchObject({
+      action: "invoice.created",
+      resourceType: "invoice",
+      after: expect.any(Array),
+    });
+    expect((await outsider.get("/api/auth/iam/audit")).status()).toBe(403);
+    const firstAudit = await (await admin.get("/api/auth/iam/audit?pageSize=1")).json();
+    const secondAudit = await (await admin.get("/api/auth/iam/audit?pageSize=1&page=2")).json();
+    expect(firstAudit.items[0].id).not.toBe(secondAudit.items[0].id);
+    await iamPage.getByRole("tab", { name: "Activity", exact: true }).click();
+    await expect(iamPage.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
+    await iamPage.getByLabel("Action", { exact: true }).fill("iam.role.updated");
+    await iamPage.getByLabel("Actor ID", { exact: true }).fill(persistence.identities.admin);
+    await iamPage.getByLabel("From", { exact: true }).fill("2000-01-01T00:00");
+    await iamPage.getByLabel("To", { exact: true }).fill("2099-01-01T00:00");
+    await iamPage.getByRole("button", { name: "Apply filters", exact: true }).click();
+    const activity = iamPage.locator(".ng-audit-events>li").first();
+    await expect(activity).toBeVisible();
+    await expect(activity).toContainText("iam.role.updated");
+    await activity.getByText("Inspect changes", { exact: true }).click();
+    await expect(
+      activity.getByRole("heading", { name: "Before", exact: true }).first(),
+    ).toBeVisible();
+    await expect(
+      activity.getByRole("heading", { name: "After", exact: true }).first(),
+    ).toBeVisible();
+    await iamPage.screenshot({
+      path: join(directory, "verified-unified-audit-desktop.png"),
+      fullPage: true,
+    });
+    await iamPage.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await iamPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await iamPage.screenshot({
+      path: join(directory, "verified-unified-audit-mobile.png"),
+      fullPage: true,
+    });
+    await iamPage.setViewportSize({ width: 1400, height: 1000 });
+    await iamPage.getByLabel("Action", { exact: true }).fill("missing.event");
+    await iamPage.getByRole("button", { name: "Apply filters", exact: true }).click();
+    await expect(
+      iamPage.getByText("No activity matches these filters.", { exact: true }),
+    ).toBeVisible();
+    await passed(
+      "Unified audit records auth, IAM and business changes; protected filtering, pagination and desktop/mobile diff inspection work",
+    );
 
     // Leave the retained demo ready for all three manual scenarios.
     expect(

@@ -131,6 +131,7 @@ export function generateDrizzleSchemaFiles(
               `export * from "${importPath(indexPath, posix.join(context.moduleRoots[module.id], "infrastructure/database/schema/index.ts"))}";`,
           ),
           'export * from "./enums.js";',
+          'export * from "./audit-schema.js";',
           ...(context.identity
             ? ['export * from "./auth-schema.js";', 'export * from "./iam-schema.js";']
             : []),
@@ -400,6 +401,11 @@ export function generateDrizzleAdapterFiles(
       mutation === "create"
         ? [
             `    const rows = await this.db.insert(schema.${endpoint.entity}Table).values(${writeValues}).returning();`,
+            ...(endpoint.audit
+              ? [
+                  "    input.captureAudit?.({before:null,after:rows,resourceIds:rows.map(row=>String(row.id))});",
+                ]
+              : []),
             "    return rows.map((row: any) => ({",
             `      entity: ${mainEntityResult},`,
             "      joins: {},",
@@ -408,7 +414,14 @@ export function generateDrizzleAdapterFiles(
         : mutation === "update"
           ? [
               '    if (conditions.length === 0) throw new Error("Update endpoint requires a path or filter condition.");',
-              `    const rows = await this.db.update(schema.${endpoint.entity}Table).set(${writeValues}).where(and(...conditions)).returning();`,
+              ...(endpoint.audit
+                ? [
+                    `    const [beforeRows,rows]=await this.db.batch([this.db.select().from(schema.${endpoint.entity}Table).where(and(...conditions)).for("update"),this.db.update(schema.${endpoint.entity}Table).set(${writeValues}).where(and(...conditions)).returning()]);`,
+                    "    input.captureAudit?.({before:beforeRows,after:rows,resourceIds:rows.map(row=>String(row.id))});",
+                  ]
+                : [
+                    `    const rows = await this.db.update(schema.${endpoint.entity}Table).set(${writeValues}).where(and(...conditions)).returning();`,
+                  ]),
               "    return rows.map((row: any) => ({",
               `      entity: ${mainEntityResult},`,
               "      joins: {},",
@@ -417,7 +430,14 @@ export function generateDrizzleAdapterFiles(
           : mutation === "delete"
             ? [
                 '    if (conditions.length === 0) throw new Error("Delete endpoint requires a path or filter condition.");',
-                `    const rows = await this.db.${mainEntity.softDelete ? `update(schema.${endpoint.entity}Table).set({${mainEntity.softDelete === "boolean" ? "isDeleted:true" : "deletedAt:input.request.deletedAt"}${mainEntity.fields.updatedAt ? ",updatedAt:input.request.updatedAt" : ""}})` : `delete(schema.${endpoint.entity}Table)`}.where(and(...conditions)).returning();`,
+                ...(endpoint.audit
+                  ? [
+                      `    const [beforeRows,rows]=await this.db.batch([this.db.select().from(schema.${endpoint.entity}Table).where(and(...conditions)).for("update"),this.db.${mainEntity.softDelete ? `update(schema.${endpoint.entity}Table).set({${mainEntity.softDelete === "boolean" ? "isDeleted:true" : "deletedAt:input.request.deletedAt"}${mainEntity.fields.updatedAt ? ",updatedAt:input.request.updatedAt" : ""}})` : `delete(schema.${endpoint.entity}Table)`}.where(and(...conditions)).returning()]);`,
+                      `    input.captureAudit?.({before:beforeRows,after:${mainEntity.softDelete ? "rows" : "null"},resourceIds:rows.map(row=>String(row.id))});`,
+                    ]
+                  : [
+                      `    const rows = await this.db.${mainEntity.softDelete ? `update(schema.${endpoint.entity}Table).set({${mainEntity.softDelete === "boolean" ? "isDeleted:true" : "deletedAt:input.request.deletedAt"}${mainEntity.fields.updatedAt ? ",updatedAt:input.request.updatedAt" : ""}})` : `delete(schema.${endpoint.entity}Table)`}.where(and(...conditions)).returning();`,
+                    ]),
                 "    return rows.map((row: any) => ({",
                 `      entity: ${mainEntityResult},`,
                 "      joins: {},",

@@ -155,18 +155,19 @@ export function validateApplications(config: NordixConfig): ConfigDiagnostic[] {
       );
     const backend = config.backends.find((b) => b.name === entity.backend);
     if (
-      backend?.authentication &&
-      [
-        "user",
-        "authuser",
-        "authroles",
-        "authrolepermissions",
-        "authiamaudit",
-        "session",
-        "account",
-        "verification",
-        "twofactor",
-      ].includes(snakeCase(name).replaceAll("_", ""))
+      (backend?.persistence && snakeCase(name).replaceAll("_", "") === "auditlogs") ||
+      (backend?.authentication &&
+        [
+          "user",
+          "authuser",
+          "authroles",
+          "authrolepermissions",
+          "authiamaudit",
+          "session",
+          "account",
+          "verification",
+          "twofactor",
+        ].includes(snakeCase(name).replaceAll("_", "")))
     )
       add(
         "GENERATED_NAME_COLLISION",

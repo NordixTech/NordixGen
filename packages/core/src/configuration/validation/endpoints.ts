@@ -22,6 +22,12 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
     const path = `endpoints[${index}]`;
     const backend = config.backends.find((b) => b.name === endpoint.backend);
     const entity = config.entities[endpoint.entity];
+    if (endpoint.audit && backend && !backend.persistence)
+      add(
+        "AUDIT_PERSISTENCE_REQUIRED",
+        `${path}.audit`,
+        "Auditing requires a backend database. Declare persistence or disable audit for this endpoint.",
+      );
     if (!backend)
       add(
         "UNKNOWN_ENDPOINT_BACKEND",

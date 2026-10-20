@@ -298,6 +298,10 @@ This changes the previous omission default (`authRequired` previously defaulted 
 
 The same resolved policy governs HTTP, internal operations, frontend metadata and presentation helpers. Backend application enforcement remains authoritative even when a client hides a button.
 
+### Endpoint audit logging
+
+An endpoint may declare `audit: true` to record its actor, request context, response status and supported before/after data in the backend's unified `audit_logs`. Omitted or false disables business capture. This requires backend persistence (`AUDIT_PERSISTENCE_REQUIRED` otherwise) and does not change access policies. Authentication and successful IAM changes are audited automatically when authentication is configured. Writes are detached from the response with failure isolation. See [audit behavior, limits and administration](../generation/AUDIT_LOGGING.md).
+
 ## 9. Frontend access and one identity authority
 
 | Frontend field | Required / default | Contract |

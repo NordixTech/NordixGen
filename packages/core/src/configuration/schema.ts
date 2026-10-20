@@ -199,6 +199,7 @@ export const EndpointSchema = z
       .string()
       .regex(/^[a-z][A-Za-z0-9]*$/, "Name this operation with a lower-camel-case identifier."),
     summary: z.string().optional(),
+    audit: z.boolean().optional(),
     entity: IdentifierSchema,
     authRequired: z.boolean().optional(),
     roles: unique(SlugSchema)

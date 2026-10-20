@@ -39,6 +39,7 @@ IAM endpoints are registered by `nordixIamPlugin` under `/api/auth/iam` whenever
 | Route | Required permission |
 | --- | --- |
 | `GET /api/auth/iam/me` | Verified session; returns the requesting account's current role and permissions |
+| `GET /api/auth/iam/audit` | `iam:roles:manage`; unified activity with actor/action/date filters and pagination |
 | `GET /api/auth/iam/permissions` | `iam:roles:manage` |
 | `GET /api/auth/iam/roles` | `iam:roles:manage` |
 | `POST /api/auth/iam/roles` | `iam:roles:manage`; body has `id`, `name`, optional `description`, concrete `permissions` |
@@ -52,7 +53,7 @@ Role creation, deletion, grant updates and user-role reassignments run in reques
 
 Removing either administrative capability from an assigned role or account first returns `409` with `code: "confirmation_required"`, the lost capabilities, affected-account count, self-impact and an impact token. Resubmit the same mutation with `confirmation` set to that token. The SHA-256 token binds the actor, request, current roles/grants and account assignments; changed impact requires a new review. A confirmation does not grant authorization. The browser displays an explicit warning with Cancel focused, including when editing the signed-in user's shared role. After confirmation, it refreshes permissions and returns to the workspace if neither IAM capability remains.
 
-The legacy `auth_iam_audit` table, audit SQL, endpoint and recent-activity panel are no longer generated. Unified application-wide audit logging is deferred to #112; it is not part of this IAM plugin.
+The legacy `auth_iam_audit` table is replaced by unified `audit_logs`. Successful IAM mutations dispatch their captured changes after commit, independently of the business transaction. Authentication and opted-in business events share this store. The protected `/api/auth/iam/audit` endpoint and Activity tab provide filters, pagination and JSON differences. See [unified asynchronous audit logging](AUDIT_LOGGING.md).
 
 Every endpoint verifies the session; every mutation also requires a trusted Origin. Responses are not cached. Role management rejects unknown/duplicate permissions and accepts no new wildcard grants for custom roles. User-role operators may assign any existing role, including `admin`; this is a privileged administrative capability.
 
