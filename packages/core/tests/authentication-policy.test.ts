@@ -52,7 +52,13 @@ function policyPlugin(
   )({ domains, emailPassword, phone, emailDelivery });
 }
 function runtime(
-  options: { domains?: string[]; email?: boolean; rate?: boolean; missingDelivery?: boolean } = {},
+  options: {
+    domains?: string[];
+    email?: boolean;
+    rate?: boolean;
+    missingDelivery?: boolean;
+    verifyEmail?: boolean;
+  } = {},
 ) {
   const codes = new Map<string, string>();
   const resetLinks: string[] = [];
@@ -70,6 +76,7 @@ function runtime(
     database: memoryAdapter(database),
     emailAndPassword: {
       enabled: options.email ?? true,
+      requireEmailVerification: options.verifyEmail ?? false,
       minPasswordLength: 4,
       maxPasswordLength: 6,
       sendResetPassword: async ({ url }) => {
@@ -146,6 +153,48 @@ function runtime(
   return { request, codes, database, auth, resetLinks };
 }
 describe("configurable authentication policies", () => {
+  it("rejects email verification without email-password and permits it alongside phone authentication", () => {
+    const invalid = validateNordixConfig(
+      configuration({ methods: ["phone-number"], features: ["email-verification"] }),
+    );
+    expect(invalid.success).toBe(false);
+    expect(invalid.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "EMAIL_VERIFICATION_REQUIRES_EMAIL_AUTHENTICATION",
+        severity: "error",
+      }),
+    );
+    for (const domains of [undefined, ["gmail.com"]]) {
+      const project = resolvedFixture(
+        configuration({
+          methods: ["email-password", "phone-number"],
+          features: ["email-verification"],
+          allowedEmailDomains: domains,
+        }),
+      );
+      const backend = generateBackend(project, "core-api").virtualFileSystem.snapshot();
+      const source = Object.values(backend).join("\n");
+      expect(source).toContain("requireEmailVerification: true");
+      expect(source.includes("signUpOnVerification")).toBe(!domains);
+      const frontend = generateFrontend(project, "store-web").virtualFileSystem.snapshot();
+      const signup =
+        Object.entries(frontend).find(([path]) => path.endsWith("/sign-up-form.tsx"))?.[1] ?? "";
+      expect(signup.includes('"id":"phone"')).toBe(!domains);
+    }
+  });
+  it("allows phone-only signup even when email-password sign-in requires verified email, without domain restrictions", async () => {
+    const app = runtime({ verifyEmail: true });
+    const phone = "+51999999999";
+    expect((await app.request("/phone-number/send-otp", { phoneNumber: phone })).status).toBe(200);
+    const verified = await app.request("/phone-number/verify", {
+      phoneNumber: phone,
+      code: app.codes.get(phone),
+    });
+    expect(verified.status).toBe(200);
+    expect(await verified.json()).toMatchObject({
+      user: { phoneNumber: phone, phoneNumberVerified: true, emailVerified: false },
+    });
+  });
   it("keeps account routes out of the business directory and rejects conflicting business pages", () => {
     for (const name of ["Profile", "ForgotPassword", "ResetPassword"]) {
       const config = JSON.parse(

@@ -11,6 +11,12 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
     const path = `backends[${bi}]`;
     const auth = backend.authentication;
     if (auth) {
+      if (auth.features.includes("email-verification") && !auth.methods.includes("email-password"))
+        add(
+          "EMAIL_VERIFICATION_REQUIRES_EMAIL_AUTHENTICATION",
+          `${path}.authentication.features`,
+          "email-verification requires the email-password authentication method.",
+        );
       if (auth.identityProviders.length && !auth.methods.includes("email-password"))
         add(
           "OAUTH_REQUIRES_EMAIL_AUTHENTICATION",

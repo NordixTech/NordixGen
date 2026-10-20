@@ -4,7 +4,8 @@ import { DEFAULT_PASSWORD_POLICY } from "../project/account-policy.js";
 
 export function accountFormSource(config: FrontendAuthenticationContract, signup: boolean): string {
   const email = config.methods.includes("email-password");
-  const phone = config.methods.includes("phone-number");
+  const companySignup = signup && Boolean(config.allowedEmailDomains?.length);
+  const phone = config.methods.includes("phone-number") && !companySignup;
   const username = !signup && config.methods.includes("username-password");
   const policy = config.passwordPolicy ?? DEFAULT_PASSWORD_POLICY;
   const methods = [
@@ -13,7 +14,7 @@ export function accountFormSource(config: FrontendAuthenticationContract, signup
     ...(phone ? [{ id: "phone", label: "Phone" }] : []),
   ];
   return `"use client";
-import {useState,type FormEvent} from "react";
+import {useEffect,useState,type FormEvent} from "react";
 import {useRouter} from "next/navigation";
 import {authClient} from "@/lib/auth/client";
 import {useSessionView} from "@/lib/auth/use-session-view";
@@ -24,7 +25,8 @@ ${phone ? 'import {PhoneForm} from "./phone-form";' : ""}
 ${signup && email ? 'import {passwordSchema} from "@/lib/auth/password-policy";\nimport {PasswordRequirements} from "./password-requirements";' : ""}
 const methods=${JSON.stringify(methods)};
 export function ${signup ? "SignUpForm()" : "SignInForm({registered=false}:{registered?:boolean})"}{
- const router=useRouter();const {isPending:identityPending}=useSessionView();
+ const router=useRouter();const {user,isPending:identityPending}=useSessionView();
+ useEffect(()=>{if(!identityPending&&user)router.replace("/");},[identityPending,user,router]);
  const [mode,setMode]=useState(methods[0].id),[pending,setPending]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
  ${signup && email ? 'const [password,setPassword]=useState("");' : ""}
  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const data=new FormData(event.currentTarget);setError("");setMessage("");setPending(true);
@@ -39,9 +41,10 @@ export function ${signup ? "SignUpForm()" : "SignInForm({registered=false}:{regi
      : ""
  }
  }catch{setError("We could not connect. Please check your connection and try again.");}finally{setPending(false);}}
- if(identityPending)return <section className="ng-panel ng-auth-card"><Notice>Checking session...</Notice></section>;
+ if(identityPending||user)return <section className="ng-panel ng-auth-card"><Notice>Checking session...</Notice></section>;
  return <section className="ng-panel ng-auth-card">
   <header className="ng-auth-heading"><span className="ng-auth-mark" aria-hidden="true">${signup ? "+" : "↗"}</span><h1>${signup ? "Create your account" : "Welcome back"}</h1><p>${signup ? "A few details and you are ready to get started." : "Choose how you would like to sign in."}</p></header>
+  ${companySignup ? '<p className="ng-auth-description">Register with an authorized email address first. After verifying it, you can link a phone number from your profile.</p>' : ""}
   ${signup ? "" : '{registered&&<div className="ng-auth-confirmation"><Notice>Account created. Check your email to verify your account, then sign in.</Notice></div>}'}
   {methods.length>1&&<div role="tablist" aria-label="${signup ? "Registration" : "Sign-in"} method" className="ng-auth-tabs">{methods.map((method,index)=><button key={method.id} id={"auth-tab-"+method.id} role="tab" type="button" aria-selected={mode===method.id} aria-controls="auth-method-panel" tabIndex={mode===method.id?0:-1} onClick={()=>{setMode(method.id);setError("");setMessage("");}} onKeyDown={event=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;event.preventDefault();const next=event.key==="Home"?0:event.key==="End"?methods.length-1:(index+(event.key==="ArrowRight"?1:methods.length-1))%methods.length;setMode(methods[next].id);setError("");setMessage("");document.getElementById("auth-tab-"+methods[next].id)?.focus();}}>{method.label}</button>)}</div>}
   <div id="auth-method-panel" role={methods.length>1?"tabpanel":undefined} aria-labelledby={methods.length>1?"auth-tab-"+mode:undefined}>
@@ -68,8 +71,10 @@ export function ${signup ? "SignUpForm()" : "SignInForm({registered=false}:{regi
 export function accountPageSource(signup: boolean): string {
   const component = signup ? "SignUpForm" : "SignInForm";
   return `import {${component}} from "@/components/auth/${signup ? "sign-up" : "sign-in"}-form";
+import {requireGuestSession} from "@/lib/auth/server";
+export const dynamic="force-dynamic";
 export const metadata={title:${JSON.stringify(signup ? "Create account" : "Sign in")}};
-export default ${signup ? "function SignUpPage()" : "async function SignInPage({searchParams}:{searchParams:Promise<{registered?:string}>})"}{${signup ? "" : "const query=await searchParams;"}return <main className="ng-shell ng-auth-page"><div className="ng-auth-wrap"><${component}${signup ? "" : ' registered={query.registered==="1"}'}/></div></main>;}
+export default ${signup ? "async function SignUpPage()" : "async function SignInPage({searchParams}:{searchParams:Promise<{registered?:string}>})"}{await requireGuestSession();${signup ? "" : "const query=await searchParams;"}return <main className="ng-shell ng-auth-page"><div className="ng-auth-wrap"><${component}${signup ? "" : ' registered={query.registered==="1"}'}/></div></main>;}
 `;
 }
 
