@@ -37,6 +37,10 @@ function guard(
     files,
     {
       "server-only": {},
+      "@/lib/backend/transport": {
+        backendFetch: (_backend: string, path: string, init: RequestInit) =>
+          fetchSession(`https://internal.invalid${path}`, init),
+      },
       "next/headers": { headers: async () => new Headers(cookie ? { cookie } : {}) },
       "next/navigation": { redirect },
     },
@@ -65,8 +69,8 @@ describe("verified server page access", () => {
         .mockResolvedValueOnce(new Response(JSON.stringify({ permissions: ["*"] })));
       await f.requireIam();
       expect(f.fetchSession.mock.calls.map((call) => String(call[0]))).toEqual([
-        "http://backend-api:8787/api/auth/get-session",
-        "http://backend-api:8787/api/iam/me",
+        "https://internal.invalid/api/auth/get-session",
+        "https://internal.invalid/api/iam/me",
       ]);
       expect(process.env.NEXT_PUBLIC_AUTH_BASE_URL).toBe("http://localhost:8787");
     } finally {
@@ -84,7 +88,7 @@ describe("verified server page access", () => {
           )
           .mockResolvedValueOnce(new Response(JSON.stringify({ permissions: [permission] })));
         await expect(f.requireIam()).resolves.toBeUndefined();
-        expect(String(f.fetchSession.mock.calls[1][0])).toBe("http://localhost:8787/api/iam/me");
+        expect(String(f.fetchSession.mock.calls[1][0])).toBe("https://internal.invalid/api/iam/me");
         expect(f.fetchSession.mock.calls[1][1]).toMatchObject({
           cache: "no-store",
           headers: { cookie: "test-cookie" },
@@ -216,7 +220,7 @@ describe("verified server page access", () => {
       const f = guard();
       await expect(f.require("/invoice")).resolves.toMatchObject({ user: { id: "user" } });
       expect(String(f.fetchSession.mock.calls[0][0])).toBe(
-        "http://localhost:8787/api/auth/get-session",
+        "https://internal.invalid/api/auth/get-session",
       );
       expect(f.fetchSession.mock.calls[0][1]).toMatchObject({
         headers: { cookie: "test-cookie" },
@@ -264,27 +268,16 @@ describe("verified server page access", () => {
       vi.unstubAllEnvs();
     }
   });
-  it("refuses redirecting or credential-bearing identity URLs and never silently selects a different backend", async () => {
+  it("ignores public backend URL variables and chooses only the resolved identity binding", async () => {
+    vi.stubEnv("NEXT_PUBLIC_AUTH_BASE_URL", "https://untrusted.invalid");
     try {
-      for (const base of [
-        "",
-        "file:///tmp/private",
-        "https://user:password@example.test",
-        "https://example.test/path",
-        "https://example.test/?redirect=other",
-      ]) {
-        vi.stubEnv("NEXT_PUBLIC_AUTH_BASE_URL", base);
-        const f = guard();
-        await expect(f.require("/invoice")).rejects.toThrow("identity service is unavailable");
-        expect(f.fetchSession).not.toHaveBeenCalled();
-      }
+      const f = guard();
+      await f.require("/invoice");
+      expect(String(f.fetchSession.mock.calls[0][0])).toBe(
+        "https://internal.invalid/api/auth/get-session",
+      );
       const context = frontendRenderContext(fixture().project, "web");
-      expect(
-        identityBaseUrl({
-          ...context,
-          frontend: { ...context.frontend, connections: ["api", "public-api"] },
-        }),
-      ).not.toContain("NEXT_PUBLIC_API_BASE_URL");
+      expect(identityBaseUrl(context)).not.toContain("process.env");
     } finally {
       vi.unstubAllEnvs();
     }

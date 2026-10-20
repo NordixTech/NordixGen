@@ -78,6 +78,7 @@ function resolveValidated(
         backend.name,
         {
           name: backend.name,
+          storage: [...(backend.iac?.r2_storage ?? [])].sort(),
           repository: config.repositories.find(
             (r) => r.name === backend.repository,
           ) as (typeof config.repositories)[number],
@@ -226,6 +227,7 @@ function resolveValidated(
   );
   const project: ResolvedProject = freeze({
     formatVersion: 5,
+    ...(config.iac ? { iac: config.iac } : {}),
     project: {
       name: config.name,
       version: config.version,

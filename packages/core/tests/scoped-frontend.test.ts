@@ -165,20 +165,22 @@ describe("scoped browser operations, caches and forms", () => {
     expect(first.queryKey).not.toEqual(changed.queryKey);
     await f.client.fetchQuery(first);
     await f.client.fetchQuery(second);
-    expect(String(f.fetch.mock.calls[0][0])).toContain("https://api.example.test/api/invoices");
-    expect(String(f.fetch.mock.calls[1][0])).toBe("https://reports.example.test/reports");
+    expect(String(f.fetch.mock.calls[0][0])).toContain("/api/backend/api/api/invoices");
+    expect(String(f.fetch.mock.calls[1][0])).toBe("/api/backend/reports/reports");
     expect(f.fetch.mock.calls[0][1]).toMatchObject({
       credentials: "include",
       signal: expect.any(AbortSignal),
     });
-    const url = new URL(String(f.fetch.mock.calls[0][0]));
+    const url = new URL(String(f.fetch.mock.calls[0][0]), "https://frontend.test");
     expect(url.searchParams.get("extra")).toBe('{"flag":true}');
     expect(url.searchParams.getAll("states")).toEqual(["active", "archived"]);
     const name = f.project.frontends.web.operationNames["api.billing.listInvoices"];
     await (f.load(`${root}/lib/api/endpoints.ts`)[name] as (input: unknown) => Promise<unknown>)({
       query: { extra: null },
     });
-    expect(new URL(String(f.fetch.mock.calls[2][0])).searchParams.get("extra")).toBe("null");
+    expect(
+      new URL(String(f.fetch.mock.calls[2][0]), "https://frontend.test").searchParams.get("extra"),
+    ).toBe("null");
   });
   it("does not start private reads while pending/signed out/denied, while public reads still work", async () => {
     const f = runtime();

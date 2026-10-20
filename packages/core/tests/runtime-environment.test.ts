@@ -13,7 +13,7 @@ describe("generated local runtime examples", () => {
     expect(backend["apps/api-core/.dev.vars.example"]).not.toContain("BETTER_AUTH_SECRET");
     const frontend = generateFrontend(project, "store-web").virtualFileSystem.snapshot();
     expect(frontend["apps/store-web/.env.example"]).toContain(
-      "NEXT_PUBLIC_CORE_API_BASE_URL=http://localhost:8787",
+      "BACKEND_CORE_API_INTERNAL_URL=http://localhost:8787",
     );
     expect(frontend["apps/store-web/.env.example"]).not.toContain("AUTH_BASE");
     expect(frontend["apps/store-web/postcss.config.mjs"]).toContain('"@tailwindcss/postcss"');
@@ -45,7 +45,7 @@ describe("generated local runtime examples", () => {
     expect(environment).not.toContain("CORS_ALLOWED_ORIGINS");
     const frontend = generateFrontend(project, "store-web").virtualFileSystem.snapshot();
     expect(frontend["apps/store-web/.env.example"]).toContain(
-      "NEXT_PUBLIC_AUTH_BASE_URL=http://localhost:8787",
+      "BACKEND_CORE_API_INTERNAL_URL=http://localhost:8787",
     );
     expect(frontend["apps/store-web/src/lib/auth/client.ts"]).toBeDefined();
   });

@@ -37,16 +37,16 @@ describe("local Docker topology", () => {
     expect(compose.services["backend-api"].environment.NEON_HTTP_PROXY_URL).toBe(
       "http://neon-api:4444/sql",
     );
-    expect(compose.services["frontend-web"].build.args.NEXT_PUBLIC_API_BASE_URL).toContain(
-      "http://localhost:",
+    expect(compose.services["frontend-web"].environment.BACKEND_API_INTERNAL_URL).toContain(
+      "http://backend-api:",
     );
-    expect(compose.services["frontend-web"].environment.AUTH_INTERNAL_BASE_URL).toContain(
+    expect(compose.services["frontend-web"].environment.BACKEND_API_INTERNAL_URL).toContain(
       "http://backend-api:8787",
     );
     expect(compose.services["frontend-web"].depends_on["backend-api"].condition).toBe(
       "service_healthy",
     );
-    expect(files["apps/web/Dockerfile"]).toContain("ARG NEXT_PUBLIC_AUTH_BASE_URL");
+    expect(files["apps/web/Dockerfile"]).not.toContain("NEXT_PUBLIC_AUTH_BASE_URL");
     expect(files["apps/web/Dockerfile"]).toContain('"apps/web/server.js"');
     expect(files["apps/web/next.config.ts"]).toContain('output:"standalone"');
     expect(files["apps/api/Dockerfile"]).toContain("test -f drizzle/meta/_journal.json");
@@ -54,19 +54,17 @@ describe("local Docker topology", () => {
     expect(files["apps/api/Dockerfile"]).toContain("--legacy --prod /out");
     expect(files[".dockerignore"]).toContain("**/.dev.vars");
   });
-  it("keeps split repositories independent and reaches external identity via the host", () => {
+  it("connects split repositories over the shared private bridge", () => {
     const resolved = project(true);
     const backend = parse(dockerFiles(resolved, resolved.repositories[0])["docker-compose.yml"]);
     const frontend = parse(dockerFiles(resolved, resolved.repositories[1])["docker-compose.yml"]);
     expect(Object.keys(backend.services)).toEqual(["postgres-api", "neon-api", "backend-api"]);
     expect(Object.keys(frontend.services)).toEqual(["frontend-web"]);
     expect(frontend.services["frontend-web"].depends_on).toBeUndefined();
-    expect(frontend.services["frontend-web"].environment.AUTH_INTERNAL_BASE_URL).toContain(
-      "http://host.docker.internal:",
+    expect(frontend.services["frontend-web"].environment.BACKEND_API_INTERNAL_URL).toContain(
+      "http://backend-api:",
     );
-    expect(frontend.services["frontend-web"].extra_hosts).toEqual([
-      "host.docker.internal:host-gateway",
-    ]);
+    expect(frontend.services["frontend-web"].extra_hosts).toBeUndefined();
     expect(frontend.volumes).toBeUndefined();
     expect(frontend.name).not.toBe(backend.name);
   });
@@ -84,7 +82,8 @@ describe("local Docker topology", () => {
     };
     const expanded = { ...resolved, backends: { ...resolved.backends, reports: second } };
     const compose = parse(dockerFiles(expanded, resolved.repositories[0])["docker-compose.yml"]);
-    expect(compose.services["backend-reports"].ports[0]).toContain(":-8788}");
+    expect(compose.services["backend-reports"].ports).toBeUndefined();
+    expect(compose.services["backend-reports"].expose).toEqual(["8787"]);
     expect(compose.services["postgres-reports"].ports[0]).toContain(":-5433}");
     expect(compose.volumes.postgres_data_primary).toBeDefined();
     expect(compose.volumes["postgres_data_reports-db"]).toBeDefined();

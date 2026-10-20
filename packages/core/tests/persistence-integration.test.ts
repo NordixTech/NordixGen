@@ -337,18 +337,48 @@ describe
       const browser = frontendRuntime(
         files,
         "apps/web/src",
-        { zod },
         {
-          process: { env: { NEXT_PUBLIC_API_BASE_URL: "https://api.example.test" } },
+          zod,
+          "server-only": {},
+          "@opennextjs/cloudflare": {
+            getCloudflareContext: async () => ({
+              env: {
+                BACKEND_API: {
+                  fetch: async (request: Request) =>
+                    app.request(
+                      request,
+                      undefined,
+                      { DATABASE_URL: databaseUrl },
+                      { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+                    ),
+                },
+              },
+            }),
+          },
+        },
+        {
           fetch: async (target: URL, init: RequestInit) => {
             const headers = new Headers(init.headers);
             headers.set("origin", "https://web.example.test");
-            return app.request(
-              String(target),
-              { ...init, headers },
-              { DATABASE_URL: databaseUrl },
-              { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
-            );
+            const url = new URL(String(target), "https://web.example.test");
+            expect(url.origin).toBe("https://web.example.test");
+            expect(url.pathname).toMatch(/^\/api\/backend\/api\//);
+            const segments = url.pathname
+              .slice("/api/backend/".length)
+              .split("/")
+              .map(decodeURIComponent);
+            const route = browser(
+              "apps/web/src/app/api/backend/[backend]/[...path]/route.ts",
+            ) as Record<
+              string,
+              (
+                request: Request,
+                context: { params: Promise<{ backend: string; path: string[] }> },
+              ) => Promise<Response>
+            >;
+            return route[init.method ?? "GET"](new Request(url, { ...init, headers }), {
+              params: Promise.resolve({ backend: segments[0], path: segments.slice(1) }),
+            });
           },
         },
       );

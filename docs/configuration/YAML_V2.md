@@ -19,7 +19,7 @@ The product requirements remain in [the specification](../SPECIFICATION.md). Thi
 
 Clean is the executable architecture target for v1.1.0. Hexagonal/Onion are specified names and boundary contracts for later implementations, not prerequisites to complete that milestone. A structurally/semantically valid mixed-family example is **not generation-ready** until its renderers exist. Public `validate` and `generate` MUST share readiness diagnostics and reject an unimplemented family before side effects.
 
-No v1 converter, second generation engine, in-place regeneration, general IaC, AI, event bus, distributed transaction or arbitrary plugin system is specified. Local Docker and native Cloudflare CI/CD are generated operational capabilities; see the CLI workflow.
+No v1 converter, second generation engine, in-place regeneration, arbitrary non-Cloudflare IaC, AI, event bus, distributed transaction or arbitrary plugin system is specified. Local Docker and native Cloudflare CI/CD are generated operational capabilities; see the CLI workflow.
 
 ### The initial export limitation
 
@@ -491,3 +491,18 @@ Previous schemas and technology selectors are rejected rather than converted. Cl
 `packages/core/tests/configuration-documentation.test.ts` parses complete examples and invalid-edit snippets for YAML syntax/duplicate keys, checks local links, and typechecks the public-contract/composition sketch. `packages/core/tests/module-communication-example.test.ts` executes that authored sketch: permitted direct calls, missing/fabricated/expired sessions, independent caller/callee permission denial, forged principal rejection, application-input validation, explicit not-found mapping and safe error propagation. These are documentation/example checks; they are not an implementation of v2 semantic validation or generated module acceptance.
 
 Runtime validation, editor-schema synchronization, the shared resolved model, direct generation, module guards/boundaries and database/browser verification are implemented. See [validation behavior and evidence](VALIDATION.md) and the [commerce example](../../examples/full-stack-commerce/README.md) for current commands, scope and limitations.
+
+## Optional Cloudflare infrastructure
+
+```yaml
+iac:
+  repository: app # optional owner; defaults to the first repository
+  cloudflare:
+    r2_storage:
+      documents: { visibility: private }
+      assets: { visibility: public }
+# On a backend:
+# iac: { r2_storage: [documents, assets] }
+```
+
+Multiple backends may reference the same bucket. Omission creates no infrastructure. Generation emits independent OpenTofu files; subsequent changes are ordinary edits to those generated files, including their storage output associations. This does not change the existing one-shot generation lifecycle. Public buckets require a Cloudflare custom domain and zone per environment. See [infrastructure operations](../INFRASTRUCTURE.md).

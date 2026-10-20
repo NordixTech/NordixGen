@@ -1,7 +1,6 @@
 import { posix } from "node:path";
 import type { BackendRenderContext, GeneratedFile } from "../plugins/contracts.js";
 import type { FrontendRenderContext } from "../plugins/frontend-contracts.js";
-import { backendBaseEnvironment } from "./frontend-access.js";
 export function backendEnvironmentFile(context: BackendRenderContext): GeneratedFile {
   const identity = context.identity;
   const lines = [
@@ -10,7 +9,7 @@ export function backendEnvironmentFile(context: BackendRenderContext): Generated
     ...(identity
       ? [
           "BETTER_AUTH_SECRET=",
-          "BETTER_AUTH_URL=http://localhost:8787",
+          "BETTER_AUTH_URL=http://localhost:3000",
           "AUTH_TRUSTED_ORIGINS=http://localhost:3000",
           ...identity.identityProviders.flatMap((provider) => [
             `${provider.toUpperCase()}_CLIENT_ID=`,
@@ -31,13 +30,14 @@ export function backendEnvironmentFile(context: BackendRenderContext): Generated
   };
 }
 export function frontendEnvironmentFile(context: FrontendRenderContext): GeneratedFile {
-  const local = context.frontend.connections.length === 1 ? "http://localhost:8787" : "";
   return {
     path: posix.join(context.framework.applicationRoot, ".env.example"),
     content: [
-      "# Public backend origins. Configure each connected backend explicitly.",
-      ...context.frontend.connections.map((name) => `${backendBaseEnvironment(name)}=${local}`),
-      ...(context.frontend.identity ? [`NEXT_PUBLIC_AUTH_BASE_URL=${local}`] : []),
+      "# Server-only local backend origins. Browsers always call this frontend.",
+      ...context.frontend.connections.map(
+        (name) =>
+          `BACKEND_${name.toUpperCase().replaceAll("-", "_")}_INTERNAL_URL=http://localhost:${8787 + context.frontend.connections.indexOf(name)}`,
+      ),
       "",
     ].join("\n"),
   };

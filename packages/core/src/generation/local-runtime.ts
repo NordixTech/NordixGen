@@ -7,9 +7,17 @@ export function generateLocalRuntime(context: BackendRenderContext): readonly Ge
       path: `${context.framework.codeRoot}/local-server.ts`,
       content: `import {serve} from "@hono/node-server";
 import app from "./index.js";
+${
+  context.domainModel.backend.storage.length
+    ? `import {Miniflare} from "miniflare";
+const emulator=new Miniflare({modules:true,script:'export default {fetch(){return new Response(null,{status:404})}}',r2Buckets:${JSON.stringify(Object.fromEntries(context.domainModel.backend.storage.map((key) => [key.toUpperCase(), `${context.projectName}-${key}`])))},r2Persist:process.env.R2_LOCAL_PERSIST??".local/r2"});
+const storageBindings=await emulator.getBindings();
+`
+    : ""
+}
 ${context.persistence ? 'import {prepareLocalDatabase} from "./platform/database/local-bootstrap.js";\nawait prepareLocalDatabase();' : ""}
 const server=serve({hostname:"0.0.0.0",port:Number(process.env.PORT??8787),fetch(request){
- return app.fetch(request,process.env as Parameters<typeof app.fetch>[1],{
+ return app.fetch(request,${context.domainModel.backend.storage.length ? "{...process.env,...storageBindings}" : "process.env"} as Parameters<typeof app.fetch>[1],{
   waitUntil(promise:Promise<unknown>){void promise.catch(console.error);},
   passThroughOnException(){},props:{},
  } as Parameters<typeof app.fetch>[2]);

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { type ResolvedProject, cloudflareWorkerName } from "@nordixgen/core";
 import type { DeploymentManifest } from "./deployment-model.js";
+import { infrastructureFiles, infrastructureManifest } from "./infrastructure.js";
 
 type Repository = ResolvedProject["repositories"][number];
 export const deploymentScripts = {
@@ -16,6 +17,17 @@ export function deploymentManifest(
     version: 1,
     project: project.project.name,
     repository: repository.name,
+    infrastructure: infrastructureManifest(project, repository.name),
+    publicFrontends: Object.fromEntries(
+      Object.values(project.frontends).map((app) => [
+        app.name,
+        {
+          worker: cloudflareWorkerName(project.project.name, app.name),
+          connections: [...app.connections],
+          identityBackend: app.identity?.backend,
+        },
+      ]),
+    ),
     applications: [
       ...Object.values(project.backends)
         .filter((a) => a.repository.name === repository.name)
@@ -26,6 +38,7 @@ export function deploymentManifest(
           kind: "backend" as const,
           database: Boolean(a.database),
           identity: Boolean(a.identity),
+          storage: [...a.storage],
           connections: [],
           runtimeKeys: [
             ...(a.identity?.identityProviders.flatMap((p) => [
@@ -69,6 +82,10 @@ export async function deploymentFiles(
     "nordixgen.deployment.json": `${JSON.stringify(deploymentManifest(project, repository), null, 2)}\n`,
     "docs/DEPLOYMENT.md": deploymentDocumentation(project, repository),
     "docs/DISASTER_RECOVERY.md": recoveryDocumentation,
+    ...(project.iac && Object.keys(project.iac.cloudflare.r2_storage).length
+      ? { "docs/INFRASTRUCTURE.md": infrastructureDocumentation }
+      : {}),
+    ...(await infrastructureFiles(project, repository.name)),
   };
 }
 export const deploymentReadme = [
@@ -98,7 +115,7 @@ export function deploymentDocumentation(project: ResolvedProject, repository: Re
 | develop | staging | staging |
 | main | production | main |
 
-One persistent Worker per application/environment. Feature branches do not deploy through these triggers. Staging is not an ephemeral Preview. A Git merge applies committed migrations; it never copies or merges staging database data into production. Each persisted backend owns a dedicated Neon project/database resource. Backend-only, frontend-only repositories and monorepos use the same root commands below. Configure a split backend repository first, then supply its URLs to the frontend repository.
+One persistent Worker per application/environment. Feature branches do not deploy through these triggers. Staging is not an ephemeral Preview. A Git merge applies committed migrations; it never copies or merges staging database data into production. Each persisted backend owns a dedicated Neon project/database resource. Backend-only, frontend-only repositories and monorepos use the same root commands below. Configure a split backend repository first. Frontends bind to the stable backend Worker names; no public backend URL is required.
 
 ## Prerequisites for both options
 
@@ -106,7 +123,7 @@ One persistent Worker per application/environment. Feature branches do not deplo
 - Publish both official branches: \`git remote add origin <your-repository-url>\` (if needed), then \`git push --atomic --set-upstream origin main develop\`. For a new remote, set its default branch to main in GitHub.
 - Authorize the Cloudflare Workers and Pages GitHub App for the repository in Cloudflare Settings > Builds > Connect. For a newly created private repository, open https://github.com/settings/installations, configure Cloudflare Workers and Pages and add the repository if access is restricted to selected repositories. This browser authorization is required once; an API token cannot grant GitHub App access.
 - Workers Builds needs a registered deployment credential. The assistant can register the same user API token you supply for setup; you do not need to create another token. An existing registered build token is an optional advanced choice.
-- A Cloudflare user API token scoped to the target account: Workers Scripts Edit, Workers Builds Configuration Edit, Account Settings Read; Workers Routes Edit and Zone Read when managing custom routes. Add permissions required by additional bindings you introduce. The Builds API currently requires a user token, not an account-owned token.
+- A Cloudflare user API token scoped to the target account: Workers Scripts Edit, Workers Builds Configuration Edit, Account Settings Read; Workers Routes Edit and Zone Read when managing custom routes. ${manifest.infrastructure ? "This project declares R2: also grant Account > Workers R2 Storage > Edit and User > API Tokens > Edit/Read (or Account > Account API Tokens > Edit/Read for account-owned R2 credentials). Enable R2 Object Storage in the dashboard before setup. The assistant reuses the setup token for state, infrastructure and PR reviews; only backend download-signing credentials are separately bucket-scoped. Public custom domains require Zone Read for the domain zone." : "No additional R2 permissions are required because this project declares no infrastructure."} The Builds API currently requires a user token, not an account-owned token.
 - For assistant-managed Neon creation/branch setup, a Neon API key with access to the intended organization/project. A project-scoped key can manage existing branches but cannot create a new project. No Neon administrative API key is stored in builds or Workers.
 
 ## First-time account access (no existing integration required)
@@ -142,7 +159,7 @@ After setup, push a new commit to develop and inspect its native Cloudflare buil
 
 1. Create a Neon project for each persisted backend. Name its root branch main (the Console may initially call it production). Create staging once as a child of main, with its own read-write compute. Copy a direct PostgreSQL connection for each branch/database/owner role. Configure compute scale-to-zero for staging. Suspended compute does not consume CU-hours, but storage/history and any excess-branch charges still apply.
 2. Review committed SQL in each backend's \`drizzle/\`. The generator creates migrations; do not run schema generation or seeds during deployment. Optional IAM bootstrap is already part of db:migrate and does not overwrite edited grants.
-3. Configure the environment matrix below. Runtime secrets go to the matching Worker Settings > Variables and Secrets. Build secrets go to Settings > Builds > Variables and Secrets. DATABASE_URL is needed in both places. Frontend NEXT_PUBLIC values are required at build time and may be required on the server at runtime. Never set NODE_ENV=production before installing dependencies: typechecking and migrations need devDependencies.
+3. Configure the environment matrix below. Runtime secrets go to the matching Worker Settings > Variables and Secrets. Build secrets go to Settings > Builds > Variables and Secrets. DATABASE_URL is needed in both places. Frontend-to-backend communication uses private service bindings; no NEXT_PUBLIC backend URL is needed. R2 signing secrets belong only to backend runtime, not frontend or application build variables. Never set NODE_ENV=production before installing dependencies: typechecking and migrations need devDependencies.
 4. In the Cloudflare dashboard, create a placeholder Worker for each exact environment name from the application wrangler.jsonc (Start with Hello World is sufficient). Add its required runtime values under Settings > Variables and Secrets. This avoids building OpenNext on your workstation. The assistant performs this placeholder step automatically with a 503 response. Optional local bootstrap uses the application commands below, local Wrangler authentication and shell DATABASE_URL for backend migrations; run frontend builds in Linux/WSL/Docker if Windows symlink permissions prevent standalone output.
 5. In Cloudflare, connect the repository separately to each environment Worker. Set build root to \`/\` (repository root, where the pnpm lockfile and cicd commands live), NODE_VERSION=24 and PNPM_VERSION=10.5.2. Use the table commands. Select develop for the staging Worker and main for production. Disable other branch/Preview builds. Use the exact environment Worker name from its wrangler.jsonc.
 6. Push develop, inspect build status/logs and test its URLs. Then push/merge main and repeat. A migration failure must stop publishing. Use additive/backward-compatible migrations: the previous application can still serve traffic while migration/build/deploy runs. Separate application builds are not an atomic release across a monorepo.
@@ -159,19 +176,17 @@ Repeat each row replacing staging with production. The same commands work in a s
 | --- | --- | --- |
 | DATABASE_URL | Persisted backend runtime + build secret | Corresponding Neon branch; different staging/production connections |
 | BETTER_AUTH_SECRET | Authenticated backend runtime secret | At least 32 random characters; independent per environment |
-| BETTER_AUTH_URL | Authenticated backend runtime | Public identity API origin |
+| BETTER_AUTH_URL | Authenticated backend runtime | Public frontend origin; Better Auth remains in the private backend |
 | AUTH_TRUSTED_ORIGINS | Authenticated backend runtime | Exact allowed frontend origins, comma separated |
 | CORS_ALLOWED_ORIGINS | Backend without auth, runtime | Exact allowed frontend origins, comma separated |
-| NEXT_PUBLIC_<BACKEND>_BASE_URL | Frontend build + runtime | Public origin of each connected backend, hyphens replaced with underscores |
-| NEXT_PUBLIC_AUTH_BASE_URL | Authenticated frontend build + runtime | Selected identity backend's public origin |
-| AUTH_INTERNAL_BASE_URL | Optional authenticated frontend runtime | Direct identity backend origin for server calls; never a browser credential |
+| BACKEND_<NAME>_INTERNAL_URL | Frontend local server only | Local HTTP fallback for next dev / Docker; never emitted into browser code |
 | Provider CLIENT_ID / CLIENT_SECRET, RESEND_API_KEY, AUTH_EMAIL_FROM | Backend runtime, when generated | Existing Better Auth OAuth and email features |
 
 ## Authenticated browser topology
 
-Keep frontend and its identity API on the SAME HTTPS origin so the existing host-only Better Auth session cookie is also present on frontend server requests. For example, frontend https://app.example.com and the identity backend on https://app.example.com/api/* via Cloudflare Worker Routes. A route for /api/* takes priority over the frontend's route; configure your proxied zone/DNS and worker routing in Cloudflare, then put the same origin in the frontend and backend settings. Do not attach conflicting custom domains to both Workers. For multiple backends use distinct API route prefixes/domains that match your authored endpoint topology; authenticated cross-origin business APIs need an explicitly designed cookie/proxy topology.
+The browser calls this frontend's /api/backend/<backend>/* BFF routes, /api/auth/* and /api/iam/*. Server components/session checks call the selected Service Binding directly. The backend has workers_dev=false, preview_urls=false and no public routes. All environment bindings are explicit and independent. Session cookies and multiple Set-Cookie headers cross the BFF without entering browser state; OAuth callbacks use the frontend /api/auth/* endpoint. BETTER_AUTH_URL is the frontend origin, not a public backend URL. AUTH_TRUSTED_ORIGINS must contain the exact frontend origins. No custom domain is required to make authentication work on a frontend workers.dev URL.
 
-Separate *.workers.dev hostnames are suitable for a public demo, but do NOT provide cookie sharing for protected SSR pages. CORS alone does not solve this. The assistant rejects separate origins for a frontend and its selected identity API. Routes/domains remain an explicit dashboard step in both setup options. Authentication remains self-hosted Better Auth; do not enable Neon Managed Auth.
+For native local development, start the backend and configure BACKEND_<NAME>_INTERNAL_URL in the frontend's .env.local. next dev can use HTTP locally. For a local standalone production build, explicitly set NORDIX_LOCAL_RUNTIME=1. Production Cloudflare has no HTTP fallback when a service binding is missing. Direct R2 presigned downloads are the intentional browser-to-R2 exception.
 
 ## Change accounts and retry
 
@@ -179,7 +194,7 @@ Use a new profile, supply credentials for the new Cloudflare account, authorize 
 
 ## Verification and costs
 
-Check /health for every backend, render each frontend, run a generated business list/create operation to verify migrations, and test sign-up/login, protected server navigation and logout if auth is enabled. Verify separate data in staging and production. Confirm main pushes never change staging and develop pushes never change production. Keep credentials out of screenshots and build logs. Record the tested commit and provider build IDs.
+Check /api/backend/<backend>/health through the frontend and confirm the backend workers.dev URL is inaccessible; render each frontend, run a generated business list/create operation to verify migrations, and test sign-up/login, protected server navigation and logout if auth is enabled. Verify separate data in staging and production. Confirm main pushes never change staging and develop pushes never change production. Keep credentials out of screenshots and build logs. Record the tested commit and provider build IDs.
 
 Zero GitHub Actions minutes does not mean unlimited free Cloudflare builds. Neon Launch is usage-based; its displayed typical spend is an estimate. Configure the available restore history for your plan, see [disaster recovery](DISASTER_RECOVERY.md). No off-site R2 backups are implemented here.
 
@@ -208,3 +223,6 @@ PITR is not an off-site backup. Defense Line 2 (logical exports to Cloudflare R2
 
 References: [Neon history window](https://neon.com/docs/postgres/backup-restore/history-window), [instant restore](https://neon.com/docs/postgres/backup-restore/branch-restore), [Neon CLI](https://neon.com/docs/cli/branches).
 `;
+
+export const infrastructureDocumentation =
+  "# Infrastructure lifecycle\n\nThe generation YAML has already served its purpose. Edit the committed OpenTofu .tf files in infra/terraform/ after generation; no NordixGen installation or original YAML is required. OpenTofu is downloaded from its pinned official release and its checksum is checked, or use an installed 1.11+ binary via TOFU_BIN. Commit .terraform.lock.hcl after initialization; never commit state, plan files or credentials.\n\n## Setup and credentials\n\nEnable R2 in the Cloudflare dashboard. The cicd:setup token needs Workers R2 Storage Edit and API Tokens Edit/Read in addition to the ordinary deployment permissions. User token management and account-owned token management are supported; download keys are scoped to their buckets and environment. The assistant masks inputs and never saves credentials in Git/public profiles. Workers Builds retains infrastructure credentials for automatic pushes. Runtime download signing credentials go only to consuming backends; frontends and PR plans do not receive them. A GitHub token with repository read and pull-request comment write access is required; the authorized GitHub CLI credential can be used. Administrators should control production access. Secret storage does not prevent someone who can deploy arbitrary production code from reading runtime data.\n\nThe assistant creates/reuses a private R2 state bucket, separate from application resources. State and signing identifiers are namespaced by project/environment in that account. Rerunning with the same account/profile resumes. Switching accounts creates separate infrastructure; it does not migrate application files. Back up state independently; R2 state storage must not be mistaken for object versioning or a data backup service.\n\n## Changes and native builds\n\nEach official-branch build applies infrastructure before publishing the application. A shared lock and commit marker coordinate concurrent application builds; an older queued commit must not overwrite newer infrastructure. OpenTofu refreshes provider state on each new commit. No-change plans do not recreate resources. Genuine provider/permission/migration errors still fail deployment.\n\nPR builds run plan only and update a comment with the target environment, commit, resource actions and bucket empty/nonempty/unknown status plus check time. Raw state, object keys, file contents and secrets are not published. The report is informational: merging applies additions, updates and removals automatically without an approval file or command. Removal/replacement of a bucket empties it and permanently deletes its objects. Renaming a bucket does not migrate its files. New writes may arrive after the PR check. Perform a separate migration/backup before merging if data must survive.\n\nOnly resources explicitly present in the saved destructive plan are emptied; the state bucket cannot be targeted by this cleanup. An interrupted apply can leave partial infrastructure; retry after inspecting the failure. If a build is terminated while holding apply.lock, verify no apply is running before removing that lock. Never unlock an active operation.\n\n## Adding or sharing R2\n\nAdd a cloudflare_r2_bucket resource to a .tf file and add its binding/bucket/public_url to the storage output for each consuming backend. A bucket may be shared by multiple backends. Keep staging and production naming separate. The outputs drive Wrangler bindings, public URL metadata and scoped signing permissions; infrastructure has one owning repository (iac.repository, default first repository). Split consumers read the shared outputs; deploy the owning repository before consumers when introducing resources. Use only one owner/state address per shared resource.\n\nPrivate is the default. Public resources require public_domains entries (domain and zone_id) in each environment's tfvars and create a custom domain, not a production r2.dev URL. Add explicit CORS origins when fetching presigned objects from browser JavaScript. Browser navigation downloads do not require a cross-origin fetch. Never store private user documents in a public bucket.\n\n## Application storage\n\nApplication code depends on StoragePort in src/application/ports/storage-port.ts. The platform factory creates native R2 adapters and the module composition supplies them as storage dependencies. Call the port only after existing session/permission and object-ownership checks. Infrastructure declaration alone intentionally does not publish an unrestricted file HTTP endpoint.\n\ndownloadStream returns a stream for authenticated responses through the frontend BFF. getSignedUrl returns a short-lived S3 GET URL (default 300 seconds, maximum 7 days); anyone possessing it can reuse it before expiry, so do not log it or promise per-request session checks. Signed links use the R2 S3 domain, not custom domains. Native uploads/downloads use bindings without S3 credentials. R2 transfer has no egress fee, but storage, operations and Worker execution may be billed.\n";

@@ -218,7 +218,7 @@ describe("native deployment safety and contracts", () => {
     expect(manifests[1].applications.map((a) => a.name)).toEqual(["web"]);
     expect(manifests[1].applications[0].connections).toEqual(["api"]);
   });
-  it("rejects cookie-incompatible identity origins before provisioning", () => {
+  it("allows private backend identity behind the frontend BFF", () => {
     const project = fixture();
     const manifest = deploymentManifest(project, project.repositories[0]);
     manifest.applications[1].identityBackend = "api";
@@ -232,7 +232,7 @@ describe("native deployment safety and contracts", () => {
         production: { api: "https://app.example.test", web: "https://app.example.test" },
       },
     };
-    expect(() => validateTopology(manifest, profile)).toThrow("share an origin");
+    expect(() => validateTopology(manifest, profile)).not.toThrow();
     profile.urls.staging.api = profile.urls.staging.web;
     expect(() => validateTopology(manifest, profile)).not.toThrow();
   });

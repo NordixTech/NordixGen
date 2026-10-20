@@ -10,6 +10,7 @@ const missing = "00000000-0000-4000-8000-000000000000";
 export async function verifyApplication(state, directory, expireAccountant) {
   const api = `http://localhost:${state.apiPort}`;
   const web = `http://localhost:${state.webPort}`;
+  const browserApi = `${web}/api/backend/api`;
   const persistence = JSON.parse(
     await readFile(join(state.output, "apps/api/acceptance-persistence.json"), "utf8"),
   );
@@ -176,6 +177,8 @@ export async function verifyApplication(state, directory, expireAccountant) {
       viewport: { width: 1400, height: 1000 },
       timezoneId: "America/Lima",
     });
+    const browserOrigins = new Set();
+    browserContext.on("request", (outgoing) => browserOrigins.add(new URL(outgoing.url()).origin));
     page = await browserContext.newPage();
     page.setDefaultTimeout(15_000);
     const browserErrors = [];
@@ -309,7 +312,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     );
     const explorerCreated = page.waitForResponse(
       (response) =>
-        response.url() === `${api}/api/customers` && response.request().method() === "POST",
+        response.url() === `${browserApi}/api/customers` && response.request().method() === "POST",
     );
     await page.getByRole("button", { name: "Send request", exact: true }).click();
     expect((await explorerCreated).status()).toBe(200);
@@ -332,7 +335,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await page.locator('input[id="filter-search"]').fill(note);
     const filteredResponse = page.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === "/api/invoices" &&
+        new URL(response.url()).pathname === "/api/backend/api/api/invoices" &&
         new URL(response.url()).searchParams.get("search") === note &&
         response.request().method() === "GET",
     );
@@ -353,7 +356,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await dialog.locator("#payload").fill('{"currency":"EUR","source":"browser"}');
     const createResponse = page.waitForResponse(
       (response) =>
-        response.url() === `${api}/api/invoices` && response.request().method() === "POST",
+        response.url() === `${browserApi}/api/invoices` && response.request().method() === "POST",
     );
     await dialog.getByRole("button", { name: "Create", exact: true }).click();
     const createdFromBrowser = await createResponse;
@@ -376,7 +379,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await dialog.locator("#payload").fill('"browser scalar"');
     const updateResponse = page.waitForResponse(
       (response) =>
-        response.url() === `${api}/api/invoices/${browserInvoice.id}` &&
+        response.url() === `${browserApi}/api/invoices/${browserInvoice.id}` &&
         response.request().method() === "PATCH",
     );
     await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -426,16 +429,16 @@ export async function verifyApplication(state, directory, expireAccountant) {
     };
     const privateRequests = [];
     const trackPrivate = (outgoing) => {
-      if (new URL(outgoing.url()).pathname === "/api/invoices")
+      if (new URL(outgoing.url()).pathname === "/api/backend/api/api/invoices")
         privateRequests.push(outgoing.url());
     };
     page.on("request", trackPrivate);
-    await page.route(`${api}/api/auth/get-session**`, delayedSession);
+    await page.route(`${web}/api/auth/get-session**`, delayedSession);
     try {
       await Promise.all([
         page.goto(`${web}/api-explorer`),
         page.waitForRequest(
-          (outgoing) => outgoing.url().startsWith(`${api}/api/auth/get-session`),
+          (outgoing) => outgoing.url().startsWith(`${web}/api/auth/get-session`),
           { timeout: 15_000 },
         ),
       ]);
@@ -477,7 +480,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
       await expect(send).toHaveCSS("opacity", "1");
       const publicResponse = page.waitForResponse(
         (response) =>
-          new URL(response.url()).pathname === "/api/customers" &&
+          new URL(response.url()).pathname === "/api/backend/api/api/customers" &&
           response.request().method() === "GET",
       );
       await send.click();
@@ -486,7 +489,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
       expect(privateRequests).toHaveLength(0);
     } finally {
       releaseSession();
-      await page.unroute(`${api}/api/auth/get-session**`, delayedSession);
+      await page.unroute(`${web}/api/auth/get-session**`, delayedSession);
       page.off("request", trackPrivate);
     }
     await passed(
@@ -745,6 +748,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await passed(
       "Expired sessions and replayed signed cookies after logout fail at both page/API boundaries",
     );
+    expect([...browserOrigins]).toEqual([web]);
     expect(browserErrors).toEqual([]);
     await passed("The connected browser journey completes without uncaught application errors");
     return behaviors;

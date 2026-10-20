@@ -232,7 +232,7 @@ describe("fixed UI assembly and declared features", () => {
     const root = "apps/store-web/src";
     expect(files[`${root}/app/providers.tsx`]).toContain("QueryClientProvider");
     expect(files[`${root}/app/providers.tsx`]).not.toContain("SessionViewSync");
-    expect(files[`${root}/lib/api/client.ts`]).toContain("NEXT_PUBLIC_API_BASE_URL");
+    expect(files[`${root}/lib/api/client.ts`]).toContain("/api/backend/core-api");
     expect(files[`${root}/app/api-explorer/page.tsx`]).toBeUndefined();
     expect(files[`${root}/lib/auth/client.ts`]).toBeUndefined();
     expect(result.frameworkContext.scaffold.argumentsBeforeTarget).toContain(

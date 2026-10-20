@@ -17,6 +17,7 @@ import { frontendCloudflareFiles } from "./cloudflare.js";
 import { collectFiles } from "./files.js";
 import { generateFrontendAccess, protectFrontendPage } from "./frontend-access.js";
 import { generateFrontendForms } from "./frontend-forms.js";
+import { frontendTransportFiles } from "./frontend-transport.js";
 import { frontendEnvironmentFile } from "./runtime-environment.js";
 export const FRONTEND_STACK = {
   runtime: {
@@ -61,8 +62,14 @@ export function generateFrontend(project: ResolvedProject, name: string) {
     { owner: "runtime-environment", files: [frontendEnvironmentFile(context)] },
     {
       owner: "cloudflare",
-      files: frontendCloudflareFiles(project.project.name, name, context.framework.applicationRoot),
+      files: frontendCloudflareFiles(
+        project.project.name,
+        name,
+        context.framework.applicationRoot,
+        context.frontend.connections,
+      ),
     },
+    { owner: "private-transport", files: frontendTransportFiles(context) },
     { owner: "ui", files: generateUiFiles(context) },
     { owner: "tailwind", files: generateTailwindFiles(context) },
     { owner: "api", files: generateApiClientFiles(context) },
