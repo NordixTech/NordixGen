@@ -69,7 +69,7 @@ export function nordixIamPlugin(config:{connectionString:string;defaultRole:stri
    iamUpdateRole:createAuthEndpoint("/iam/roles/:id",{method:"PUT",use,body:body.partial().extend({confirmation:z.string().max(100).optional()}).refine(value=>Object.keys(value).some(key=>key!=="confirmation"))},async ctx=>{
     check(ctx.context.principal,"iam:roles:manage");return response(await changeAccess(config.connectionString,{kind:"role",id:ctx.params.id,actor:ctx.context.principal.id,...ctx.body},config.defaultRole,config.adminRole));
    }),
-   iamDeleteRole:createAuthEndpoint("/iam/roles/:id",{method:"DELETE",use},async ctx=>{
+   iamDeleteRole:createAuthEndpoint("/iam/roles/:id",{method:"DELETE",disableBody:true,use},async ctx=>{
     check(ctx.context.principal,"iam:roles:manage");
     const result=await deleteRole(config.connectionString,ctx.params.id,ctx.context.principal.id,config.defaultRole,config.adminRole);
     if(result==="forbidden")throw new APIError("FORBIDDEN",{code:result,message:"Your administrative access has changed."});
