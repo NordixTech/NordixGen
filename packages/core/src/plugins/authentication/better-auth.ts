@@ -166,7 +166,7 @@ function authRuntimeContent(
     "",
   ];
   const pluginValues = [
-    `nordixAuthPolicy({domains:${JSON.stringify(domains)},emailPassword:${methods.includes("email-password")},phone:${methods.includes("phone-number")}})`,
+    `nordixAuthPolicy({domains:${JSON.stringify(domains)},emailPassword:${methods.includes("email-password")},phone:${methods.includes("phone-number")},emailDelivery:()=>assertEmailDelivery(env),verifyEmail:${emailVerification}})`,
     `nordixIamPlugin({connectionString:env.DATABASE_URL,defaultRole:${JSON.stringify(defaultRole)},adminRole:${JSON.stringify(config.authorization.adminRole)},trustedOrigins:getTrustedAuthOrigins(env),audit})`,
     ...(methods.includes("username-password") ? ["username()"] : []),
     ...(features.includes("two-factor") ? ["twoFactor()"] : []),

@@ -29,7 +29,12 @@ function policyModule(policy = { ...DEFAULT_PASSWORD_POLICY }) {
     { zod },
   )("password-policy.ts") as { passwordSchema: zod.ZodType<string>; passwordPolicy: typeof policy };
 }
-function policyPlugin(domains: string[] = [], emailPassword = true, phone = true) {
+function policyPlugin(
+  domains: string[] = [],
+  emailPassword = true,
+  phone = true,
+  emailDelivery?: () => void,
+) {
   const load = generatedRuntime(
     {
       "auth-policy.ts": authPolicyPlugin,
@@ -44,9 +49,11 @@ function policyPlugin(domains: string[] = [], emailPassword = true, phone = true
   );
   return (
     load("auth-policy.ts").nordixAuthPolicy as (options: unknown) => ReturnType<typeof phoneNumber>
-  )({ domains, emailPassword, phone });
+  )({ domains, emailPassword, phone, emailDelivery });
 }
-function runtime(options: { domains?: string[]; email?: boolean; rate?: boolean } = {}) {
+function runtime(
+  options: { domains?: string[]; email?: boolean; rate?: boolean; missingDelivery?: boolean } = {},
+) {
   const codes = new Map<string, string>();
   const resetLinks: string[] = [];
   const database: Record<string, Record<string, unknown>[]> = {
@@ -94,7 +101,19 @@ function runtime(options: { domains?: string[]; email?: boolean; rate?: boolean 
       },
     },
     plugins: [
-      policyPlugin(domains, options.email ?? true),
+      policyPlugin(
+        domains,
+        options.email ?? true,
+        true,
+        options.missingDelivery
+          ? () => {
+              throw new authApi.APIError("INTERNAL_SERVER_ERROR", {
+                message:
+                  "El servicio de envío no está configurado temporalmente. Contacte al administrador",
+              });
+            }
+          : undefined,
+      ),
       phoneNumber({
         otpLength: 6,
         expiresIn: 600,
@@ -127,6 +146,47 @@ function runtime(options: { domains?: string[]; email?: boolean; rate?: boolean 
   return { request, codes, database, auth, resetLinks };
 }
 describe("configurable authentication policies", () => {
+  it("keeps account routes out of the business directory and rejects conflicting business pages", () => {
+    for (const name of ["Profile", "ForgotPassword", "ResetPassword"]) {
+      const config = JSON.parse(
+        JSON.stringify(configuration({ methods: ["email-password", "phone-number"] })).replaceAll(
+          '"Customer"',
+          JSON.stringify(name),
+        ),
+      );
+      config.endpoints.push({
+        backend: "core-api",
+        entity: name,
+        operationId: `list${name}`,
+        method: "GET",
+        path: `/api/${name.toLowerCase()}`,
+        authRequired: false,
+      });
+      expect(
+        validateNordixConfig(config).diagnostics.some((d) => d.code === "GENERATED_NAME_COLLISION"),
+        JSON.stringify({ name, diagnostics: validateNordixConfig(config).diagnostics }),
+      ).toBe(true);
+    }
+    const files = generateFrontend(
+      resolvedFixture(configuration({ methods: ["email-password", "phone-number"] })),
+      "store-web",
+    ).virtualFileSystem.snapshot();
+    const home = files["apps/store-web/src/app/page.tsx"];
+    expect(home).not.toContain('href="/forgot-password"');
+    expect(home).not.toContain('href="/profile"');
+  });
+  it("fails safely before recovery account lookup when production delivery is unconfigured", async () => {
+    const app = runtime({ missingDelivery: true });
+    const response = await app.request("/request-password-reset", {
+      email: "unknown@example.com",
+      redirectTo: "http://localhost:8787/reset-password",
+    });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({
+      message: "El servicio de envío no está configurado temporalmente. Contacte al administrador",
+    });
+    expect(app.resetLinks).toEqual([]);
+  });
   it("preserves defaults for existing resolved identities and exposes each delivery environment", () => {
     const context = backendRenderContext(resolvedFixture(configuration()), "core-api");
     if (!context.identity) throw Error("Missing identity");

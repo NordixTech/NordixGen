@@ -13,7 +13,18 @@ function pageSource(context: FrontendRenderContext): string {
   const title = JSON.stringify(`${context.projectName} | NordixGen`);
   const projectName = escapeText(context.projectName);
   const pages = context.frontend.pages.filter(
-    (page) => !["/", "/api-explorer", "/sign-in", "/sign-up", "/admin/roles"].includes(page.path),
+    (page) =>
+      ![
+        "/",
+        "/api-explorer",
+        "/sign-in",
+        "/sign-up",
+        ...(context.api.authentication?.methods.includes("email-password")
+          ? ["/forgot-password", "/reset-password"]
+          : []),
+        ...(context.api.authentication?.methods.includes("phone-number") ? ["/profile"] : []),
+        "/admin/roles",
+      ].includes(page.path),
   );
   const apiExplorerLink = context.api.endpoints.length > 0;
   return source([

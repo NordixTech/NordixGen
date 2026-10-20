@@ -205,6 +205,22 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
     const slugs = new Map<string, string>();
     for (const endpoint of visible) {
       const slug = entitySlug(endpoint.entity);
+      if (
+        selected &&
+        [
+          ...(selected.authentication?.methods.includes("email-password")
+            ? ["forgot-password", "reset-password"]
+            : []),
+          "sign-in",
+          "sign-up",
+          ...(selected.authentication?.methods.includes("phone-number") ? ["profile"] : []),
+        ].includes(slug)
+      )
+        add(
+          "GENERATED_NAME_COLLISION",
+          `${path}.connectsTo`,
+          `Entity "${endpoint.entity}" conflicts with a generated authentication page. Rename the entity.`,
+        );
       const previous = slugs.get(slug);
       if (previous && previous !== endpoint.entity)
         add(

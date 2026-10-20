@@ -11,7 +11,7 @@ export function assertEmailDelivery(env:DeliveryEnvironment):void {
  if(!production(env))return;
  const smtp=env.SMTP_HOST&&env.SMTP_USER&&env.SMTP_PASSWORD&&env.AUTH_EMAIL_FROM;
  const resend=env.RESEND_API_KEY&&env.AUTH_EMAIL_FROM;
- if(!smtp&&!resend)throw unavailable();
+ if(env.SMTP_HOST?!smtp:!resend)throw unavailable();
 }
 export async function sendAuthEmail(env:DeliveryEnvironment,to:string,subject:string,url:string):Promise<void>{
  assertEmailDelivery(env);

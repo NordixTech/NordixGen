@@ -31,10 +31,11 @@ export function assertAllowedEmail(email:unknown,domains:readonly string[]):void
  if(!domains.length)return;
  if(typeof email!=="string"||!domains.includes(email.split("@")[1]?.toLowerCase()??""))throw new APIError("BAD_REQUEST",{message:"Registration restricted to authorized company domains"});
 }
-export function nordixAuthPolicy(options:{domains:readonly string[];emailPassword:boolean;phone:boolean}) {
+export function nordixAuthPolicy(options:{domains:readonly string[];emailPassword:boolean;phone:boolean;emailDelivery?:()=>void;verifyEmail?:boolean}) {
  return {id:"nordix-auth-policy",hooks:{before:[{matcher:()=>true,handler:createAuthMiddleware(async ctx=>{
   if(!options.emailPassword&&["/sign-up/email","/sign-in/email","/set-password","/change-password","/reset-password","/request-password-reset"].includes(ctx.path))throw new APIError("BAD_REQUEST",{message:"Email/password authentication is disabled."});
   if(options.phone&&ctx.path==="/sign-in/phone-number")throw new APIError("BAD_REQUEST",{message:"Use SMS verification to sign in."});
+  if(["/request-password-reset","/send-verification-email"].includes(ctx.path)||(options.verifyEmail&&ctx.path==="/sign-up/email"))options.emailDelivery?.();
   if(["/sign-up/email","/change-password","/set-password","/reset-password","/phone-number/reset-password"].includes(ctx.path)){
    const value=ctx.path==="/sign-up/email"?ctx.body?.password:ctx.body?.newPassword;
    const parsed=passwordSchema.safeParse(value);
