@@ -454,6 +454,9 @@ describe("configurable authentication policies", () => {
           true,
         );
       expect(Object.values(frontend).join("\n")).toContain('inputMode="numeric"');
+      expect(
+        Object.entries(frontend).find(([path]) => path.endsWith("/sign-in-form.tsx"))?.[1],
+      ).toContain('label="PIN"');
       expect(Object.values(frontend).join("\n")).toContain('requirePageSession("/profile")');
       expect(
         project.frontends["store-web"].pages.find((p) => p.path === "/forgot-password")

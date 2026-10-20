@@ -225,6 +225,7 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
   if (!config.methods.includes("email-password"))
     return '"use client";\nimport {PhoneForm} from "@/components/auth/phone-form";\nexport function SignInForm(){return <PhoneForm/>;}\n';
   const username = config.methods.includes("username-password");
+  const pin = config.passwordPolicy?.numericOnly === true;
   const providers = config.identityProviders;
   return source([
     '"use client";',
@@ -289,7 +290,7 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
       : [
           '      <Input autoComplete="email" id="email" label="Email" name="email" required type="email" />',
         ]),
-    '      <Input autoComplete="current-password" id="password" label="Password" name="password" required type="password" />',
+    `      <Input autoComplete="current-password" id="password" label="${pin ? "PIN" : "Password"}" name="password" ${pin ? 'inputMode="numeric" ' : ""}required type="password" />`,
     '      <Button disabled={pending} type="submit">Sign in</Button>',
     '      <a href="/forgot-password">Forgot your password?</a>',
     '      <p className="ng-panel-note">New here? <a className="ng-text-link" href="/sign-up">Create an account</a></p>',
