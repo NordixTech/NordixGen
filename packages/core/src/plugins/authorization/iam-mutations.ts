@@ -1,47 +1,113 @@
-/** SQL batches keep the lock, impact assessment, write and audit in one transaction. */
-export const iamMutations = `import {sql} from "drizzle-orm";
-import type {DrizzleDatabase} from "../database/drizzle-database.js";
-export interface AccessChange {kind:"role"|"user";id:string;actor:string;confirmation?:string;role?:string;name?:string;description?:string|null;permissions?:string[];}
-export interface AccessResult {code:"ok"|"not_found"|"forbidden"|"protected"|"last_admin"|"confirmation_required";token:string;selfLoss:string[];lost:string[];affected:number;}
-export async function changeAccess(db:DrizzleDatabase,change:AccessChange,defaultRole:string,adminRole:string):Promise<AccessResult>{
- const input=JSON.stringify(change);
- const state=sql\`current_setting('nordix.iam_change')::jsonb\`;
- const ok=sql\`(\${state}->>'code')='ok'\`;
- const [,,decision]=await db.batch([
-  db.execute(sql\`SET TRANSACTION ISOLATION LEVEL READ COMMITTED\`),
-  // A separate statement is essential: snapshots after waiting see the preceding commit.
-  db.execute(sql\`SELECT pg_advisory_xact_lock(197707,97)\`),
-  db.execute(sql\`WITH input AS (SELECT \${input}::jsonb AS v),
-   roles AS (SELECT r.id,r.name,r.description,COALESCE(array_agg(p.permission ORDER BY p.permission) FILTER(WHERE p.permission IS NOT NULL),ARRAY[]::text[]) grants FROM auth_roles r LEFT JOIN auth_role_permissions p ON p.role_id=r.id GROUP BY r.id),
-   target AS (SELECT r.* FROM roles r,input i WHERE r.id=CASE WHEN i.v->>'kind'='role' THEN i.v->>'id' ELSE (SELECT role FROM auth_user WHERE id=i.v->>'id') END),
-   proposed AS (SELECT t.*,CASE WHEN i.v->>'kind'='role' THEN CASE WHEN i.v ? 'permissions' THEN ARRAY(SELECT jsonb_array_elements_text(i.v->'permissions')) ELSE t.grants END ELSE COALESCE((SELECT grants FROM roles WHERE id=i.v->>'role'),ARRAY[]::text[]) END AS next FROM target t,input i),
-   impact AS (SELECT p.*,a.id AS actor_id,a.role AS actor_role,
-    ARRAY(SELECT capability FROM unnest(ARRAY['iam:roles:manage','iam:users:manage-roles']) capability WHERE (capability=ANY(p.grants) OR '*'=ANY(p.grants)) AND NOT(capability=ANY(p.next) OR '*'=ANY(p.next))) AS lost,
-    (SELECT count(*)::int FROM auth_user u WHERE CASE WHEN i.v->>'kind'='role' THEN u.role=p.id ELSE u.id=i.v->>'id' END) AS affected,
-    EXISTS(SELECT 1 FROM auth_user u JOIN roles r ON r.id=u.role WHERE NOT(CASE WHEN i.v->>'kind'='role' THEN u.role=p.id ELSE u.id=i.v->>'id' END) AND ('*'=ANY(r.grants) OR ARRAY['iam:roles:manage','iam:users:manage-roles']::text[] <@ r.grants)) OR ((SELECT count(*) FROM auth_user u WHERE CASE WHEN i.v->>'kind'='role' THEN u.role=p.id ELSE u.id=i.v->>'id' END)>0 AND ('*'=ANY(p.next) OR ARRAY['iam:roles:manage','iam:users:manage-roles']::text[] <@ p.next)) AS has_admin,
-    EXISTS(SELECT 1 FROM roles r WHERE r.id=a.role AND ('*'=ANY(r.grants) OR (CASE WHEN i.v->>'kind'='role' THEN 'iam:roles:manage' ELSE 'iam:users:manage-roles' END)=ANY(r.grants))) AS authorized
-    FROM proposed p,input i LEFT JOIN auth_user a ON a.id=i.v->>'actor'),
-   assessment AS (SELECT i.v,p.*,
-    CASE WHEN (i.v->>'kind'='role' AND p.actor_role=p.id) OR (i.v->>'kind'='user' AND i.v->>'id'=i.v->>'actor') THEN COALESCE(p.lost,ARRAY[]::text[]) ELSE ARRAY[]::text[] END AS self_loss,
-    md5(jsonb_build_object('request',i.v-'confirmation','before',to_jsonb(p),'users',(SELECT COALESCE(jsonb_agg(jsonb_build_array(u.id,u.role) ORDER BY u.id),'[]'::jsonb) FROM auth_user u))::text) AS token
-    FROM input i LEFT JOIN impact p ON true),
-   decision AS (SELECT jsonb_build_object('code',CASE
-    WHEN id IS NULL OR (v->>'kind'='user' AND NOT EXISTS(SELECT 1 FROM roles WHERE roles.id=v->>'role')) THEN 'not_found'
-    WHEN NOT COALESCE(authorized,false) THEN 'forbidden'
-    WHEN v->>'kind'='role' AND ((id=\${defaultRole} AND next && ARRAY['*','iam:roles:manage','iam:users:manage-roles']::text[]) OR (id=\${adminRole} AND NOT '*'=ANY(next)) OR ('*'=ANY(next) AND NOT '*'=ANY(grants))) THEN 'protected'
-    WHEN NOT has_admin THEN 'last_admin'
-    WHEN cardinality(lost)>0 AND affected>0 AND (v->>'confirmation') IS DISTINCT FROM token THEN 'confirmation_required'
-    ELSE 'ok' END,'token',token,'selfLoss',self_loss,'lost',COALESCE(lost,ARRAY[]::text[]),'affected',COALESCE(affected,0),
-    'before',CASE WHEN v->>'kind'='role' THEN jsonb_build_object('name',name,'description',description,'permissions',grants) ELSE jsonb_build_object('role',id) END,
-    'after',CASE WHEN v->>'kind'='role' THEN jsonb_build_object('name',COALESCE(v->>'name',name),'description',CASE WHEN v ? 'description' THEN v->'description' ELSE to_jsonb(description) END,'permissions',next) ELSE jsonb_build_object('role',v->>'role') END) AS result FROM assessment)
-   SELECT set_config('nordix.iam_change',result::text,true)::jsonb AS result FROM decision\`),
-  db.execute(sql\`UPDATE auth_roles SET name=\${state}->'after'->>'name',description=\${state}->'after'->>'description',updated_at=now() WHERE \${change.kind}='role' AND id=\${change.id} AND \${ok}\`),
-  db.execute(sql\`DELETE FROM auth_role_permissions WHERE \${change.kind}='role' AND role_id=\${change.id} AND \${ok}\`),
-  db.execute(sql\`INSERT INTO auth_role_permissions(role_id,permission) SELECT \${change.id},g.value FROM jsonb_array_elements_text(\${state}->'after'->'permissions') g(value) WHERE \${change.kind}='role' AND \${ok}\`),
-  db.execute(sql\`UPDATE auth_user SET role=\${change.role??null},updated_at=now() WHERE \${change.kind}='user' AND id=\${change.id} AND \${ok}\`),
-  db.execute(sql\`INSERT INTO auth_iam_audit(actor_id,action,target_id,before,after) SELECT \${change.actor},\${change.kind==='role'?'role.updated':'user.role-assigned'},\${change.id},\${state}->'before',\${state}->'after' WHERE \${ok}\`)
- ]);
- const result=decision.rows[0]?.result as unknown as AccessResult;
- return {code:result.code,token:result.token,selfLoss:result.selfLoss,lost:result.lost,affected:result.affected};
+/** Interactive transactions keep IAM guards and writes under one advisory lock. */
+export const iamMutations = `import { Client } from "@neondatabase/serverless";
+import { and, eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import * as schema from "../database/schema/index.js";
+import { isAuthorized, type Permission } from "./policy.js";
+
+export interface AccessChange { kind:"role"|"user"; id:string; actor:string; confirmation?:string; role?:string; name?:string; description?:string|null; permissions?:string[]; }
+export interface AccessResult { code:"ok"|"not_found"|"forbidden"|"protected"|"last_admin"|"confirmation_required"; token:string; selfLoss:string[]; lost:string[]; affected:number; }
+export interface RoleInput { id:string; name:string; description?:string|null; permissions:string[]; }
+const management = ["iam:roles:manage", "iam:users:manage-roles"] as const;
+type Database = ReturnType<typeof database>;
+function database(client:Client) { return drizzle(client,{schema}); }
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+/** One connection per request, closed before returning, including on errors (Workers compatible). */
+export async function withIamTransaction<T>(connectionString:string, run:(tx:Transaction)=>Promise<T>):Promise<T> {
+ const client=new Client({connectionString});
+ const localProxy=process.env.NEON_HTTP_PROXY_URL;
+ const hostname=new URL(connectionString).hostname;
+ if(localProxy || hostname.endsWith(".localtest.me")) {
+  const endpoint=new URL(localProxy??"http://127.0.0.1:4444/sql");
+  if(endpoint.protocol!=="http:"||endpoint.username||endpoint.password)throw Error("NEON_HTTP_PROXY_URL must be a local HTTP endpoint without credentials.");
+  client.neonConfig.wsProxy=()=>endpoint.host+"/v2";
+  client.neonConfig.useSecureWebSocket=false;
+  client.neonConfig.pipelineConnect=false;
+ }
+ try {
+  await client.connect();
+  return await database(client).transaction(async tx=>{
+   // READ COMMITTED: every read after waiting for the lock observes the preceding commit.
+   await tx.execute(sql\`SELECT pg_advisory_xact_lock(197707,97)\`);
+   return run(tx);
+  },{isolationLevel:"read committed"});
+ } finally { await client.end(); }
+}
+
+async function snapshot(tx:Transaction) {
+ const roles=await tx.select().from(schema.authRoles).orderBy(schema.authRoles.id);
+ const grants=await tx.select().from(schema.authRolePermissions).orderBy(schema.authRolePermissions.role_id,schema.authRolePermissions.permission);
+ const users=await tx.select({id:schema.authUser.id,role:schema.authUser.role}).from(schema.authUser).orderBy(schema.authUser.id);
+ return {roles:roles.map(role=>({...role,permissions:grants.filter(grant=>grant.role_id===role.id).map(grant=>grant.permission)})),users};
+}
+const authorized=(permissions:readonly string[],permission:Permission)=>isAuthorized({permissions},{permissions:[permission]});
+async function requireActor(tx:Transaction,actor:string,permission:Permission) {
+ const state=await snapshot(tx);
+ const user=state.users.find(user=>user.id===actor);
+ const role=state.roles.find(role=>role.id===user?.role);
+ return {state,allowed:authorized(role?.permissions??[],permission)};
+}
+export async function createRole(connection:string,role:RoleInput,actor:string):Promise<"ok"|"forbidden"|"conflict"> {
+ return withIamTransaction(connection,async tx=>{
+  const {state,allowed}=await requireActor(tx,actor,"iam:roles:manage");
+  if(!allowed)return "forbidden";
+  if(state.roles.some(existing=>existing.id===role.id))return "conflict";
+  await tx.insert(schema.authRoles).values({id:role.id,name:role.name,description:role.description??null});
+  if(role.permissions.length)await tx.insert(schema.authRolePermissions).values(role.permissions.map(permission=>({id:crypto.randomUUID(),role_id:role.id,permission})));
+  return "ok";
+ });
+}
+export async function deleteRole(connection:string,id:string,actor:string,defaultRole:string,adminRole:string):Promise<"ok"|"forbidden"|"protected"|"role_in_use"|"not_found"> {
+ return withIamTransaction(connection,async tx=>{
+  const {state,allowed}=await requireActor(tx,actor,"iam:roles:manage");
+  if(!allowed)return "forbidden";
+  const role=state.roles.find(role=>role.id===id);
+  if(!role)return "not_found";
+  if(role.is_system||id===adminRole||id===defaultRole)return "protected";
+  if(state.users.some(user=>user.role===id))return "role_in_use";
+  await tx.delete(schema.authRoles).where(eq(schema.authRoles.id,id));
+  return "ok";
+ });
+}
+export async function changeAccess(connection:string,change:AccessChange,defaultRole:string,adminRole:string):Promise<AccessResult> {
+ return withIamTransaction(connection,async tx=>{
+  const {state,allowed}=await requireActor(tx,change.actor,change.kind==="role"?"iam:roles:manage":"iam:users:manage-roles");
+  const result:AccessResult={code:"ok",token:"",selfLoss:[],lost:[],affected:0};
+  if(!allowed)return {...result,code:"forbidden"};
+  const targetUser=state.users.find(user=>user.id===change.id);
+  const target=state.roles.find(role=>role.id===(change.kind==="role"?change.id:targetUser?.role));
+  const destination=state.roles.find(role=>role.id===change.role);
+  if(!target||(change.kind==="user"&&!destination))return {...result,code:"not_found"};
+  const next=change.kind==="role"?(change.permissions??target.permissions):destination!.permissions;
+  if(change.kind==="role"&&((target.id===defaultRole&&next.some(p=>p==="*"||management.some(m=>m===p)))||(target.id===adminRole&&!next.includes("*"))||(!target.permissions.includes("*")&&next.includes("*"))))return {...result,code:"protected"};
+  const affected=state.users.filter(user=>change.kind==="role"?user.role===target.id:user.id===change.id);
+  const affectedIds=new Set(affected.map(user=>user.id));
+  const lost=management.filter(permission=>authorized(target.permissions,permission)&&!authorized(next,permission));
+  const actor=state.users.find(user=>user.id===change.actor);
+  result.affected=affected.length;result.lost=[...lost];
+  result.selfLoss=(change.kind==="role"?actor?.role===target.id:change.id===change.actor)?[...lost]:[];
+  const hasAdmin=state.users.some(user=>{
+   const grants=affectedIds.has(user.id)?next:state.roles.find(role=>role.id===user.role)?.permissions??[];
+   return management.every(permission=>authorized(grants,permission));
+  });
+  if(!hasAdmin)return {...result,code:"last_admin"};
+  // Canonical, state-bound, actor-bound token; never replay a stale confirmation after a concurrent edit.
+  const {confirmation:_confirmation,...request}=change;
+  const canonical={request:{kind:request.kind,id:request.id,actor:request.actor,role:request.role??null,name:request.name??null,description:request.description===undefined?{unchanged:true}:request.description,permissions:request.permissions?[...request.permissions].sort():null},state};
+  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(canonical)));
+  result.token=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,"0")).join("");
+  if(lost.length&&affected.length&&change.confirmation!==result.token)return {...result,code:"confirmation_required"};
+  if(change.kind==="role") {
+   await tx.update(schema.authRoles).set({name:change.name??target.name,description:change.description===undefined?target.description:change.description,updated_at:new Date()}).where(eq(schema.authRoles.id,change.id));
+   if(change.permissions) {
+    await tx.delete(schema.authRolePermissions).where(eq(schema.authRolePermissions.role_id,change.id));
+    if(next.length)await tx.insert(schema.authRolePermissions).values(next.map(permission=>({id:crypto.randomUUID(),role_id:change.id,permission})));
+   }
+  } else {
+   await tx.update(schema.authUser).set({role:change.role!,updatedAt:new Date()}).where(and(eq(schema.authUser.id,change.id),eq(schema.authUser.role,target.id)));
+  }
+  return result;
+ });
 }
 `;

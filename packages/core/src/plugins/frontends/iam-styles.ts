@@ -1,6 +1,5 @@
 /** Scoped administration styles share the generated application's design tokens. */
 export const iamStyles = `
-.ng-iam-activity ul{list-style:none;margin:0;padding:0 24px 24px}.ng-iam-activity li{padding:16px 0;border-top:1px solid var(--color-border);display:grid;gap:6px;overflow-wrap:anywhere}.ng-iam-activity li>span,.ng-iam-activity time{font-size:13px;color:var(--color-muted)}.ng-iam-activity pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;background:var(--color-surface-subtle);padding:16px;border-radius:10px}.ng-iam-activity summary{cursor:pointer;font-size:13px;color:var(--color-primary)}
 
 .ng-iam-page { max-width: 1280px; margin: 0 auto; padding: 40px 36px 48px; color: var(--color-foreground); }
 .ng-iam-breadcrumb { display: flex; align-items: center; gap: 12px; min-height: 32px; margin-bottom: 35px; font-size: 13px; color: var(--color-muted); }

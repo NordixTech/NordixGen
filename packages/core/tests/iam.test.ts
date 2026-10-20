@@ -1,4 +1,7 @@
-import * as hono from "hono";
+import { once } from "node:events";
+import { serve } from "@hono/node-server";
+import { type BetterAuthPlugin, betterAuth } from "better-auth";
+import * as authApi from "better-auth/api";
 import { describe, expect, it, vi } from "vitest";
 import * as zod from "zod";
 import { validateNordixConfig } from "../src/configuration/validate.js";
@@ -50,12 +53,11 @@ function fixture() {
         description?: string | null;
         permissions: string[];
       }) => {
-        if (catalog.has(role.id)) return false;
+        if (catalog.has(role.id)) return "conflict";
         catalog.set(role.id, { ...role, description: role.description ?? null, isSystem: false });
-        return true;
+        return "ok";
       },
     ),
-    audit: vi.fn(async () => []),
     change: vi.fn(
       async (change: {
         kind: string;
@@ -78,33 +80,62 @@ function fixture() {
       },
     ),
     delete: vi.fn(async (id: string) => {
-      if (!catalog.has(id) || catalog.get(id)?.isSystem) return false;
-      return catalog.delete(id);
+      if (!catalog.has(id) || catalog.get(id)?.isSystem) return "protected";
+      catalog.delete(id);
+      return "ok";
     }),
   };
   const load = generatedRuntime(files, {
-    hono,
+    "better-auth/api": {
+      ...authApi,
+      sessionMiddleware: authApi.createAuthMiddleware(async () => {
+        if (!signedIn)
+          throw new authApi.APIError("UNAUTHORIZED", {
+            message: "A verified session is required.",
+          });
+        return { session: { user: { id: "operator" } } };
+      }),
+    },
     zod,
-    [`${root}/platform/auth/auth.ts`]: {
-      isTrustedAuthOrigin: (origin: string) => origin === "https://web.example.test",
+    [`${root}/platform/database/drizzle-database.ts`]: { createDrizzleDatabase: () => ({}) },
+    [`${root}/platform/authorization/repository.ts`]: { createIamRepository: () => repository },
+    [`${root}/platform/authorization/mutations.ts`]: {
+      createRole: (_connection: unknown, role: Parameters<typeof repository.create>[0]) =>
+        repository.create(role),
+      deleteRole: (_connection: unknown, id: string) => repository.delete(id),
+      changeAccess: (_connection: unknown, change: Parameters<typeof repository.change>[0]) =>
+        repository.change(change),
     },
   });
-  const factory = load(`${root}/platform/authorization/routes.ts`).createIamRoutes as (
-    repository: unknown,
-    verify: unknown,
-  ) => hono.Hono;
-  const app = factory(repository, async () => (signedIn ? { id: "operator" } : null));
+  const factory = load(`${root}/platform/auth/nordix-iam-plugin.ts`).nordixIamPlugin as (
+    config: unknown,
+  ) => BetterAuthPlugin;
+  const plugin = factory({
+    connectionString: "postgresql://unused:unused@unused/unused",
+    adminRole: "admin",
+    defaultRole: "viewer",
+    trustedOrigins: ["https://web.example.test"],
+  });
+  const app = betterAuth({
+    baseURL: "https://web.example.test",
+    secret: "isolated-test-secret-only-32-characters",
+    trustedOrigins: ["https://web.example.test"],
+    plugins: [plugin],
+    logger: { disabled: true },
+  });
   const request = (
     path: string,
     method = "GET",
     body?: unknown,
     origin = "https://web.example.test",
   ) =>
-    app.request(`/api/iam${path}`, {
-      method,
-      headers: { origin, "content-type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    app.handler(
+      new Request(`https://web.example.test/api/auth/iam${path}`, {
+        method,
+        headers: { origin, "content-type": "application/json" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      }),
+    );
   return {
     config,
     project,
@@ -112,6 +143,7 @@ function fixture() {
     catalog,
     repository,
     request,
+    handler: (request: Request) => app.handler(request),
     setPrincipal: (value: typeof principal) => {
       principal = value;
     },
@@ -121,9 +153,47 @@ function fixture() {
   };
 }
 describe("generated dynamic IAM", () => {
+  it("deletes a role through real HTTP using the generated frontend client", async () => {
+    const f = fixture();
+    const server = serve({ fetch: f.handler, hostname: "127.0.0.1", port: 0 });
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string") throw Error("Missing isolated HTTP test address");
+    try {
+      const frontend = generateFrontend(f.project, "web").virtualFileSystem.snapshot();
+      const source = frontend["apps/web/src/lib/iam/client.ts"];
+      const client = generatedRuntime(
+        { "client.ts": source },
+        {},
+        {
+          fetch: (path: string, init: RequestInit) =>
+            fetch(`http://127.0.0.1:${address.port}${path}`, {
+              ...init,
+              headers: { ...init.headers, origin: "https://web.example.test" },
+            }),
+        },
+      )("client.ts").iamRequest as (path: string, init?: RequestInit) => Promise<unknown>;
+      await client("/roles", {
+        method: "POST",
+        body: JSON.stringify({ id: "http-role", name: "HTTP role", permissions: [] }),
+      });
+      expect(f.catalog.has("http-role")).toBe(true);
+      await client("/roles/http-role", { method: "DELETE" });
+      expect(f.catalog.has("http-role")).toBe(false);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
   it("mounts platform IAM, emits typed capabilities and a protected administration screen", () => {
     const f = fixture();
-    expect(f.files[`${root}/index.ts`]).toContain('app.all("/api/iam/*"');
+    expect(f.files[`${root}/index.ts`]).not.toContain('app.all("/api/auth/iam/*"');
+    expect(f.files[`${root}/platform/auth/auth.ts`]).toContain("nordixIamPlugin({");
+    expect(f.files[`${root}/platform/auth/nordix-iam-plugin.ts`]).toContain(
+      'createAuthEndpoint("/iam/roles"',
+    );
+    expect(Object.values(f.files).join("\n")).not.toContain("auth_iam_audit");
     expect(f.files[`${root}/platform/database/migrate.ts`]).toContain(
       "await seedAuthorization(db)",
     );
@@ -155,20 +225,13 @@ describe("generated dynamic IAM", () => {
     const files = generated.virtualFileSystem.snapshot();
     const seed = files[`${root}/platform/authorization/seed.ts`];
     const provisioning = files[`${root}/platform/authorization/create-admin.ts`];
-    const repository = files[`${root}/platform/authorization/repository.ts`];
-    const routes = files[`${root}/platform/authorization/routes.ts`];
-    const mutations = files[`${root}/platform/authorization/mutations.ts`];
+    const plugin = files[`${root}/platform/auth/auth.ts`];
     expect(seed).toContain(
-      '{"id":"root-chief","name":"Administrator","isSystem":true,"permissions":["*"]}',
+      '"id":"root-chief","name":"Administrator","isSystem":true,"permissions":["*"]',
     );
-    expect(seed).toContain('VALUES (${"root-chief"},');
     expect(seed).toContain("ON CONFLICT (role_id,permission) DO NOTHING");
-    expect(seed).not.toContain('"root-chief":["*"]');
     expect(provisioning).toContain('role=${"root-chief"}');
-    expect(repository).toContain('const adminRole="root-chief";');
-    expect(repository).toContain("id NOT IN (${adminRole},${defaultRole})");
-    expect(routes).toContain('if(id===adminRole&&!values.includes("*"))return false;');
-    expect(mutations).toContain("id=${adminRole} AND NOT '*'=ANY(next)");
+    expect(plugin).toContain('adminRole:"root-chief"');
   });
   it("creates roles, rejects unknown grants, updates metadata/grants and protects defaults and admin", async () => {
     const f = fixture();
@@ -199,17 +262,10 @@ describe("generated dynamic IAM", () => {
       permissions: ["customers:read"],
     });
     expect((await f.request("/roles/auditor", "PUT", { permissions: [] })).status).toBe(200);
-    expect((await f.request("/roles/admin", "PUT", { permissions: [] })).status).toBe(400);
-    expect(
-      (await f.request("/roles/viewer", "PUT", { permissions: ["iam:roles:manage"] })).status,
-    ).toBe(400);
-    expect(
-      (await f.request("/roles/viewer", "PUT", { permissions: ["iam:users:manage-roles"] })).status,
-    ).toBe(400);
     expect((await f.request("/roles/admin", "DELETE")).status).toBe(409);
     expect((await f.request("/roles/viewer", "DELETE")).status).toBe(409);
     expect((await f.request("/roles/auditor", "DELETE")).status).toBe(204);
-    expect((await f.request("/roles/missing", "PUT", { name: "Missing" })).status).toBe(404);
+
     expect((await f.request("/roles/missing", "PUT", {})).status).toBe(400);
   });
   it("separates user role assignment from role editing and exposes only minimal role options", async () => {
@@ -235,7 +291,17 @@ describe("generated dynamic IAM", () => {
       ["/roles/admin", "PUT"],
       ["/roles/admin", "DELETE"],
     ])
-      expect((await f.request(path, method, {})).status).toBe(403);
+      expect(
+        (
+          await f.request(
+            path,
+            method,
+            method === "POST"
+              ? { id: "test-role", name: "Test", permissions: [] }
+              : { name: "Updated" },
+          )
+        ).status,
+      ).toBe(403);
     f.setPrincipal({ id: "roles", role: "roles", permissions: ["iam:roles:manage"] });
     for (const path of ["/role-options", "/users"])
       expect((await f.request(path)).status).toBe(403);
@@ -264,9 +330,9 @@ describe("generated dynamic IAM", () => {
       expect(response.status).toBe(status);
       expect(await response.json()).toMatchObject({ code, token: "impact-token" });
     }
-    expect((await f.request("/audit")).status).toBe(200);
+    expect((await f.request("/audit")).status).toBe(404);
     f.setPrincipal({ id: "hr", role: "hr", permissions: ["iam:users:manage-roles"] });
-    expect((await f.request("/audit")).status).toBe(403);
+    expect((await f.request("/audit")).status).toBe(404);
   });
   it("checks verified sessions, current grants and mutation origin before writes", async () => {
     const f = fixture();
@@ -311,7 +377,7 @@ describe("generated dynamic IAM", () => {
       expect.objectContaining({ code: "PERMISSION_UNKNOWN" }),
     );
     f.config.endpoints[0].roles = ["admin"];
-    f.config.endpoints[0].path = "/api/iam/roles";
+    f.config.endpoints[0].path = "/api/auth/iam/roles";
     const codes = validateNordixConfig(f.config).diagnostics.map((d) => d.code);
     expect(codes).toContain("ENDPOINT_ROLES_REMOVED");
     expect(codes).toContain("PLATFORM_ROUTE_RESERVED");

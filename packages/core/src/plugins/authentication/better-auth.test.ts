@@ -1,6 +1,7 @@
-import ts from "typescript";
+import * as access from "better-auth/plugins/access";
 import { describe, expect, it } from "vitest";
 import { resolvedFixture } from "../../../tests/fixtures.js";
+import { generatedRuntime } from "../../../tests/generated-runtime.js";
 import { parseNordixYaml } from "../../configuration/validate.js";
 import { generateBackend } from "../../generation/backend.js";
 import { ACCOUNT_POLICY } from "../../project/account-policy.js";
@@ -114,12 +115,10 @@ describe("backend Better Auth generation", () => {
       "apps/api/src/platform/authorization/policy.ts",
     );
     if (!policySource) throw new Error("Authorization policy was not generated.");
-    const javascript = ts.transpileModule(policySource, {
-      compilerOptions: { module: ts.ModuleKind.ESNext },
-    }).outputText;
-    const policy = await import(
-      `data:text/javascript;base64,${Buffer.from(javascript).toString("base64")}`
-    );
+    const policy = generatedRuntime(
+      { "policy.ts": policySource },
+      { "better-auth/plugins/access": access },
+    )("policy.ts") as { isAuthorized: (principal: unknown, requirements: unknown) => boolean };
 
     expect(
       policy.isAuthorized({ role: "admin", permissions: ["*"] }, { permissions: ["orders:read"] }),

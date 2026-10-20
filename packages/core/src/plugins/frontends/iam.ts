@@ -15,11 +15,10 @@ export function generateFrontendIam(context: FrontendRenderContext): readonly Ge
       content: `export interface IamRole {id:string;name:string;description:string|null;isSystem:boolean;permissions:string[];}
 export interface IamUser {id:string;name:string;email:string;role:string;}
 export interface AccessImpact {code:string;token:string;selfLoss:string[];lost:string[];affected:number;}
-export interface AuditEntry {id:string;actorId:string;action:string;targetId:string;before:unknown;after:unknown;createdAt:string;}
 export class IamError extends Error {constructor(message:string,public impact?:AccessImpact){super(message);}}
 export async function iamRequest<T>(path:string,init:RequestInit={}):Promise<T>{
- const response=await fetch("/api/iam"+path,{...init,headers:{"Content-Type":"application/json",...init.headers},credentials:"include",cache:"no-store"});
- if(!response.ok){const error=await response.json().catch(()=>null);throw new IamError(error?.detail??"Administration request failed.",error?.code?error:undefined);}
+ const response=await fetch("/api/auth/iam"+path,{...init,headers:{...(init.body==null?{}:{"Content-Type":"application/json"}),...init.headers},credentials:"include",cache:"no-store"});
+ if(!response.ok){const error=await response.json().catch(()=>null);throw new IamError(error?.detail??error?.message??"Administration request failed.",error?.code?error:undefined);}
  return response.status===204?undefined as T:await response.json() as T;
 }
 `,
@@ -45,7 +44,7 @@ export default async function RolesPage(){
       content: `"use client";
 import {useEffect,useState,type FormEvent} from "react";
 import {useSessionView} from "@/lib/auth/use-session-view";
-import {iamRequest,IamError,type AccessImpact,type AuditEntry,type IamRole,type IamUser} from "@/lib/iam/client";
+import {iamRequest,IamError,type AccessImpact,type IamRole,type IamUser} from "@/lib/iam/client";
 import {Dialog} from "@/components/ui/dialog";
 import {Table} from "@/components/ui/table";
 type Draft={id:string;name:string;description:string;permissions:string[];existing:boolean};
@@ -82,7 +81,6 @@ export function IamAdministration(){
  const manageRoles=session.hasPermission("iam:roles:manage"),manageUsers=session.hasPermission("iam:users:manage-roles");
  const userId=session.user?.id;
  const [confirmation,setConfirmation]=useState<{path:string;method:string;message:string;value:unknown;impact:AccessImpact}|null>(null);
- const [audit,setAudit]=useState<AuditEntry[]>([]);
  const [roles,setRoles]=useState<IamRole[]>([]),[options,setOptions]=useState<{id:string;name:string}[]>([]),[permissions,setPermissions]=useState<string[]>([]);
  const [users,setUsers]=useState<IamUser[]>([]),[total,setTotal]=useState(0),[page,setPage]=useState(1);
  const [draft,setDraft]=useState<Draft|null>(null),[deleting,setDeleting]=useState<IamRole|null>(null);
@@ -93,7 +91,6 @@ export function IamAdministration(){
   const load=async()=>{
    if(manageRoles){const [catalog,registry]=await Promise.all([iamRequest<IamRole[]>("/roles"),iamRequest<string[]>("/permissions")]);if(active){setRoles(catalog);setPermissions(registry);}}
    if(manageUsers){const [catalog,result]=await Promise.all([iamRequest<{id:string;name:string}[]>("/role-options"),iamRequest<{items:IamUser[];total:number}>("/users?page="+page+"&pageSize=25")]);if(active){setOptions(catalog);setUsers(result.items);setTotal(result.total);}}
-   if(manageRoles){const entries=await iamRequest<AuditEntry[]>("/audit");if(active)setAudit(entries);}
   };void load().catch(reason=>{if(active)setError(reason instanceof Error?reason.message:"Could not load administration.");}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};
  },[manageRoles,manageUsers,page,revision,userId]);
  async function mutate(path:string,method:string,message:string,value?:unknown){setBusy(true);setError("");setSuccess("");try{
@@ -133,7 +130,6 @@ export function IamAdministration(){
     <footer className="ng-iam-card-footer"><span>{total===0?"No users":String((page-1)*25+1)+"–"+Math.min(page*25,total)+" of "+total+" users"}</span>{query&&<span>Filtered on this page</span>}<div className="ng-iam-pagination"><button className="ng-button ng-button--secondary" disabled={busy||loading||page===1} onClick={()=>setPage(page-1)}>Previous</button><span>Page {page}</span><button className="ng-button ng-button--secondary" disabled={busy||loading||page*25>=total} onClick={()=>setPage(page+1)}>Next</button></div></footer>
    </div>}
   </section>
-  {manageRoles&&<section className="ng-iam-card ng-iam-activity"><div className="ng-iam-toolbar"><div><h2>Recent access changes</h2><p>Who changed roles and user assignments. Showing the latest 50 changes.</p></div></div>{audit.length?<ul>{audit.map(entry=><li key={entry.id}><strong>{entry.action==="role.updated"?"Role updated":entry.action==="role.created"?"Role created":entry.action==="role.deleted"?"Role deleted":"User role assigned"}</strong><span>Target: {entry.targetId} · By: {entry.actorId}</span><time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString()}</time><details><summary>View change</summary><pre>{JSON.stringify({before:entry.before,after:entry.after},null,2)}</pre></details></li>)}</ul>:<p className="ng-iam-footnote">No access changes recorded yet.</p>}</section>}
   {confirmation&&<Dialog open title={confirmation.impact.selfLoss.length?"Remove your own administrative access?":"Remove administrative access?"} description="Changes take effect immediately." onOpenChange={open=>{if(!open&&!busy)setConfirmation(null);}}><div className="ng-iam-editor"><div className="ng-iam-editor-note"><Icon name="shield"/><div><strong>{confirmation.impact.selfLoss.length?"This change affects your own account.":"This change affects "+confirmation.impact.affected+" team member(s)."}</strong><p>{confirmation.impact.selfLoss.length?"You will lose the capabilities listed below. You may need another administrator to restore your access.":"These users will lose the administrative capabilities listed below."}</p></div></div><ul>{(confirmation.impact.selfLoss.length?confirmation.impact.selfLoss:confirmation.impact.lost).map(permission=><li key={permission}>{permissionLabel(permission)}</li>)}</ul><p>You can cancel to keep the current access.</p><footer className="ng-iam-editor-footer"><button data-initial-focus type="button" className="ng-button ng-button--secondary" disabled={busy} onClick={()=>setConfirmation(null)}>Cancel</button><button type="button" className="ng-button ng-iam-delete-confirm" disabled={busy} onClick={()=>void mutate(confirmation.path,confirmation.method,confirmation.message,{...confirmation.value as object,confirmation:confirmation.impact.token})}>{busy?"Applying…":"Confirm access change"}</button></footer></div></Dialog>}
   <p className="ng-iam-footnote"><Icon name="shield"/>Access is verified by your application on every request.</p>
   {manageRoles&&draft&&!confirmation&&<Dialog open title={draft.existing?"Edit role":"Create role"} description={draft.existing?"Changes apply to everyone assigned to this role.":"Create an access profile, then assign it to your team."} onOpenChange={open=>{if(!open&&!busy)setDraft(null);}}><form onSubmit={save} className="ng-iam-editor">

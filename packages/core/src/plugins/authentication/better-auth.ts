@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { ACCOUNT_POLICY } from "../../project/account-policy.js";
+import { iamPlugin } from "../authorization/iam-plugin.js";
 import type { BackendRenderContext, GeneratedFile } from "../contracts.js";
 
 interface BetterAuthSelection {
@@ -114,6 +115,7 @@ function authRuntimeContent(
   const lines = [
     'import { betterAuth } from "better-auth";',
     'import { drizzleAdapter } from "@better-auth/drizzle-adapter";',
+    'import { nordixIamPlugin } from "./nordix-iam-plugin.js";',
     ...(methods.includes("username-password")
       ? ['import { username } from "better-auth/plugins";']
       : []),
@@ -121,6 +123,7 @@ function authRuntimeContent(
       ? ['import { twoFactor } from "better-auth/plugins";']
       : []),
     `import * as schema from "${relativeImport(authFilePath, schemaPath)}";`,
+    'import * as iamSchema from "../database/schema/iam-schema.js";',
     `import { createDrizzleDatabase } from "${relativeImport(authFilePath, databasePath)}";`,
     "",
     "export interface AuthEnvironment {",
@@ -153,6 +156,7 @@ function authRuntimeContent(
     );
   }
   const pluginValues = [
+    `nordixIamPlugin({connectionString:env.DATABASE_URL,defaultRole:${JSON.stringify(defaultRole)},adminRole:${JSON.stringify(config.authorization.adminRole)},trustedOrigins:getTrustedAuthOrigins(env)})`,
     ...(methods.includes("username-password") ? ["username()"] : []),
     ...(features.includes("two-factor") ? ["twoFactor()"] : []),
   ];
@@ -196,7 +200,7 @@ function authRuntimeContent(
     "    baseURL: env.BETTER_AUTH_URL,",
     "    secret: env.BETTER_AUTH_SECRET,",
     "    trustedOrigins: getTrustedAuthOrigins(env),",
-    '    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema: { ...schema, user: schema.authUser } }),',
+    '    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema: { ...schema, ...iamSchema, user: schema.authUser, auth_roles: iamSchema.authRoles, auth_role_permissions: iamSchema.authRolePermissions } }),',
     `    user: { additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } } },`,
     "    emailAndPassword: {",
     "      enabled: true,",
@@ -245,6 +249,7 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
   const features = config.authentication.features;
   const defaultRole = config.authorization.defaultRole;
   return [
+    { path: posix.join(infrastructure, "auth/nordix-iam-plugin.ts"), content: iamPlugin },
     {
       path: schemaPath,
       content: authSchemaContent(methods, features, defaultRole),
@@ -252,6 +257,23 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
     {
       path: authFilePath,
       content: authRuntimeContent(context, config, authFilePath, schemaPath, databasePath),
+    },
+    {
+      path: posix.join(infrastructure, "auth/schema.config.ts"),
+      content: [
+        "// Schema discovery only: no credentials, requests or database connections are used.",
+        'import {createAuth} from "./auth.js";',
+        "export const auth=createAuth({",
+        ' DATABASE_URL:"postgresql://schema:schema@schema.invalid/schema",',
+        ' BETTER_AUTH_URL:"https://schema.invalid",',
+        ' BETTER_AUTH_SECRET:"schema-discovery-only-not-a-runtime-secret",',
+        ...config.authentication.identityProviders.flatMap((provider) => [
+          ` ${provider.toUpperCase()}_CLIENT_ID:"schema-only",`,
+          ` ${provider.toUpperCase()}_CLIENT_SECRET:"schema-only",`,
+        ]),
+        "});",
+        "",
+      ].join("\n"),
     },
     {
       path: posix.join(infrastructure, "auth/README.md"),
@@ -275,6 +297,12 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
           : []),
         "",
         "Apply database migrations with the generated Drizzle Kit configuration before serving auth requests.",
+        "",
+        "IAM is registered as nordixIamPlugin. Its endpoints are under /api/auth/iam; audit logging is deferred.",
+        "The schema.config.ts entrypoint is for offline Better Auth CLI discovery only. Do not serve it.",
+        "From the backend root: pnpm dlx auth@1.7.10 generate --config ./src/platform/auth/schema.config.ts --output ./better-auth-discovered.ts --yes",
+        "Review the discovered schema alongside the maintained Drizzle files; do not overwrite business schemas.",
+        "IAM writes use request-scoped Neon WebSocket transactions. NEON_HTTP_PROXY_URL also selects the local proxy's WebSocket endpoint.",
         "",
       ].join("\n"),
     },

@@ -35,6 +35,7 @@ neonConfig.fetchFunction = (
 };
 neonConfig.fetchEndpoint = `http://127.0.0.1:${state.proxyPort}/sql`;
 process.env.DATABASE_URL = connection;
+process.env.NEON_HTTP_PROXY_URL = `http://127.0.0.1:${state.proxyPort}/sql`;
 const sql = neon(connection);
 const environment = {
   DATABASE_URL: connection,

@@ -7,9 +7,12 @@ import * as faker from "@faker-js/faker";
 import * as validator from "@hono/zod-validator";
 import * as neon from "@neondatabase/serverless";
 import * as betterAuth from "better-auth";
+import * as authApi from "better-auth/api";
+import * as access from "better-auth/plugins/access";
 import * as orm from "drizzle-orm";
 import * as neonOrm from "drizzle-orm/neon-http";
 import * as migrator from "drizzle-orm/neon-http/migrator";
+import * as neonTransactions from "drizzle-orm/neon-serverless";
 import * as pg from "drizzle-orm/pg-core";
 import * as hono from "hono";
 import * as cors from "hono/cors";
@@ -54,6 +57,7 @@ describe
     let previousFetch: unknown;
     let previousDatabase: string | undefined;
     let previousEndpoint: unknown;
+    let previousLocalProxy: string | undefined;
     async function reset() {
       await sql("DROP SCHEMA IF EXISTS drizzle CASCADE");
       await sql("DROP SCHEMA public CASCADE");
@@ -170,6 +174,8 @@ describe
       previousFetch = neon.neonConfig.fetchFunction;
       previousEndpoint = neon.neonConfig.fetchEndpoint;
       previousDatabase = process.env.DATABASE_URL;
+      previousLocalProxy = process.env.NEON_HTTP_PROXY_URL;
+      process.env.NEON_HTTP_PROXY_URL = `http://127.0.0.1:${port}/sql`;
       neon.neonConfig.fetchFunction = (target: string | URL, init: RequestInit) =>
         fetch(String(target).replace("http://127.0.0.1:4444/", `http://127.0.0.1:${port}/`), init);
       neon.neonConfig.fetchEndpoint = "http://127.0.0.1:4444/sql";
@@ -179,6 +185,9 @@ describe
       await prepare();
     }, 60_000);
     afterAll(async () => {
+      if (previousLocalProxy === undefined)
+        Reflect.deleteProperty(process.env, "NEON_HTTP_PROXY_URL");
+      else process.env.NEON_HTTP_PROXY_URL = previousLocalProxy;
       neon.neonConfig.fetchFunction = previousFetch;
       neon.neonConfig.fetchEndpoint = previousEndpoint as typeof neon.neonConfig.fetchEndpoint;
       if (previousDatabase === undefined) process.env.DATABASE_URL = undefined;
@@ -442,6 +451,9 @@ describe
         "drizzle-orm/neon-http": neonOrm,
         "@neondatabase/serverless": neon,
         "better-auth": betterAuth,
+        "better-auth/api": authApi,
+        "better-auth/plugins/access": access,
+        "drizzle-orm/neon-serverless": neonTransactions,
         "@better-auth/drizzle-adapter": authAdapter,
         "node:path": path,
         "node:url": url,
@@ -505,7 +517,7 @@ describe
       await adminTools.createAdmin("ordinary@example.test");
       const iamRequest = (route: string, method = "GET", body?: unknown, token = cookie) =>
         liveApp.request(
-          `http://localhost:8787/api/iam${route}`,
+          `http://localhost:8787/api/auth/iam${route}`,
           {
             method,
             headers: {
@@ -600,6 +612,7 @@ describe
       );
       expect(selfEdit.status).toBe(409);
       const editImpact = await selfEdit.json();
+      expect(editImpact.token).toMatch(/^[a-f0-9]{64}$/);
       expect(
         (await iamRequest("/roles/delegated", "PUT", { name: "Delegated administrator" })).status,
       ).toBe(200);
@@ -708,13 +721,28 @@ describe
       expect(lastRoleEdit.status).toBe(409);
       expect(await lastRoleEdit.json()).toMatchObject({ code: "last_admin" });
       await adminTools.createAdmin("ordinary@example.test");
-      await sql("ALTER TABLE auth_iam_audit RENAME TO isolated_audit_unavailable");
+      expect(
+        (
+          await sql(
+            "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename='auth_iam_audit'",
+          )
+        ).length,
+      ).toBe(0);
+      expect((await iamRequest("/audit")).status).toBe(404);
+      // A failed grant insert rolls back both the metadata and grant changes in the same transaction.
+      await sql(
+        "CREATE FUNCTION iam_test_reject_grant() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated grant write failure'; END $$",
+      );
+      await sql(
+        "CREATE TRIGGER iam_test_reject_grant BEFORE INSERT ON auth_role_permissions FOR EACH ROW EXECUTE FUNCTION iam_test_reject_grant()",
+      );
       try {
-        const failedAudit = await iamRequest("/roles/auditor", "PUT", {
+        const failure = await iamRequest("/roles/auditor", "PUT", {
           name: "Must roll back",
           permissions: ["invoices:read"],
         });
-        expect(failedAudit.status).toBe(500);
+        expect(failure.status).toBe(500);
+        expect(await failure.text()).not.toContain("isolated grant write failure");
         expect((await sql("SELECT name FROM auth_roles WHERE id='auditor'"))[0].name).toBe(
           "Auditor",
         );
@@ -726,24 +754,9 @@ describe
           )[0].n,
         ).toBe(0);
       } finally {
-        await sql("ALTER TABLE isolated_audit_unavailable RENAME TO auth_iam_audit");
+        await sql("DROP TRIGGER iam_test_reject_grant ON auth_role_permissions");
+        await sql("DROP FUNCTION iam_test_reject_grant()");
       }
-      const audit = await iamRequest("/audit");
-      expect(audit.status).toBe(200);
-      expect(await audit.json()).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            actorId: firstId,
-            action: "user.role-assigned",
-            targetId: secondId,
-          }),
-          expect.objectContaining({
-            actorId: secondId,
-            action: "role.updated",
-            targetId: "delegated",
-          }),
-        ]),
-      );
       // Re-running seed must not resurrect grants removed by an operator.
       await sql("DELETE FROM auth_role_permissions WHERE role_id='viewer'");
       const currentDb = live(`${root}/platform/database/drizzle-database.ts`)
@@ -809,7 +822,7 @@ describe
       expect((await iamRequest("/roles/viewer", "DELETE")).status).toBe(409);
       await sql("UPDATE auth_roles SET is_system=true WHERE id='viewer'");
       await sql(
-        "INSERT INTO auth_role_permissions(role_id,permission) VALUES('viewer','iam:roles:manage')",
+        "INSERT INTO auth_role_permissions(id,role_id,permission) VALUES(gen_random_uuid()::text,'viewer','iam:roles:manage')",
       );
       await expect(
         (

@@ -70,7 +70,7 @@ describe("verified server page access", () => {
       await f.requireIam();
       expect(f.fetchSession.mock.calls.map((call) => String(call[0]))).toEqual([
         "https://internal.invalid/api/auth/get-session",
-        "https://internal.invalid/api/iam/me",
+        "https://internal.invalid/api/auth/iam/me",
       ]);
       expect(process.env.NEXT_PUBLIC_AUTH_BASE_URL).toBe("http://localhost:8787");
     } finally {
@@ -88,7 +88,9 @@ describe("verified server page access", () => {
           )
           .mockResolvedValueOnce(new Response(JSON.stringify({ permissions: [permission] })));
         await expect(f.requireIam()).resolves.toBeUndefined();
-        expect(String(f.fetchSession.mock.calls[1][0])).toBe("https://internal.invalid/api/iam/me");
+        expect(String(f.fetchSession.mock.calls[1][0])).toBe(
+          "https://internal.invalid/api/auth/iam/me",
+        );
         expect(f.fetchSession.mock.calls[1][1]).toMatchObject({
           cache: "no-store",
           headers: { cookie: "test-cookie" },

@@ -85,7 +85,7 @@ export {handler as GET,handler as POST,handler as PUT,handler as PATCH,handler a
     ...(identity
       ? [
           { path: `${root}/app/api/auth/[...path]/route.ts`, content: route(identity) },
-          { path: `${root}/app/api/iam/[...path]/route.ts`, content: route(identity) },
+          { path: `${root}/app/api/auth/iam/[...path]/route.ts`, content: route(identity) },
         ]
       : []),
   ];
