@@ -98,6 +98,7 @@ endpoints:
   - backend: api
     entity: Customer
     operationId: listCustomers
+    audit: true
     method: GET
     path: /api/customers
     authRequired: false
@@ -123,6 +124,7 @@ endpoints:
   - backend: api
     entity: Customer
     operationId: createCustomer
+    audit: true
     method: POST
     path: /api/customers
     permissions: [customers:write]
@@ -130,6 +132,7 @@ endpoints:
   - backend: api
     entity: Customer
     operationId: updateCustomer
+    audit: true
     method: PATCH
     path: /api/customers/{customerId}
     permissions: [customers:write]
@@ -140,6 +143,7 @@ endpoints:
   - backend: api
     entity: Customer
     operationId: deleteCustomer
+    audit: true
     method: DELETE
     path: /api/customers/{customerId}
     permissions: [customers:write]
@@ -165,6 +169,7 @@ endpoints:
   - backend: api
     entity: Invoice
     operationId: createInvoice
+    audit: true
     method: POST
     path: /api/invoices
     permissions: [invoices:write]
@@ -172,6 +177,7 @@ endpoints:
   - backend: api
     entity: Invoice
     operationId: updateInvoice
+    audit: true
     method: PATCH
     path: /api/invoices/{invoiceKey}
     permissions: [invoices:write]

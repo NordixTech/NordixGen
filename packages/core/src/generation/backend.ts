@@ -16,6 +16,7 @@ import { generateDrizzleFiles } from "../plugins/orms/drizzle.js";
 import type { ResolvedProject } from "../project/types.js";
 import { backendView } from "../project/views.js";
 import { generateApplicationRuntime } from "./application-runtime.js";
+import { generateAuditFiles } from "./audit.js";
 import { generateBoundaryCheck } from "./boundaries.js";
 import { cloudflareConfiguration } from "./cloudflare.js";
 import { backendDependencies } from "./dependencies.js";
@@ -105,7 +106,14 @@ export function generateBackend(project: ResolvedProject, name: string) {
         },
       ];
     }),
-    ...(context.persistence ? [{ owner: "drizzle", files: generateDrizzleFiles(context) }] : []),
+    ...(context.persistence
+      ? [
+          {
+            owner: "drizzle",
+            files: [...generateDrizzleFiles(context), ...generateAuditFiles(context)],
+          },
+        ]
+      : []),
     ...(context.identity
       ? [
           { owner: "better-auth", files: generateBetterAuthFiles(context) },

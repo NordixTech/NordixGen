@@ -1,5 +1,6 @@
 /** Interactive transactions keep IAM guards and writes under one advisory lock. */
-export const iamMutations = `import { Client } from "@neondatabase/serverless";
+export const iamMutations = `import type {AuditEvent} from "../audit/runtime.js";
+import { Client } from "@neondatabase/serverless";
 import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import * as schema from "../database/schema/index.js";
@@ -48,18 +49,23 @@ async function requireActor(tx:Transaction,actor:string,permission:Permission) {
  const role=state.roles.find(role=>role.id===user?.role);
  return {state,allowed:authorized(role?.permissions??[],permission)};
 }
-export async function createRole(connection:string,role:RoleInput,actor:string):Promise<"ok"|"forbidden"|"conflict"> {
- return withIamTransaction(connection,async tx=>{
+export async function createRole(connection:string,role:RoleInput,actor:string,capture?:(event:AuditEvent)=>void):Promise<"ok"|"forbidden"|"conflict"> {
+ let event:AuditEvent|undefined;
+ const outcome=await withIamTransaction(connection,async tx=>{
   const {state,allowed}=await requireActor(tx,actor,"iam:roles:manage");
   if(!allowed)return "forbidden";
   if(state.roles.some(existing=>existing.id===role.id))return "conflict";
   await tx.insert(schema.authRoles).values({id:role.id,name:role.name,description:role.description??null});
   if(role.permissions.length)await tx.insert(schema.authRolePermissions).values(role.permissions.map(permission=>({id:crypto.randomUUID(),role_id:role.id,permission})));
+  event={actorId:actor,action:"iam.role.created",resourceType:"role",resourceId:role.id,before:null,after:{...role,description:role.description??null}};
   return "ok";
  });
+ try{if(event)capture?.(event);}catch{console.error("Audit capture failed.");}
+ return outcome;
 }
-export async function deleteRole(connection:string,id:string,actor:string,defaultRole:string,adminRole:string):Promise<"ok"|"forbidden"|"protected"|"role_in_use"|"not_found"> {
- return withIamTransaction(connection,async tx=>{
+export async function deleteRole(connection:string,id:string,actor:string,defaultRole:string,adminRole:string,capture?:(event:AuditEvent)=>void):Promise<"ok"|"forbidden"|"protected"|"role_in_use"|"not_found"> {
+ let event:AuditEvent|undefined;
+ const outcome=await withIamTransaction(connection,async tx=>{
   const {state,allowed}=await requireActor(tx,actor,"iam:roles:manage");
   if(!allowed)return "forbidden";
   const role=state.roles.find(role=>role.id===id);
@@ -67,11 +73,15 @@ export async function deleteRole(connection:string,id:string,actor:string,defaul
   if(role.is_system||id===adminRole||id===defaultRole)return "protected";
   if(state.users.some(user=>user.role===id))return "role_in_use";
   await tx.delete(schema.authRoles).where(eq(schema.authRoles.id,id));
+  event={actorId:actor,action:"iam.role.deleted",resourceType:"role",resourceId:id,before:{id:role.id,name:role.name,description:role.description,permissions:role.permissions},after:null};
   return "ok";
  });
+ try{if(event)capture?.(event);}catch{console.error("Audit capture failed.");}
+ return outcome;
 }
-export async function changeAccess(connection:string,change:AccessChange,defaultRole:string,adminRole:string):Promise<AccessResult> {
- return withIamTransaction(connection,async tx=>{
+export async function changeAccess(connection:string,change:AccessChange,defaultRole:string,adminRole:string,capture?:(event:AuditEvent)=>void):Promise<AccessResult> {
+ let event:AuditEvent|undefined;
+ const outcome=await withIamTransaction<AccessResult>(connection,async tx=>{
   const {state,allowed}=await requireActor(tx,change.actor,change.kind==="role"?"iam:roles:manage":"iam:users:manage-roles");
   const result:AccessResult={code:"ok",token:"",selfLoss:[],lost:[],affected:0};
   if(!allowed)return {...result,code:"forbidden"};
@@ -107,7 +117,10 @@ export async function changeAccess(connection:string,change:AccessChange,default
   } else {
    await tx.update(schema.authUser).set({role:change.role!,updatedAt:new Date()}).where(and(eq(schema.authUser.id,change.id),eq(schema.authUser.role,target.id)));
   }
+  event={actorId:change.actor,action:change.kind==="role"?"iam.role.updated":"iam.user.role_assigned",resourceType:change.kind,resourceId:change.id,before:change.kind==="role"?{name:target.name,description:target.description,permissions:target.permissions}:{role:target.id},after:change.kind==="role"?{name:change.name??target.name,description:change.description===undefined?target.description:change.description,permissions:next}:{role:change.role}};
   return result;
  });
+ try{if(event)capture?.(event);}catch{console.error("Audit capture failed.");}
+ return outcome;
 }
 `;

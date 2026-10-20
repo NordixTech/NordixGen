@@ -975,6 +975,9 @@
           "summary": {
             "type": "string"
           },
+          "audit": {
+            "type": "boolean"
+          },
           "entity": {
             "type": "string",
             "pattern": "^[A-Za-z][A-Za-z0-9_]*$"

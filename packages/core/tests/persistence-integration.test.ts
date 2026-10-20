@@ -53,12 +53,17 @@ describe
     let load: ReturnType<typeof generatedRuntime>;
     let app: hono.Hono;
     let sqlText = "";
+    const auditTasks: Promise<unknown>[] = [];
+    async function drainAudit() {
+      while (auditTasks.length) await Promise.all(auditTasks.splice(0));
+    }
     let generatedFiles: Readonly<Record<string, string>> = {};
     let previousFetch: unknown;
     let previousDatabase: string | undefined;
     let previousEndpoint: unknown;
     let previousLocalProxy: string | undefined;
     async function reset() {
+      await drainAudit();
       await sql("DROP SCHEMA IF EXISTS drizzle CASCADE");
       await sql("DROP SCHEMA public CASCADE");
       await sql("CREATE SCHEMA public");
@@ -145,7 +150,13 @@ describe
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         },
         { DATABASE_URL: databaseUrl },
-        { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+        {
+          waitUntil: (task: Promise<unknown>) => {
+            auditTasks.push(task);
+          },
+          passThroughOnException: () => {},
+          props: {},
+        },
       );
     }
     async function rows(route: string, method = "GET", body?: unknown): Promise<Row[]> {
@@ -185,6 +196,7 @@ describe
       await prepare();
     }, 60_000);
     afterAll(async () => {
+      await drainAudit();
       if (previousLocalProxy === undefined)
         Reflect.deleteProperty(process.env, "NEON_HTTP_PROXY_URL");
       else process.env.NEON_HTTP_PROXY_URL = previousLocalProxy;
@@ -358,7 +370,13 @@ describe
                       request,
                       undefined,
                       { DATABASE_URL: databaseUrl },
-                      { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+                      {
+                        waitUntil: (task: Promise<unknown>) => {
+                          auditTasks.push(task);
+                        },
+                        passThroughOnException: () => {},
+                        props: {},
+                      },
                     ),
                 },
               },
@@ -478,7 +496,13 @@ describe
             ...(body === undefined ? {} : { body: JSON.stringify(body) }),
           },
           env,
-          { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+          {
+            waitUntil: (task: Promise<unknown>) => {
+              auditTasks.push(task);
+            },
+            passThroughOnException: () => {},
+            props: {},
+          },
         );
       for (const password of ["1234", "x".repeat(ACCOUNT_POLICY.minPasswordLength - 1)]) {
         const response = await authRequest("/api/auth/sign-up/email", {
@@ -528,7 +552,13 @@ describe
             ...(body === undefined ? {} : { body: JSON.stringify(body) }),
           },
           env,
-          { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+          {
+            waitUntil: (task: Promise<unknown>) => {
+              auditTasks.push(task);
+            },
+            passThroughOnException: () => {},
+            props: {},
+          },
         );
       expect((await iamRequest("/permissions")).status).toBe(200);
       expect(
@@ -576,7 +606,13 @@ describe
           "http://localhost:8787/api/invoices",
           { headers: { cookie: secondCookie } },
           env,
-          { waitUntil: () => {}, passThroughOnException: () => {}, props: {} },
+          {
+            waitUntil: (task: Promise<unknown>) => {
+              auditTasks.push(task);
+            },
+            passThroughOnException: () => {},
+            props: {},
+          },
         );
       expect((await business()).status).toBe(200);
       expect((await iamRequest("/roles/auditor", "PUT", { permissions: [] })).status).toBe(200);
@@ -728,7 +764,47 @@ describe
           )
         ).length,
       ).toBe(0);
-      expect((await iamRequest("/audit")).status).toBe(404);
+      await drainAudit();
+      const auditPage = await iamRequest("/audit?action=iam.role.updated&pageSize=1");
+      expect(auditPage.status).toBe(200);
+      const auditPageBody = await auditPage.json();
+      expect(auditPageBody.items).toHaveLength(1);
+      expect(auditPageBody.total).toBeGreaterThan(0);
+      expect(auditPageBody.items[0]).toMatchObject({
+        action: "iam.role.updated",
+        resourceType: "role",
+        actorId: expect.any(String),
+        before: expect.any(Object),
+        after: expect.any(Object),
+      });
+      expect((await iamRequest("/audit?pageSize=101")).status).toBe(400);
+      expect(
+        (await iamRequest("/audit?from=2026-01-02T00:00:00Z&to=2026-01-01T00:00:00Z")).status,
+      ).toBe(400);
+      expect((await iamRequest("/audit", "GET", undefined, secondCookie)).status).toBe(403);
+      const future = await iamRequest("/audit?from=2099-01-01T00:00:00Z");
+      expect((await future.json()).total).toBe(0);
+      const actorFiltered = await iamRequest(`/audit?actor=${firstId}`);
+      expect(
+        (await actorFiltered.json()).items.every(
+          (entry: { actorId: string }) => entry.actorId === firstId,
+        ),
+      ).toBe(true);
+      await sql("ALTER TABLE audit_logs RENAME TO isolated_audit_unavailable");
+      try {
+        const success = await iamRequest("/roles/auditor", "PUT", {
+          name: "Audit failure is isolated",
+        });
+        expect(success.status).toBe(200);
+        await drainAudit();
+        expect((await sql("SELECT name FROM auth_roles WHERE id='auditor'"))[0].name).toBe(
+          "Audit failure is isolated",
+        );
+      } finally {
+        await sql("ALTER TABLE isolated_audit_unavailable RENAME TO audit_logs");
+      }
+      expect((await iamRequest("/roles/auditor", "PUT", { name: "Auditor" })).status).toBe(200);
+      await drainAudit();
       // A failed grant insert rolls back both the metadata and grant changes in the same transaction.
       await sql(
         "CREATE FUNCTION iam_test_reject_grant() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated grant write failure'; END $$",
@@ -852,6 +928,104 @@ describe
       // This full IAM journey makes many sequential requests through the real Neon proxy.
       // Allow slower CI runners to finish before teardown removes the auth tables.
     }, 120_000);
+    it("audits generated business writes with exact before/after and isolates an unavailable audit table", async () => {
+      const config = persistenceFixture();
+      for (const endpoint of config.endpoints) endpoint.audit = true;
+      const output = generateBackend(resolvedFixture(config), "api");
+      if (!output.success) throw Error("Invalid audit persistence fixture");
+      const files = output.virtualFileSystem.snapshot();
+      // Existing real database/migrated schemas and business implementations; controlled identity only.
+      const audited = generatedRuntime(files, {
+        zod,
+        hono,
+        "hono/cors": cors,
+        "hono/http-exception": httpException,
+        "@hono/zod-validator": validator,
+        "drizzle-orm": orm,
+        "drizzle-orm/pg-core": pg,
+        "drizzle-orm/neon-http": neonOrm,
+        "@neondatabase/serverless": neon,
+        [`${root}/platform/auth/auth.ts`]: {
+          createAuth: () => ({
+            api: { getSession: async () => ({ user: { id: "audit-operator" } }) },
+          }),
+          isTrustedAuthOrigin: (origin: string) => origin === "https://web.example.test",
+        },
+        [`${root}/platform/authorization/repository.ts`]: {
+          createIamRepository: () => ({
+            principal: async () => ({ id: "audit-operator", role: "admin", permissions: ["*"] }),
+          }),
+        },
+      });
+      const auditedApp = audited(`${root}/index.ts`).default as hono.Hono;
+      const request = (path: string, method: string, body?: unknown) =>
+        auditedApp.request(
+          `https://web.example.test${path}`,
+          {
+            method,
+            headers: { origin: "https://web.example.test", "content-type": "application/json" },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          },
+          { DATABASE_URL: databaseUrl },
+          {
+            waitUntil: (task: Promise<unknown>) => auditTasks.push(task),
+            passThroughOnException() {},
+            props: {},
+          },
+        );
+      const created = await request("/api/invoices", "POST", {
+        customerId: "11111111-1111-4111-8111-111111111111",
+        total: 7.5,
+        payload: { password: "do-not-record", visible: "yes" },
+      });
+      expect(created.status, await created.clone().text()).toBe(200);
+      const id = String((await created.json())[0].entity.id);
+      await drainAudit();
+      const creation = (
+        await sql("SELECT * FROM audit_logs WHERE action='invoice.created' AND resource_id=$1", [
+          id,
+        ])
+      )[0];
+      expect(creation.actor_id).toBe("audit-operator");
+      expect(creation.before).toBeNull();
+      expect(creation.after[0].payload).toEqual({ password: "[redacted]", visible: "yes" });
+      const update = await request(`/api/invoices/${id}`, "PATCH", { total: 8.5 });
+      expect(update.status, await update.clone().text()).toBe(200);
+      await drainAudit();
+      const change = (
+        await sql("SELECT * FROM audit_logs WHERE action='invoice.updated' AND resource_id=$1", [
+          id,
+        ])
+      )[0];
+      expect(Number(change.before[0].total)).toBe(7.5);
+      expect(Number(change.after[0].total)).toBe(8.5);
+      await sql("ALTER TABLE audit_logs RENAME TO isolated_audit_unavailable");
+      try {
+        expect((await request(`/api/invoices/${id}`, "PATCH", { total: 9.5 })).status).toBe(200);
+        await drainAudit();
+        expect(Number((await sql("SELECT total FROM invoice WHERE id=$1", [id]))[0].total)).toBe(
+          9.5,
+        );
+      } finally {
+        await sql("ALTER TABLE isolated_audit_unavailable RENAME TO audit_logs");
+      }
+      const deleted = await request(`/api/invoices/${id}`, "DELETE");
+      expect(deleted.status).toBe(200);
+      await drainAudit();
+      const deletion = (
+        await sql("SELECT * FROM audit_logs WHERE action='invoice.deleted' AND resource_id=$1", [
+          id,
+        ])
+      )[0];
+      expect(Number(deletion.before[0].total)).toBe(9.5);
+      expect(deletion.after[0].isDeleted).toBe(true);
+      const count = (await sql("SELECT count(*)::int AS n FROM audit_logs"))[0].n;
+      expect((await request(`/api/invoices/${id}`, "PATCH", { total: "invalid" })).status).toBe(
+        400,
+      );
+      await drainAudit();
+      expect((await sql("SELECT count(*)::int AS n FROM audit_logs"))[0].n).toBe(Number(count) + 1);
+    }, 60000);
     it("applies a decimal database default when an insert omits the numeric column", async () => {
       const [row] = await sql("INSERT INTO invoice (customer_id) VALUES ($1) RETURNING id, total", [
         "11111111-1111-4111-8111-111111111111",

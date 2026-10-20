@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { authAuditPlugin } from "../../generation/audit.js";
 import { ACCOUNT_POLICY } from "../../project/account-policy.js";
 import { iamPlugin } from "../authorization/iam-plugin.js";
 import type { BackendRenderContext, GeneratedFile } from "../contracts.js";
@@ -116,6 +117,9 @@ function authRuntimeContent(
     'import { betterAuth } from "better-auth";',
     'import { drizzleAdapter } from "@better-auth/drizzle-adapter";',
     'import { nordixIamPlugin } from "./nordix-iam-plugin.js";',
+    'import {nordixAuditPlugin} from "./nordix-audit-plugin.js";',
+    'import {createAuditService} from "../audit/runtime.js";',
+    'import {createAuditWriter} from "../audit/store.js";',
     ...(methods.includes("username-password")
       ? ['import { username } from "better-auth/plugins";']
       : []),
@@ -156,9 +160,10 @@ function authRuntimeContent(
     );
   }
   const pluginValues = [
-    `nordixIamPlugin({connectionString:env.DATABASE_URL,defaultRole:${JSON.stringify(defaultRole)},adminRole:${JSON.stringify(config.authorization.adminRole)},trustedOrigins:getTrustedAuthOrigins(env)})`,
+    `nordixIamPlugin({connectionString:env.DATABASE_URL,defaultRole:${JSON.stringify(defaultRole)},adminRole:${JSON.stringify(config.authorization.adminRole)},trustedOrigins:getTrustedAuthOrigins(env),audit})`,
     ...(methods.includes("username-password") ? ["username()"] : []),
     ...(features.includes("two-factor") ? ["twoFactor()"] : []),
+    "nordixAuditPlugin(audit)",
   ];
   const providerEntries = providers.map(
     (provider) =>
@@ -195,6 +200,7 @@ function authRuntimeContent(
           "  };",
         ]
       : []),
+    "  const audit=createAuditService(createAuditWriter(env.DATABASE_URL),executionContext);",
     "  return betterAuth({",
     `    appName: ${JSON.stringify(projectName)},`,
     "    baseURL: env.BETTER_AUTH_URL,",
@@ -250,6 +256,7 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
   const defaultRole = config.authorization.defaultRole;
   return [
     { path: posix.join(infrastructure, "auth/nordix-iam-plugin.ts"), content: iamPlugin },
+    { path: posix.join(infrastructure, "auth/nordix-audit-plugin.ts"), content: authAuditPlugin },
     {
       path: schemaPath,
       content: authSchemaContent(methods, features, defaultRole),
@@ -298,7 +305,7 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
         "",
         "Apply database migrations with the generated Drizzle Kit configuration before serving auth requests.",
         "",
-        "IAM is registered as nordixIamPlugin. Its endpoints are under /api/auth/iam; audit logging is deferred.",
+        "IAM is registered as nordixIamPlugin. Unified audit is recorded asynchronously in audit_logs and queried at /api/auth/iam/audit with iam:roles:manage.",
         "The schema.config.ts entrypoint is for offline Better Auth CLI discovery only. Do not serve it.",
         "From the backend root: pnpm dlx auth@1.7.10 generate --config ./src/platform/auth/schema.config.ts --output ./better-auth-discovered.ts --yes",
         "Review the discovered schema alongside the maintained Drizzle files; do not overwrite business schemas.",

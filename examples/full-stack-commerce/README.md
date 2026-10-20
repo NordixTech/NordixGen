@@ -153,3 +153,5 @@ Each run creates its own PostgreSQL database, Docker network and Neon HTTP proxy
 Read `report.json` for the revision, artifact hashes, stages, results and URLs; `operation-artifacts.json` for the declared operation inventory; and `behaviors.json` for completed checks. Screenshots show the actual workspace, forms, Explorer and permission states. A failed stage remains failed even if earlier checks passed.
 
 `state.json` contains disposable credentials and process/resource identifiers. Generated output stays under ignored `tmp/`; CI publishes only selected reports, screenshots and sanitized logs, excluding state, environment files, cookies and the database. Cleanup verifies process ownership and Docker labels before stopping resources. The generated project remains available after cleanup, but its disposable database does not.
+
+The example enables `audit: true` on customer and invoice reads/writes. Open the **Activity** tab in `/admin/roles` as the administrator to filter authentication, IAM and business events and inspect before/after differences. Records are written asynchronously; use Refresh activity if a new event has not appeared yet.

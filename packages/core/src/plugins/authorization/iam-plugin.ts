@@ -5,9 +5,11 @@ import { z } from "zod";
 import {createDrizzleDatabase} from "../database/drizzle-database.js";
 import { createIamRepository } from "../authorization/repository.js";
 import { changeAccess, createRole, deleteRole, type AccessResult } from "../authorization/mutations.js";
+import type {AuditService} from "../audit/runtime.js";
+import {readAudit} from "../audit/store.js";
 import { isAuthorized, permissions, type Permission } from "../authorization/policy.js";
 
-export function nordixIamPlugin(config:{connectionString:string;defaultRole:string;adminRole:string;trustedOrigins:readonly string[]}) {
+export function nordixIamPlugin(config:{connectionString:string;defaultRole:string;adminRole:string;trustedOrigins:readonly string[];audit?:AuditService}) {
  const repository=createIamRepository(createDrizzleDatabase(config.connectionString));
  const slug=z.string().regex(/^[a-z][a-z0-9-]*$/).max(100);
  const grants=z.array(z.string()).max(500).refine(values=>new Set(values).size===values.length&&values.every(value=>value==="*"||permissions.includes(value as Permission)),"Unknown or duplicate permission.");
@@ -50,6 +52,9 @@ export function nordixIamPlugin(config:{connectionString:string;defaultRole:stri
    },indexes:[{fields:["roleId","permission"],unique:true}]},
   },
   endpoints:{
+   iamAudit:createAuthEndpoint("/iam/audit",{method:"GET",use,query:z.object({page:z.coerce.number().int().min(1).max(100000).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(25),actor:z.string().min(1).max(200).optional(),action:z.string().min(1).max(200).optional(),from:z.string().datetime({offset:true}).optional(),to:z.string().datetime({offset:true}).optional()}).strict().refine(value=>!value.from||!value.to||new Date(value.from)<=new Date(value.to),"From must not be later than to.")},async ctx=>{
+    check(ctx.context.principal,"iam:roles:manage");return ctx.json(await readAudit(config.connectionString,ctx.query));
+   }),
    iamGetMe:createAuthEndpoint("/iam/me",{method:"GET",use},async ctx=>ctx.json(ctx.context.principal)),
    iamPermissions:createAuthEndpoint("/iam/permissions",{method:"GET",use},async ctx=>{check(ctx.context.principal,"iam:roles:manage");return ctx.json(permissions);}),
    iamListRoles:createAuthEndpoint("/iam/roles",{method:"GET",use},async ctx=>{check(ctx.context.principal,"iam:roles:manage");return ctx.json(await repository.roles());}),
@@ -61,23 +66,23 @@ export function nordixIamPlugin(config:{connectionString:string;defaultRole:stri
    iamCreateRole:createAuthEndpoint("/iam/roles",{method:"POST",use,body:body.extend({id:slug})},async ctx=>{
     check(ctx.context.principal,"iam:roles:manage");
     if(ctx.body.permissions.includes("*")||(ctx.body.id===config.defaultRole&&ctx.body.permissions.some(p=>p==="iam:roles:manage"||p==="iam:users:manage-roles")))throw new APIError("BAD_REQUEST",{code:"protected",message:"Provide known concrete permissions."});
-    const result=await createRole(config.connectionString,ctx.body,ctx.context.principal.id);
+    const result=await createRole(config.connectionString,ctx.body,ctx.context.principal.id,event=>config.audit?.record(event,ctx.headers??undefined));
     if(result==="forbidden")throw new APIError("FORBIDDEN",{code:result,message:"Your administrative access has changed."});
     if(result!=="ok")throw new APIError("CONFLICT",{message:"Role already exists."});
     ctx.setStatus(201);return ctx.json({id:ctx.body.id});
    }),
    iamUpdateRole:createAuthEndpoint("/iam/roles/:id",{method:"PUT",use,body:body.partial().extend({confirmation:z.string().max(100).optional()}).refine(value=>Object.keys(value).some(key=>key!=="confirmation"))},async ctx=>{
-    check(ctx.context.principal,"iam:roles:manage");return response(await changeAccess(config.connectionString,{kind:"role",id:ctx.params.id,actor:ctx.context.principal.id,...ctx.body},config.defaultRole,config.adminRole));
+    check(ctx.context.principal,"iam:roles:manage");return response(await changeAccess(config.connectionString,{kind:"role",id:ctx.params.id,actor:ctx.context.principal.id,...ctx.body},config.defaultRole,config.adminRole,event=>config.audit?.record(event,ctx.headers??undefined)));
    }),
    iamDeleteRole:createAuthEndpoint("/iam/roles/:id",{method:"DELETE",disableBody:true,use},async ctx=>{
     check(ctx.context.principal,"iam:roles:manage");
-    const result=await deleteRole(config.connectionString,ctx.params.id,ctx.context.principal.id,config.defaultRole,config.adminRole);
+    const result=await deleteRole(config.connectionString,ctx.params.id,ctx.context.principal.id,config.defaultRole,config.adminRole,event=>config.audit?.record(event,ctx.headers??undefined));
     if(result==="forbidden")throw new APIError("FORBIDDEN",{code:result,message:"Your administrative access has changed."});
     if(result!=="ok")throw new APIError("CONFLICT",{code:result,message:"Role is missing, protected, or assigned to users."});
     return new Response(null,{status:204});
    }),
    iamAssignRole:createAuthEndpoint("/iam/users/:id/role",{method:"POST",use,body:z.object({role:slug,confirmation:z.string().max(100).optional()}).strict()},async ctx=>{
-    check(ctx.context.principal,"iam:users:manage-roles");return response(await changeAccess(config.connectionString,{kind:"user",id:ctx.params.id,actor:ctx.context.principal.id,...ctx.body},config.defaultRole,config.adminRole));
+    check(ctx.context.principal,"iam:users:manage-roles");return response(await changeAccess(config.connectionString,{kind:"user",id:ctx.params.id,actor:ctx.context.principal.id,...ctx.body},config.defaultRole,config.adminRole,event=>config.audit?.record(event,ctx.headers??undefined)));
    }),
   },
  } satisfies BetterAuthPlugin;
