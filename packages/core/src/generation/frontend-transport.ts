@@ -57,7 +57,15 @@ export async function proxyBackend(backend:string,request:Request,path:string):P
   // Preserve individual Set-Cookie headers, including OAuth/session cookies.
   if(typeof response.headers.getSetCookie==="function"){result.delete("set-cookie");for(const cookie of response.headers.getSetCookie())result.append("set-cookie",cookie);}
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers:result});
- }catch{return Response.json({title:"Backend unavailable",status:503},{status:503,headers:{"Cache-Control":"no-store"}});}
+ }catch(error){
+  if(process.env.NORDIX_LOCAL_RUNTIME==="1"){
+   const failure=error as {name?:string;cause?:{code?:string};message?:string};
+   const known=["Unknown backend","Invalid backend path","Required private backend binding is unavailable","Invalid local backend origin"].find(message=>message===failure?.message);
+   const code=failure?.cause?.code;
+   console.error("Local backend proxy unavailable",{backend,reason:known??failure?.name??"Unknown",code:code&&/^[A-Z_0-9]+$/.test(code)?code:undefined});
+  }
+  return Response.json({title:"Backend unavailable",status:503},{status:503,headers:{"Cache-Control":"no-store"}});
+ }
 }
 `,
     },
