@@ -235,15 +235,18 @@ function signInFormContent(config: FrontendAuthenticationContract): string {
     'import { Input } from "@/components/ui/input";',
     'import { Notice } from "@/components/ui/notice";',
     'import { authClient } from "@/lib/auth/client";',
+    'import {useSessionView} from "@/lib/auth/use-session-view";',
     ...(config.methods.includes("phone-number")
       ? ['import {PhoneForm} from "@/components/auth/phone-form";']
       : []),
     "",
     "export function SignInForm() {",
     "  const router = useRouter();",
+    "  const {isPending:identityPending}=useSessionView();",
     "  const [error, setError] = useState<string>();",
     "  const [pending, setPending] = useState(false);",
     ...(username ? ['  const [mode, setMode] = useState<"email" | "username">("email");'] : []),
+    "  if(identityPending)return <Notice>Checking session...</Notice>;",
     "  async function submit(event: FormEvent<HTMLFormElement>) {",
     "    event.preventDefault();",
     "    const form = new FormData(event.currentTarget);",
@@ -323,6 +326,7 @@ function signUpFormContent(config: FrontendAuthenticationContract): string {
     'import { Input } from "@/components/ui/input";',
     'import { Notice } from "@/components/ui/notice";',
     'import { authClient } from "@/lib/auth/client";',
+    'import {useSessionView} from "@/lib/auth/use-session-view";',
     ...(config.methods.includes("phone-number")
       ? ['import {PhoneForm} from "@/components/auth/phone-form";']
       : []),
@@ -330,9 +334,11 @@ function signUpFormContent(config: FrontendAuthenticationContract): string {
     "",
     "export function SignUpForm() {",
     "  const router = useRouter();",
+    "  const {isPending:identityPending}=useSessionView();",
     "  const [error, setError] = useState<string>();",
     "  const [pending, setPending] = useState(false);",
     "  const [message,setMessage]=useState<string>();",
+    "  if(identityPending)return <Notice>Checking session...</Notice>;",
     "  async function submit(event: FormEvent<HTMLFormElement>) {",
     "    event.preventDefault();",
     "    const form = new FormData(event.currentTarget);",
