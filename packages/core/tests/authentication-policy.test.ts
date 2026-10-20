@@ -467,7 +467,11 @@ describe("configurable authentication policies", () => {
       configuration({ methods: ["phone-number"], identityProviders: [] }),
     );
     const frontend = generateFrontend(project, "store-web").virtualFileSystem.snapshot();
-    expect(Object.values(frontend).join("\n")).toContain("return <PhoneForm/>");
+    const phoneOnlyForm = Object.entries(frontend).find(([path]) =>
+      path.endsWith("/sign-in-form.tsx"),
+    )?.[1];
+    expect(phoneOnlyForm).toContain("<PhoneForm/>");
+    expect(phoneOnlyForm).not.toContain("authClient.signIn.email(");
     expect(Object.keys(frontend).some((path) => path.endsWith("/forgot-password/page.tsx"))).toBe(
       false,
     );

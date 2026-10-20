@@ -1,7 +1,11 @@
+import {
+  accountFormSource,
+  accountPageSource,
+  authInterfaceFiles,
+} from "../../generation/auth-interface.js";
 import { authJourneyFiles } from "../../generation/auth-journeys.js";
 import { passwordPolicySource } from "../../generation/auth-policy.js";
 import { identityBaseUrl } from "../../generation/frontend-access.js";
-import { DEFAULT_PASSWORD_POLICY } from "../../project/account-policy.js";
 import type { GeneratedFile } from "../contracts.js";
 import type {
   FrontendAuthenticationContract,
@@ -221,207 +225,6 @@ function authControlsContent(config: FrontendAuthenticationContract): string {
     "}",
   ]);
 }
-function signInFormContent(config: FrontendAuthenticationContract): string {
-  if (!config.methods.includes("email-password"))
-    return '"use client";\nimport {PhoneForm} from "@/components/auth/phone-form";\nexport function SignInForm(){return <PhoneForm/>;}\n';
-  const username = config.methods.includes("username-password");
-  const pin = config.passwordPolicy?.numericOnly === true;
-  const providers = config.identityProviders;
-  return source([
-    '"use client";',
-    "",
-    'import { useState, type FormEvent } from "react";',
-    'import { useRouter } from "next/navigation";',
-    'import { Button } from "@/components/ui/button";',
-    'import { Input } from "@/components/ui/input";',
-    'import { Notice } from "@/components/ui/notice";',
-    'import { authClient } from "@/lib/auth/client";',
-    'import {useSessionView} from "@/lib/auth/use-session-view";',
-    ...(config.methods.includes("phone-number")
-      ? ['import {PhoneForm} from "@/components/auth/phone-form";']
-      : []),
-    "",
-    "export function SignInForm() {",
-    "  const router = useRouter();",
-    "  const {isPending:identityPending}=useSessionView();",
-    "  const [error, setError] = useState<string>();",
-    "  const [pending, setPending] = useState(false);",
-    ...(username ? ['  const [mode, setMode] = useState<"email" | "username">("email");'] : []),
-    "  if(identityPending)return <Notice>Checking session...</Notice>;",
-    "  async function submit(event: FormEvent<HTMLFormElement>) {",
-    "    event.preventDefault();",
-    "    const form = new FormData(event.currentTarget);",
-    "    setPending(true);",
-    "    setError(undefined);",
-    "    try {",
-    ...(username
-      ? [
-          '      const result = mode === "username"',
-          '        ? await authClient.signIn.username({ username: String(form.get("username") ?? ""), password: String(form.get("password") ?? "") })',
-          '        : await authClient.signIn.email({ email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") });',
-        ]
-      : [
-          '      const result = await authClient.signIn.email({ email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") });',
-        ]),
-    "      if (result.error) {",
-    '        setError(result.error.message ?? "Sign-in failed.");',
-    "        return;",
-    "      }",
-    "      await authClient.getSession();",
-    '      router.replace("/");',
-    "      router.refresh();",
-    "    } catch {",
-    '      setError("Could not reach the authentication service. Please try again.");',
-    "    } finally {",
-    "      setPending(false);",
-    "    }",
-    "  }",
-    "  return (",
-    '    <> <form className="ng-panel" onSubmit={submit}>',
-    '      {error ? <Notice tone="alert">{error}</Notice> : null}',
-    ...(username
-      ? [
-          '      <div className="ng-actions">',
-          '        <Button onClick={() => setMode("email")} type="button" variant={mode === "email" ? "primary" : "secondary"}>Email</Button>',
-          '        <Button onClick={() => setMode("username")} type="button" variant={mode === "username" ? "primary" : "secondary"}>Username</Button>',
-          "      </div>",
-          '      {mode === "email" ? <Input autoComplete="email" id="email" label="Email" name="email" required type="email" /> : <Input autoComplete="username" id="username" label="Username" name="username" required />}',
-        ]
-      : [
-          '      <Input autoComplete="email" id="email" label="Email" name="email" required type="email" />',
-        ]),
-    `      <Input autoComplete="current-password" id="password" label="${pin ? "PIN" : "Password"}" name="password" ${pin ? 'inputMode="numeric" ' : ""}required type="password" />`,
-    '      <Button disabled={pending} type="submit">Sign in</Button>',
-    '      <a href="/forgot-password">Forgot your password?</a>',
-    '      <p className="ng-panel-note">New here? <a className="ng-text-link" href="/sign-up">Create an account</a></p>',
-    ...providers.flatMap((provider) => [
-      "      <Button",
-      "        disabled={pending}",
-      "        onClick={async () => {",
-      "          setPending(true);",
-      `          await authClient.signIn.social({ provider: ${JSON.stringify(provider)}, callbackURL: "/" });`,
-      "        }}",
-      '        type="button"',
-      '        variant="secondary"',
-      "      >",
-      `        Continue with ${provider}`,
-      "      </Button>",
-    ]),
-    "    </form>",
-    ...(config.methods.includes("phone-number") ? ["    <PhoneForm/>"] : []),
-    "    </>",
-    "  );",
-    "}",
-  ]);
-}
-function signUpFormContent(config: FrontendAuthenticationContract): string {
-  if (!config.methods.includes("email-password"))
-    return '"use client";\nimport {PhoneForm} from "@/components/auth/phone-form";\nexport function SignUpForm(){return <PhoneForm/>;}\n';
-  const policy = config.passwordPolicy ?? DEFAULT_PASSWORD_POLICY;
-  return source([
-    '"use client";',
-    "",
-    'import { useState, type FormEvent } from "react";',
-    'import { useRouter } from "next/navigation";',
-    'import { Button } from "@/components/ui/button";',
-    'import { Input } from "@/components/ui/input";',
-    'import { Notice } from "@/components/ui/notice";',
-    'import { authClient } from "@/lib/auth/client";',
-    'import {useSessionView} from "@/lib/auth/use-session-view";',
-    ...(config.methods.includes("phone-number")
-      ? ['import {PhoneForm} from "@/components/auth/phone-form";']
-      : []),
-    'import {passwordSchema} from "@/lib/auth/password-policy";',
-    "",
-    "export function SignUpForm() {",
-    "  const router = useRouter();",
-    "  const {isPending:identityPending}=useSessionView();",
-    "  const [error, setError] = useState<string>();",
-    "  const [pending, setPending] = useState(false);",
-    "  const [message,setMessage]=useState<string>();",
-    "  if(identityPending)return <Notice>Checking session...</Notice>;",
-    "  async function submit(event: FormEvent<HTMLFormElement>) {",
-    "    event.preventDefault();",
-    "    const form = new FormData(event.currentTarget);",
-    "    setPending(true);",
-    "    setError(undefined);",
-    "    try {",
-    '      const password=String(form.get("password")??"");const parsed=passwordSchema.safeParse(password);if(!parsed.success){setError(parsed.error.issues[0].message);return;}',
-    '      const result = await authClient.signUp.email({ name: String(form.get("name") ?? ""), email: String(form.get("email") ?? ""), password });',
-    "      if (result.error) {",
-    '        setError(result.error.message ?? "Sign-up failed.");',
-    "        return;",
-    "      }",
-    '      if(!result.data?.token){setMessage("Account created. Check your email to verify your account, then sign in.");return;}',
-    "      await authClient.getSession();",
-    '      router.replace("/");',
-    "      router.refresh();",
-    "    } catch {",
-    '      setError("Could not reach the authentication service. Please try again.");',
-    "    } finally {",
-    "      setPending(false);",
-    "    }",
-    "  }",
-    "  return (",
-    '    <> <form className="ng-panel" onSubmit={submit}>',
-    '      {error ? <Notice tone="alert">{error}</Notice> : null}',
-    "      {message ? <Notice>{message}</Notice> : null}",
-    '      <Input autoComplete="name" id="name" label="Name" name="name" required />',
-    '      <Input autoComplete="email" id="email" label="Email" name="email" required type="email" />',
-    `      <Input autoComplete="new-password" id="password" label="${policy.numericOnly ? "PIN" : "Password"} (at least ${policy.minLength} characters)" name="password" minLength={${policy.minLength}} maxLength={${policy.maxLength}} ${policy.numericOnly ? 'inputMode="numeric" pattern="[0-9]+" ' : ""}required type="password" />`,
-    '      <Button disabled={pending} type="submit">Create account</Button>',
-    '      <p className="ng-panel-note">Already registered? <a className="ng-text-link" href="/sign-in">Sign in</a></p>',
-    "    </form>",
-    ...(config.methods.includes("phone-number") ? ["    <PhoneForm/>"] : []),
-    "    </>",
-    "  );",
-    "}",
-  ]);
-}
-function signInPageContent(): string {
-  return source([
-    'import { SignInForm } from "@/components/auth/sign-in-form";',
-    "",
-    'export const metadata = { title: "Sign in" };',
-    "",
-    "export default function SignInPage() {",
-    "  return (",
-    '    <main className="ng-shell">',
-    '      <section className="ng-hero">',
-    "        <div>",
-    '          <p className="ng-eyebrow">Secure session</p>',
-    "          <h1>Sign in</h1>",
-    '          <p className="ng-lede">Browser sessions use HttpOnly cookies from the configured identity backend. This UI never stores session secrets.</p>',
-    "        </div>",
-    "        <SignInForm />",
-    "      </section>",
-    "    </main>",
-    "  );",
-    "}",
-  ]);
-}
-function signUpPageContent(): string {
-  return source([
-    'import { SignUpForm } from "@/components/auth/sign-up-form";',
-    "",
-    'export const metadata = { title: "Create account" };',
-    "",
-    "export default function SignUpPage() {",
-    "  return (",
-    '    <main className="ng-shell">',
-    '      <section className="ng-hero">',
-    "        <div>",
-    '          <p className="ng-eyebrow">New account</p>',
-    "          <h1>Create your account</h1>",
-    '          <p className="ng-lede">Your account receives the backend’s default role. Roles cannot be selected during sign-up.</p>',
-    "        </div>",
-    "        <SignUpForm />",
-    "      </section>",
-    "    </main>",
-    "  );",
-    "}",
-  ]);
-}
 function authReadme(config: FrontendAuthenticationContract): string {
   return source([
     "# Frontend authentication",
@@ -445,6 +248,7 @@ export function generateFrontendAuthFiles(
   const root = context.framework.codeRoot;
   const files = [
     ...authJourneyFiles(root, config),
+    ...authInterfaceFiles(root),
     {
       path: `${root}/lib/auth/password-policy.ts`,
       content: passwordPolicySource(config.passwordPolicy),
@@ -458,10 +262,16 @@ export function generateFrontendAuthFiles(
   if (context.api.authentication) {
     files.push(
       { path: `${root}/components/auth/auth-controls.tsx`, content: authControlsContent(config) },
-      { path: `${root}/components/auth/sign-in-form.tsx`, content: signInFormContent(config) },
-      { path: `${root}/components/auth/sign-up-form.tsx`, content: signUpFormContent(config) },
-      { path: `${root}/app/sign-in/page.tsx`, content: signInPageContent() },
-      { path: `${root}/app/sign-up/page.tsx`, content: signUpPageContent() },
+      {
+        path: `${root}/components/auth/sign-in-form.tsx`,
+        content: accountFormSource(config, false),
+      },
+      {
+        path: `${root}/components/auth/sign-up-form.tsx`,
+        content: accountFormSource(config, true),
+      },
+      { path: `${root}/app/sign-in/page.tsx`, content: accountPageSource(false) },
+      { path: `${root}/app/sign-up/page.tsx`, content: accountPageSource(true) },
     );
   }
   return files;

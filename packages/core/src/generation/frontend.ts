@@ -95,6 +95,9 @@ export function generateFrontend(project: ResolvedProject, name: string) {
     frameworkContext: context.framework,
     runtimeDependencies: {
       ...FRONTEND_STACK.runtime,
+      ...(context.api.authentication?.methods.includes("phone-number")
+        ? { "react-phone-number-input": "3.4.18", "libphonenumber-js": "1.13.15" }
+        : {}),
       ...(context.api.authentication ? FRONTEND_STACK.identity : {}),
     },
     developmentDependencies: FRONTEND_STACK.development,

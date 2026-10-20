@@ -1,3 +1,4 @@
+import { authStyles } from "../../generation/auth-interface.js";
 import type { GeneratedFile } from "../contracts.js";
 import type { FrontendRenderContext } from "../frontend-contracts.js";
 
@@ -382,6 +383,6 @@ export function generateUiFiles(context: FrontendRenderContext): readonly Genera
   return [
     { path: `${root}/app/page.tsx`, content: pageSource(context) },
     ...componentFiles(context),
-    { path: `${root}/styles/ui.css`, content: `${uiStyles}\n` },
+    { path: `${root}/styles/ui.css`, content: `${uiStyles}\n${authStyles}\n` },
   ];
 }

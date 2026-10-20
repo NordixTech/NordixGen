@@ -13,13 +13,13 @@ export function passwordPolicySource(
   }
   return `import {z} from "zod";
 export const passwordPolicy=${JSON.stringify(effective)};
-export const passwordSchema=z.string().min(passwordPolicy.minLength).max(passwordPolicy.maxLength).superRefine((value,ctx)=>{
+export const passwordSchema=z.string().min(passwordPolicy.minLength,{message:"Use at least "+passwordPolicy.minLength+" characters for your "+(passwordPolicy.numericOnly?"PIN.":"password.")}).max(passwordPolicy.maxLength,{message:"Use no more than "+passwordPolicy.maxLength+" characters."}).superRefine((value,ctx)=>{
  const reject=(message:string)=>ctx.addIssue({code:"custom",message});
- if(passwordPolicy.numericOnly){if(!/^[0-9]+$/.test(value))reject("Use digits 0-9 only.");return;}
- if(passwordPolicy.requireUppercase&&!/[A-Z]/.test(value))reject("Include an uppercase letter.");
- if(passwordPolicy.requireLowercase&&!/[a-z]/.test(value))reject("Include a lowercase letter.");
- if(passwordPolicy.requireNumber&&!/[0-9]/.test(value))reject("Include a number.");
- if(passwordPolicy.requireSpecialChar&&!/[^A-Za-z0-9\\s]/.test(value))reject("Include a special character.");
+ if(passwordPolicy.numericOnly){if(!/^[0-9]+$/.test(value))reject("Your PIN can only contain digits from 0 to 9.");return;}
+ if(passwordPolicy.requireUppercase&&!/[A-Z]/.test(value))reject("Add an uppercase letter, for example A, B or C.");
+ if(passwordPolicy.requireLowercase&&!/[a-z]/.test(value))reject("Add a lowercase letter, for example a, b or c.");
+ if(passwordPolicy.requireNumber&&!/[0-9]/.test(value))reject("Add a number from 0 to 9.");
+ if(passwordPolicy.requireSpecialChar&&!/[^A-Za-z0-9\\s]/.test(value))reject("Add a symbol, for example !, @, # or $. Spaces do not count as symbols.");
 });
 `;
 }

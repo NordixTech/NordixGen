@@ -249,7 +249,9 @@ export async function verifyApplication(state, directory, expireAccountant) {
 
     const signIn = async (role) => {
       await page.goto(`${web}/sign-in`);
-      await page.getByLabel("Email", { exact: true }).fill(`${role}@acceptance.example.test`);
+      await page
+        .getByRole("textbox", { name: "Email", exact: true })
+        .fill(`${role}@acceptance.example.test`);
       await page.getByLabel("Password", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect(page).toHaveURL(`${web}/`);
@@ -814,14 +816,18 @@ export async function verifyApplication(state, directory, expireAccountant) {
     };
     await authPage.goto(`${web}/sign-up`);
     await authPage.getByLabel("Name", { exact: true }).fill("Recovery member");
-    await authPage.getByLabel("Email", { exact: true }).fill("recovery@acceptance.example.test");
+    await authPage
+      .getByRole("textbox", { name: "Email", exact: true })
+      .fill("recovery@acceptance.example.test");
     await authPage
       .getByLabel("Password (at least 8 characters)", { exact: true })
       .fill("original-password-2026");
     await authPage.getByRole("button", { name: "Create account", exact: true }).click();
     await expect(authPage).toHaveURL(`${web}/`);
     await authPage.goto(`${web}/forgot-password`);
-    await authPage.getByLabel("Email", { exact: true }).fill("recovery@acceptance.example.test");
+    await authPage
+      .getByRole("textbox", { name: "Email", exact: true })
+      .fill("recovery@acceptance.example.test");
     await authPage.getByRole("button", { name: "Send reset link", exact: true }).click();
     await expect(
       authPage.getByText("If an account exists, check your email for a password reset link.", {
@@ -841,15 +847,35 @@ export async function verifyApplication(state, directory, expireAccountant) {
       .fill("updated-password-2026");
     await authPage.getByRole("button", { name: "Save password", exact: true }).click();
     await expect(authPage).toHaveURL(`${web}/sign-in`);
-    await authPage.getByLabel("Email", { exact: true }).fill("recovery@acceptance.example.test");
+    await authPage
+      .getByRole("textbox", { name: "Email", exact: true })
+      .fill("recovery@acceptance.example.test");
     await authPage.getByLabel("Password", { exact: true }).fill("updated-password-2026");
     await authPage.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(authPage).toHaveURL(`${web}/`);
+    for (const resetUrl of [
+      resetLocation,
+      `${web}/reset-password`,
+      `${web}/reset-password?token=not-a-valid-token`,
+    ]) {
+      await authPage.goto(resetUrl);
+      await expect(authPage).toHaveURL(`${web}/forgot-password?error=INVALID_TOKEN`);
+      await expect(
+        authPage.getByText(
+          "This reset link is invalid, expired or already used. Request a new link below.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(authPage.getByLabel("New password", { exact: true })).toHaveCount(0);
+    }
     await authContext.clearCookies();
     await authPage.goto(`${web}/sign-in`);
-    await authPage
-      .getByLabel("Phone number (e.g. +51999999999)", { exact: true })
-      .fill("+51999111001");
+    await authPage.getByRole("tab", { name: "Phone", exact: true }).click();
+    await authPage.getByLabel("Your name", { exact: true }).fill("Phone member");
+    await authPage.getByLabel("Country and calling code").click();
+    await authPage.getByLabel("Search country or calling code").fill("+51");
+    await authPage.locator(".ng-country-options button").filter({ hasText: "Peru" }).click();
+    await authPage.getByLabel("Phone number", { exact: true }).fill("999111001");
     await authPage.getByRole("button", { name: "Send code", exact: true }).click();
     const otp = await lastDevValue(/\[DEV AUTH\] SMS OTP for \+51999111001: (\d{6})/g);
     await authPage.getByLabel("Verification code", { exact: true }).fill(otp);
@@ -859,9 +885,13 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await expect(
       authPage.getByRole("heading", { name: "Your profile", exact: true }),
     ).toBeVisible();
-    await authPage
-      .getByLabel("Phone number (e.g. +51999999999)", { exact: true })
-      .fill("+51999111002");
+    await expect(
+      authPage.getByRole("heading", { name: "Phone member", exact: true }),
+    ).toBeVisible();
+    await authPage.getByLabel("Country and calling code").click();
+    await authPage.getByLabel("Search country or calling code").fill("Perú");
+    await authPage.locator(".ng-country-options button").filter({ hasText: "Peru" }).click();
+    await authPage.getByLabel("Phone number", { exact: true }).fill("999111002");
     await authPage.getByRole("button", { name: "Send code", exact: true }).click();
     const linkedOtp = await lastDevValue(/\[DEV AUTH\] SMS OTP for \+51999111002: (\d{6})/g);
     await authPage.getByLabel("Verification code", { exact: true }).fill(linkedOtp);
