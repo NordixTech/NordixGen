@@ -397,7 +397,7 @@ function authReadme(config: FrontendAuthenticationContract): string {
     "- New accounts receive the backend's default role; role assignment is server-controlled.",
     "- The browser stores the session in HttpOnly cookies. Do not copy tokens into Zustand, React state, or localStorage.",
     "- Add this frontend origin to the backend `AUTH_TRUSTED_ORIGINS` list so credentialed requests and CSRF origin checks succeed.",
-    "- Browser auth and IAM use this frontend origin through /api/auth/* and /api/iam/*. Never configure a public backend URL.",
+    "- Browser auth and IAM use this frontend origin through /api/auth/* and /api/auth/iam/*. Never configure a public backend URL.",
     "- Page guards forward the requesting cookie only to that configured authority, without redirects or caching. Identity failures render an unavailable error; invalid sessions redirect to the local sign-in page.",
     "- Local Next server calls use BACKEND_<NAME>_INTERNAL_URL. In Cloudflare, server calls use Service Bindings and fail closed if missing. BETTER_AUTH_URL is the public frontend origin and AUTH_TRUSTED_ORIGINS lists its allowed origins.",
     "- `hasPermission` / `hasRole` are presentation helpers. Backend policies remain authoritative.",

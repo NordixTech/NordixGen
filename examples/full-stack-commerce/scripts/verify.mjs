@@ -561,7 +561,9 @@ export async function verifyApplication(state, directory, expireAccountant) {
     expect((await viewer.get("/api/invoices")).status()).toBe(403);
     const viewerId = persistence.identities.viewer;
     expect(
-      (await admin.post(`/api/iam/users/${viewerId}/role`, { data: { role: "viewer" } })).status(),
+      (
+        await admin.post(`/api/auth/iam/users/${viewerId}/role`, { data: { role: "viewer" } })
+      ).status(),
     ).toBe(200);
     await iamPage.getByRole("button", { name: "Delete ui-reviewer", exact: true }).click();
     await iamPage
@@ -581,14 +583,14 @@ export async function verifyApplication(state, directory, expireAccountant) {
     ).toHaveCount(0);
     expect(
       (
-        await admin.post("/api/iam/roles", {
+        await admin.post("/api/auth/iam/roles", {
           data: { id: "support", name: "Support", permissions: ["iam:users:manage-roles"] },
         })
       ).status(),
     ).toBe(201);
     expect(
       (
-        await admin.post(`/api/iam/users/${persistence.identities.outsider}/role`, {
+        await admin.post(`/api/auth/iam/users/${persistence.identities.outsider}/role`, {
           data: { role: "support" },
         })
       ).status(),
@@ -603,13 +605,13 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await expect(supportPage.getByRole("button", { name: "Create role", exact: true })).toHaveCount(
       0,
     );
-    expect((await outsider.get("/api/iam/roles")).status()).toBe(403);
-    expect((await outsider.get("/api/iam/role-options")).status()).toBe(200);
+    expect((await outsider.get("/api/auth/iam/roles")).status()).toBe(403);
+    expect((await outsider.get("/api/auth/iam/role-options")).status()).toBe(200);
     await supportPage.screenshot({
       path: join(directory, "verified-iam-user-operator.png"),
       fullPage: true,
     });
-    await confirmedChange(admin, `/api/iam/users/${persistence.identities.outsider}/role`, {
+    await confirmedChange(admin, `/api/auth/iam/users/${persistence.identities.outsider}/role`, {
       role: "outsider",
     });
     await supportPage.goto(`${web}/admin/roles`);
@@ -623,14 +625,14 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await expect(
       iamPage.getByRole("alert").filter({ hasText: "Keep at least one user" }),
     ).toBeVisible();
-    expect((await admin.get("/api/iam/me")).status()).toBe(200);
+    expect((await admin.get("/api/auth/iam/me")).status()).toBe(200);
     await iamPage.screenshot({
       path: join(directory, "verified-iam-last-admin.png"),
       fullPage: true,
     });
     expect(
       (
-        await admin.post("/api/iam/roles", {
+        await admin.post("/api/auth/iam/roles", {
           data: {
             id: "delegated-admin",
             name: "Delegated administrator",
@@ -639,7 +641,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
         })
       ).status(),
     ).toBe(201);
-    await confirmedChange(admin, `/api/iam/users/${persistence.identities.outsider}/role`, {
+    await confirmedChange(admin, `/api/auth/iam/users/${persistence.identities.outsider}/role`, {
       role: "delegated-admin",
     });
     await iamPage.reload();
@@ -654,14 +656,14 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await expect(otherWarning).toBeVisible();
     await expect(otherWarning.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
     await otherWarning.getByRole("button", { name: "Cancel", exact: true }).click();
-    expect((await outsider.get("/api/iam/me")).status()).toBe(200);
+    expect((await outsider.get("/api/auth/iam/me")).status()).toBe(200);
     await iamPage
       .getByRole("combobox", { name: "Role for outsider@acceptance.example.test" })
       .selectOption("outsider");
     await otherWarning.getByRole("button", { name: "Confirm access change" }).click();
     await expect(otherWarning).toHaveCount(0);
-    expect((await outsider.get("/api/iam/roles")).status()).toBe(403);
-    await confirmedChange(admin, `/api/iam/users/${persistence.identities.outsider}/role`, {
+    expect((await outsider.get("/api/auth/iam/roles")).status()).toBe(403);
+    await confirmedChange(admin, `/api/auth/iam/users/${persistence.identities.outsider}/role`, {
       role: "delegated-admin",
     });
     await supportPage.bringToFront();
@@ -698,23 +700,17 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await expect(selfWarning).toContainText("Assign user roles");
     await selfWarning.getByRole("button", { name: "Confirm access change" }).click();
     await expect(supportPage).toHaveURL(`${web}/`);
-    const activity = await admin.get("/api/iam/audit");
-    expect(activity.status()).toBe(200);
-    expect(
-      (await activity.json()).some(
-        (entry) =>
-          entry.action === "role.updated" && entry.actorId === persistence.identities.outsider,
-      ),
-    ).toBe(true);
+    expect((await admin.get("/api/auth/iam/audit")).status()).toBe(404);
+
     // Leave the retained demo ready for all three manual scenarios.
     expect(
       (
-        await admin.put("/api/iam/roles/delegated-admin", {
+        await admin.put("/api/auth/iam/roles/delegated-admin", {
           data: { permissions: ["iam:roles:manage", "iam:users:manage-roles"] },
         })
       ).status(),
     ).toBe(200);
-    await confirmedChange(admin, `/api/iam/users/${persistence.identities.outsider}/role`, {
+    await confirmedChange(admin, `/api/auth/iam/users/${persistence.identities.outsider}/role`, {
       role: "delegated-admin",
     });
     await passed(

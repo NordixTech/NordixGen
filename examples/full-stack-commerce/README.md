@@ -64,7 +64,7 @@ These accounts are disposable local demo identities:
 | `accountant@acceptance.example.test` | Invoice reads/writes, without permission for protected Customer lookup |
 | `outsider@acceptance.example.test` | No business permissions; after successful verification, the custom `delegated-admin` role allows both IAM operations |
 
-All four use `acceptance-local-password-2026`. The example creates users through the actual signup endpoint, verifies that callers cannot select an elevated role, and then provisions demo account assignments directly in its isolated database. Normal generated signup uses the configured default role; the generator seeds the role catalog but never login accounts. An administrator can manage roles and user assignments through the automatically generated `/admin/roles` screen and `/api/iam/*` endpoints.
+All four use `acceptance-local-password-2026`. The example creates users through the actual signup endpoint, verifies that callers cannot select an elevated role, and then provisions demo account assignments directly in its isolated database. Normal generated signup uses the configured default role; the generator seeds the role catalog but never login accounts. An administrator can manage roles and user assignments through the automatically generated `/admin/roles` screen and `/api/auth/iam/*` endpoints.
 
 After verification, open `/admin/roles` with the admin or outsider account (use separate browser profiles). The outsider finishes with the custom `delegated-admin` role and both IAM permissions, while admin retains `*`. You can test:
 

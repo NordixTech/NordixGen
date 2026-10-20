@@ -285,7 +285,6 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       ...(hasAuthentication
         ? [
             `import { createAuth, isTrustedAuthOrigin, type AuthEnvironment } from "${relativeImport(entryPoint, authFilePath)}";`,
-            'import {createIamRoutes} from "./platform/authorization/routes.js";',
             'import {createIamRepository} from "./platform/authorization/repository.js";',
             'import {createDrizzleDatabase} from "./platform/database/drizzle-database.js";',
           ]
@@ -339,7 +338,6 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
         ? [
             "// Better Auth owns credential, session, cookie, and CSRF handling.",
             'app.all("/api/auth/*", (c) => createAuth(c.env,c.executionCtx).handler(c.req.raw));',
-            'app.all("/api/iam/*",c=>createIamRoutes(createIamRepository(createDrizzleDatabase(c.env.DATABASE_URL)),async headers=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers});return session?{id:session.user.id}:null;}).fetch(c.req.raw,c.env,c.executionCtx));',
             "",
           ]
         : []),

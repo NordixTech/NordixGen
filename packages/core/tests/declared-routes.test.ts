@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import * as validator from "@hono/zod-validator";
+import * as access from "better-auth/plugins/access";
 import * as hono from "hono";
 import * as cors from "hono/cors";
 import * as httpException from "hono/http-exception";
@@ -128,6 +129,7 @@ function generatedApplication(
   });
   const modules = new Map<string, Record<string, unknown>>();
   const external: Record<string, unknown> = {
+    "better-auth/plugins/access": access,
     [`${root}/platform/authorization/repository.ts`]: {
       createIamRepository: () => ({
         principal: async () =>

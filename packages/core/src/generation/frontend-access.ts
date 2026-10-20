@@ -45,7 +45,7 @@ export async function requireIamAccess():Promise<void>{
  await requirePageSession("/admin/roles");
  const cookie=(await headers()).get("cookie")??"";
  let response:Response;
- try{response=await backendFetch(${JSON.stringify(context.frontend.identity?.backend)},"/api/iam/me",{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});}catch{throw new IdentityUnavailable();}
+ try{response=await backendFetch(${JSON.stringify(context.frontend.identity?.backend)},"/api/auth/iam/me",{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});}catch{throw new IdentityUnavailable();}
  if(response.status===401)redirect("/sign-in");
  if(response.status===403)redirect("/");
  if(!response.ok)throw new IdentityUnavailable();
