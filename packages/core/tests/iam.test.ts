@@ -1,3 +1,5 @@
+import { once } from "node:events";
+import { serve } from "@hono/node-server";
 import { type BetterAuthPlugin, betterAuth } from "better-auth";
 import * as authApi from "better-auth/api";
 import { describe, expect, it, vi } from "vitest";
@@ -141,6 +143,7 @@ function fixture() {
     catalog,
     repository,
     request,
+    handler: (request: Request) => app.handler(request),
     setPrincipal: (value: typeof principal) => {
       principal = value;
     },
@@ -150,6 +153,39 @@ function fixture() {
   };
 }
 describe("generated dynamic IAM", () => {
+  it("deletes a role through real HTTP using the generated frontend client", async () => {
+    const f = fixture();
+    const server = serve({ fetch: f.handler, hostname: "127.0.0.1", port: 0 });
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string") throw Error("Missing isolated HTTP test address");
+    try {
+      const frontend = generateFrontend(f.project, "web").virtualFileSystem.snapshot();
+      const source = frontend["apps/web/src/lib/iam/client.ts"];
+      const client = generatedRuntime(
+        { "client.ts": source },
+        {},
+        {
+          fetch: (path: string, init: RequestInit) =>
+            fetch(`http://127.0.0.1:${address.port}${path}`, {
+              ...init,
+              headers: { ...init.headers, origin: "https://web.example.test" },
+            }),
+        },
+      )("client.ts").iamRequest as (path: string, init?: RequestInit) => Promise<unknown>;
+      await client("/roles", {
+        method: "POST",
+        body: JSON.stringify({ id: "http-role", name: "HTTP role", permissions: [] }),
+      });
+      expect(f.catalog.has("http-role")).toBe(true);
+      await client("/roles/http-role", { method: "DELETE" });
+      expect(f.catalog.has("http-role")).toBe(false);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
   it("mounts platform IAM, emits typed capabilities and a protected administration screen", () => {
     const f = fixture();
     expect(f.files[`${root}/index.ts`]).not.toContain('app.all("/api/auth/iam/*"');

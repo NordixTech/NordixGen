@@ -17,7 +17,7 @@ export interface IamUser {id:string;name:string;email:string;role:string;}
 export interface AccessImpact {code:string;token:string;selfLoss:string[];lost:string[];affected:number;}
 export class IamError extends Error {constructor(message:string,public impact?:AccessImpact){super(message);}}
 export async function iamRequest<T>(path:string,init:RequestInit={}):Promise<T>{
- const response=await fetch("/api/auth/iam"+path,{...init,headers:{"Content-Type":"application/json",...init.headers},credentials:"include",cache:"no-store"});
+ const response=await fetch("/api/auth/iam"+path,{...init,headers:{...(init.body==null?{}:{"Content-Type":"application/json"}),...init.headers},credentials:"include",cache:"no-store"});
  if(!response.ok){const error=await response.json().catch(()=>null);throw new IamError(error?.detail??error?.message??"Administration request failed.",error?.code?error:undefined);}
  return response.status===204?undefined as T:await response.json() as T;
 }
