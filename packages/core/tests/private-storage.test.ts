@@ -232,4 +232,35 @@ describe("private Workers and native R2 storage", () => {
     await expect(missing.backendFetch("core-api", "/health")).rejects.toThrow("binding");
     expect(externalFetch).not.toHaveBeenCalled();
   });
+  it("uses the explicit local transport without starting a Cloudflare emulator", async () => {
+    const files = generateFrontend(fixture(), "store-web").virtualFileSystem.snapshot();
+    const context = vi.fn(() => {
+      throw Error("Cloudflare context must not be initialized");
+    });
+    const localFetch = vi.fn(async () => new Response("local backend"));
+    const transport = frontendRuntime(
+      files,
+      "apps/store-web/src",
+      { "server-only": {}, "@opennextjs/cloudflare": { getCloudflareContext: context } },
+      {
+        fetch: localFetch,
+        process: {
+          env: {
+            NODE_ENV: "production",
+            NORDIX_LOCAL_RUNTIME: "1",
+            BACKEND_CORE_API_INTERNAL_URL: "http://127.0.0.1:8787",
+          },
+        },
+      },
+    )("apps/store-web/src/lib/backend/transport.ts") as {
+      backendFetch(backend: string, path: string): Promise<Response>;
+    };
+    expect(await (await transport.backendFetch("core-api", "/health")).text()).toBe(
+      "local backend",
+    );
+    expect(context).not.toHaveBeenCalled();
+    expect(new URL((localFetch.mock.calls[0][0] as Request).url).origin).toBe(
+      "http://127.0.0.1:8787",
+    );
+  });
 });

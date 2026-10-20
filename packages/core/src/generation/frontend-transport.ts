@@ -34,7 +34,8 @@ function safePath(path:string){if(!path.startsWith("/")||path.startsWith("//")||
 export async function backendFetch(backend:string,path:string,init:RequestInit={},origin="https://internal.invalid"):Promise<Response>{
  const binding=bindings[backend];if(!binding)throw Error("Unknown backend");safePath(path);
  let env:Record<string,unknown>|undefined;
- try{env=(await getCloudflareContext({async:true})).env as unknown as Record<string,unknown>;}catch{}
+ // Read only the active Worker context. Async discovery would start Wrangler inside next start.
+ if(process.env.NORDIX_LOCAL_RUNTIME!=="1")try{env=(await getCloudflareContext()).env as unknown as Record<string,unknown>;}catch{}
  const service=env?.[binding] as Service|undefined;
  const headers=new Headers(init.headers);headers.delete("host");headers.delete("connection");headers.delete("content-length");
  const request=new Request(new URL(path,origin),{...init,headers,redirect:"manual"});
