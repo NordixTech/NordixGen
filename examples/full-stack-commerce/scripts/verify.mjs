@@ -403,6 +403,10 @@ export async function verifyApplication(state, directory, expireAccountant) {
       "Browser login, generated typed forms, decimal/JSON/null/date transport, mutation refetch and absent delete action",
     );
 
+    for (const route of ["/sign-in", "/sign-up"]) {
+      await page.goto(`${web}${route}`);
+      await expect(page).toHaveURL(`${web}/`);
+    }
     await page.getByRole("button", { name: "Sign out", exact: true }).click();
     await expect(page).toHaveURL(`${web}/sign-in`);
     await signIn("outsider");
