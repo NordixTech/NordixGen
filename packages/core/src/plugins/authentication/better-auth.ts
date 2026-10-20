@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { authAuditPlugin } from "../../generation/audit.js";
+import { authAbusePlugin, authAbuseStore } from "../../generation/auth-abuse.js";
 import { authDeliverySource } from "../../generation/auth-delivery.js";
 import { authPolicyPlugin, passwordPolicySource } from "../../generation/auth-policy.js";
 import { DEFAULT_PASSWORD_POLICY, durationSeconds } from "../../project/account-policy.js";
@@ -45,6 +46,7 @@ function authSchemaContent(
     userColumns.push('  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),');
   }
   const tables = [
+    'export const authAbuseLimit = pgTable("auth_abuse_limit", {key:text("key").primaryKey(),count:integer("count").notNull(),windowStart:bigint("window_start",{mode:"number"}).notNull(),lastRequest:bigint("last_request",{mode:"number"}).notNull()});',
     'export const rateLimit = pgTable("auth_rate_limit", {id:text("id").primaryKey(),key:text("key").notNull().unique(),count:integer("count").notNull(),lastRequest:bigint("last_request",{mode:"number"}).notNull()});',
     `export const authUser = pgTable("auth_user", {\n${userColumns.join("\n")}\n});`,
     [
@@ -126,12 +128,31 @@ function authRuntimeContent(
   const emailVerification = features.includes("email-verification") || domains.length > 0;
   const emailDelivery = emailVerification || methods.includes("email-password");
   const limit = identity.rateLimit ?? { enabled: true, window: "60s", max: 10 };
-  const limitRule = { window: durationSeconds(limit.window), max: limit.max };
+  const limitRule = {
+    window: durationSeconds(limit.ip?.window ?? limit.window),
+    max: limit.ip?.max ?? limit.max,
+  };
+  const accountRule = {
+    enabled: limit.enabled,
+    window: durationSeconds(limit.account?.window ?? "15m"),
+    max: limit.account?.max ?? 10,
+  };
+  const sms = identity.smsOtp ?? {
+    dailyLimit: 10,
+    cooldown: { initialDelay: "60s", multiplier: 2, maxDelay: "15m" },
+  };
+  const smsRule = {
+    dailyLimit: sms.dailyLimit,
+    initialDelay: durationSeconds(sms.cooldown.initialDelay),
+    multiplier: sms.cooldown.multiplier,
+    maxDelay: durationSeconds(sms.cooldown.maxDelay),
+  };
   const projectName = config.projectName;
   const defaultRole = config.authorization.defaultRole;
   const lines = [
     'import { betterAuth } from "better-auth";',
     'import {nordixAuthPolicy,assertAllowedEmail} from "./nordix-auth-policy.js";',
+    'import {nordixAbuseProtection} from "./abuse-protection.js";',
     'import {sendAuthEmail,sendSmsOtp,assertEmailDelivery,type DeliveryEnvironment} from "./delivery.js";',
     ...(methods.includes("phone-number")
       ? ['import {phoneNumber} from "better-auth/plugins";']
@@ -167,6 +188,7 @@ function authRuntimeContent(
   ];
   const pluginValues = [
     `nordixAuthPolicy({domains:${JSON.stringify(domains)},emailPassword:${methods.includes("email-password")},phone:${methods.includes("phone-number")},emailDelivery:()=>assertEmailDelivery(env),verifyEmail:${emailVerification}})`,
+    `nordixAbuseProtection({connectionString:env.DATABASE_URL,secret:env.BETTER_AUTH_SECRET,account:${JSON.stringify(accountRule)},sms:${JSON.stringify(smsRule)}})`,
     `nordixIamPlugin({connectionString:env.DATABASE_URL,defaultRole:${JSON.stringify(defaultRole)},adminRole:${JSON.stringify(config.authorization.adminRole)},trustedOrigins:getTrustedAuthOrigins(env),audit})`,
     ...(methods.includes("username-password") ? ["username()"] : []),
     ...(features.includes("two-factor") ? ["twoFactor()"] : []),
@@ -277,6 +299,8 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
     },
     { path: posix.join(infrastructure, "auth/nordix-auth-policy.ts"), content: authPolicyPlugin },
     { path: posix.join(infrastructure, "auth/delivery.ts"), content: authDeliverySource },
+    { path: posix.join(infrastructure, "auth/abuse-store.ts"), content: authAbuseStore },
+    { path: posix.join(infrastructure, "auth/abuse-protection.ts"), content: authAbusePlugin },
     { path: posix.join(infrastructure, "auth/nordix-iam-plugin.ts"), content: iamPlugin },
     { path: posix.join(infrastructure, "auth/nordix-audit-plugin.ts"), content: authAuditPlugin },
     {

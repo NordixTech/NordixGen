@@ -276,7 +276,8 @@ No plugin ID or authentication-level `enabled` alias exists. Omission disables a
 | `passwordPolicy` | Minimum 8, maximum 128; complexity flags false | `minLength` / `maxLength` are integers from 4 to 128, with min <= max. `numericOnly` allows ASCII digits only and ignores all `require*` flags with nonblocking warnings. Optional flags: `requireUppercase`, `requireLowercase`, `requireNumber`, `requireSpecialChar`. Browser Zod validation and server hooks share this policy, including password changes and resets. |
 | `session` | `expiresIn: 7d`, `updateAge: 1d` | Positive integer seconds or integer strings ending in s/m/h/d; values are bounded to 2147483647 seconds. |
 | `allowedEmailDomains` | Unrestricted | Nonempty list of exact domains. Company registrations require an authorized email and email verification. Phone-only signup is disabled; verified company users may link a phone from /profile. OAuth provisioning and email changes enforce the same domain boundary. |
-| `rateLimit` | Enabled, 10 requests per IP/path in 60s | `enabled`, `window` (duration), `max` (positive integer). Better Auth stores counters in PostgreSQL, shared across Workers. Session reads and authenticated IAM routes are excluded from this authentication-attempt budget. |
+| `rateLimit` | Enabled; IP: 10 per path/60s; account: 10/15m | `ip: {window, max}` and `account: {window, max}` configure independent budgets. Both must allow the request. Legacy top-level `window`/`max` still configure IP limits; an explicit `ip` takes precedence. `enabled: false` disables both login budgets. Session reads and IAM routes remain excluded. |
+| `smsOtp` | 10 SMS attempts/24h; cooldown starts at 60s, doubles, capped at 15m | `dailyLimit`; `cooldown: {initialDelay, multiplier, maxDelay}`. First SMS is immediate; `multiplier: 1` gives a fixed cooldown. Positive durations use the same s/m/h/d syntax. maxDelay must be >= initialDelay and <= 24h. SMS quotas remain active independently of `rateLimit.enabled`. |
 
 For example:
 
@@ -289,8 +290,21 @@ authentication:
     maxLength: 6
     numericOnly: true
   session: { expiresIn: 7d, updateAge: 1d }
-  rateLimit: { enabled: true, window: 60s, max: 10 }
+  rateLimit:
+    enabled: true
+    ip: { window: 60s, max: 5 }
+    account: { window: 15m, max: 10 }
+  smsOtp:
+    dailyLimit: 10
+    cooldown:
+      initialDelay: 60s
+      multiplier: 2
+      maxDelay: 15m
 ```
+
+The account budget counts credential-verification requests (successful or failed) for email/password, username/password and phone OTP login. Existing account IDs unify these identifiers; unknown identifiers are normalized and HMAC-hashed. Neither an IP change nor switching between linked login identifiers creates another account budget. Windows start at the first accepted attempt and do not extend when a request is blocked. This is throttling, not a permanent account lockout or a DDoS guarantee.
+
+SMS limits apply to the destination number and, when authenticated, to the requesting account as well, across login, registration and phone linking. The 24-hour window starts at the first reserved SMS attempt, rather than resetting at midnight. All matching limits are checked and reserved together in a PostgreSQL transaction before creating/sending the OTP. Provider failures still consume a reservation, while requests rejected by cooldown/quota consume none. Both the quota and cooldown survive process restarts. The browser displays the server-provided cooldown; refreshing or bypassing the UI does not bypass enforcement. Deploy the new auth_abuse_limit schema migration before using this runtime. No global email/SMS budget or CAPTCHA is introduced by these settings.
 
 Email authentication includes /forgot-password and /reset-password (token, confirmation and policy validation). OAuth automatically links verified matching email identities to the same verified local account; OAuth-only accounts require password recovery before password login. Microsoft uses MICROSOFT_TENANT_ID (default common).
 

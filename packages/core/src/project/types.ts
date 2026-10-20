@@ -223,6 +223,16 @@ export interface ResolvedIdentity {
     readonly enabled: boolean;
     readonly window: string | number;
     readonly max: number;
+    readonly ip?: { readonly window: string | number; readonly max: number };
+    readonly account?: { readonly window: string | number; readonly max: number };
+  };
+  readonly smsOtp?: {
+    readonly dailyLimit: number;
+    readonly cooldown: {
+      readonly initialDelay: string | number;
+      readonly multiplier: number;
+      readonly maxDelay: string | number;
+    };
   };
   readonly permissions: readonly string[];
   readonly backend: string;

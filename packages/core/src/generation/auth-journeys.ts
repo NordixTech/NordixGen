@@ -113,12 +113,16 @@ export function PhoneField({value,onChange,disabled=false,error}:{value:string;o
         content: `${imports}
 import {useRouter} from "next/navigation";
 import {PhoneField} from "./phone-field";
+import {useEffect} from "react";
 export function PhoneForm({link=false}:{link?:boolean}){
  const {isPending:identityPending}=useSessionView();const router=useRouter();const [phone,setPhone]=useState(""),[phoneValid,setPhoneValid]=useState(false),[name,setName]=useState(""),[sent,setSent]=useState(false),[pending,setPending]=useState(false),[message,setMessage]=useState(""),[error,setError]=useState(""),[phoneError,setPhoneError]=useState("");
+ const [waitUntil,setWaitUntil]=useState(0),[now,setNow]=useState(Date.now());const remaining=Math.max(0,Math.ceil((waitUntil-now)/1000));
+ useEffect(()=>{if(waitUntil<=Date.now())return;const timer=setInterval(()=>{const current=Date.now();setNow(current);if(current>=waitUntil)clearInterval(timer);},1000);return ()=>clearInterval(timer);},[waitUntil]);
+ function rememberWait(response:Response){const seconds=Number(response.headers.get("X-SMS-Retry-After")??response.headers.get("X-Retry-After")??response.headers.get("Retry-After"));if(Number.isFinite(seconds)&&seconds>0){const current=Date.now();setNow(current);setWaitUntil(current+seconds*1000);}}
  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const form=new FormData(event.currentTarget);setError("");setMessage("");setPhoneError("");
  ${company ? "" : 'if(!link&&!name.trim()){setError("Enter your name before requesting a code.");return;}'}
  if(!phoneValid){setPhoneError("Enter a valid phone number for the selected country.");return;}
- setPending(true);try{if(!sent){const result=await authClient.phoneNumber.sendOtp({phoneNumber:phone});if(result.error){setError(result.error.message??"We could not send your code. Please try again.");return;}setSent(true);setMessage("Enter the 6-digit code sent to your phone.");}
+ setPending(true);try{if(!sent){const result=await authClient.phoneNumber.sendOtp({phoneNumber:phone,fetchOptions:{onResponse:context=>{rememberWait(context.response);}}});if(result.error){setError(result.error.message??"We could not send your code. Please try again.");return;}setSent(true);setMessage("Enter the 6-digit code sent to your phone.");}
  else{const result=await authClient.phoneNumber.verify({phoneNumber:phone,code:String(form.get("code")),updatePhoneNumber:link,disableSession:link${company ? "" : ",...(!link?{name:name.trim()}:{})"}});if(result.error){setError(result.error.message??"That code is incorrect or expired. Request another code and try again.");return;}
  await authClient.getSession();if(link){setSent(false);setMessage("Phone number linked. You can use it to sign in.");}else router.replace("/");router.refresh();}}
  catch{setError("We could not connect. Please try again.");}finally{setPending(false);}}
@@ -126,7 +130,7 @@ export function PhoneForm({link=false}:{link?:boolean}){
  return <form className="ng-auth-form" onSubmit={submit}><h2>{link?"Link your phone":"Continue with phone"}</h2><p className="ng-auth-description">${company ? "Use a phone already linked to your verified account. To link a new number, sign in with your company email first." : "We will send a one-time code to verify your number. No password needed."}</p>{error&&<Notice tone="alert">{error}</Notice>}{message&&<Notice>{message}</Notice>}
  ${company ? "" : '{!link&&<Input id="phone-name" name="name" label="Your name" autoComplete="name" placeholder="Your full name" value={name} onChange={event=>setName(event.target.value)} minLength={1} maxLength={100} required disabled={pending||sent}/>}'}
  <PhoneField value={phone} onChange={(value,valid)=>{setPhone(value);setPhoneValid(valid);setSent(false);setPhoneError("");setError("");}} disabled={pending||sent} error={phoneError}/>
- {sent&&<Input id="code" name="code" label="Verification code" className="ng-auth-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} placeholder="000000" required/>}<Button type="submit" disabled={pending}>{pending?"Please wait…":sent?"Verify code":"Send code"}</Button>{sent&&<div className="ng-auth-inline-actions"><Button type="button" variant="secondary" disabled={pending} onClick={()=>{setSent(false);setMessage("");setError("");}}>Change number / send another code</Button></div>}</form>;
+ {sent&&<Input id="code" name="code" label="Verification code" className="ng-auth-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} placeholder="000000" required/>}<Button type="submit" disabled={pending||(!sent&&remaining>0)}>{pending?"Please wait…":sent?"Verify code":remaining>0?"Send code in "+remaining+"s":"Send code"}</Button>{sent&&<div className="ng-auth-inline-actions"><Button type="button" variant="secondary" disabled={pending||remaining>0} onClick={()=>{setSent(false);setMessage("");setError("");}}>{remaining>0?"Request another code in "+remaining+"s":"Change number / send another code"}</Button></div>}</form>;
 }
 `,
       },

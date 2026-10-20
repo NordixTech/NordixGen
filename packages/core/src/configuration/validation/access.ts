@@ -1,4 +1,5 @@
 import { type ConfigDiagnostic, createDiagnostic } from "../../diagnostics.js";
+import { durationSeconds } from "../../project/account-policy.js";
 import { IAM_PERMISSIONS, backendPermissions } from "../../project/permissions.js";
 import type { NordixConfig } from "../schema.js";
 import { entitySlug, routePath, scopedOperationName } from "./shared.js";
@@ -11,6 +12,21 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
     const path = `backends[${bi}]`;
     const auth = backend.authentication;
     if (auth) {
+      if (
+        durationSeconds(auth.smsOtp.cooldown.initialDelay) >
+        durationSeconds(auth.smsOtp.cooldown.maxDelay)
+      )
+        add(
+          "SMS_COOLDOWN_INVALID",
+          `${path}.authentication.smsOtp.cooldown.maxDelay`,
+          "maxDelay must be greater than or equal to initialDelay.",
+        );
+      if (durationSeconds(auth.smsOtp.cooldown.maxDelay) > 86400)
+        add(
+          "SMS_COOLDOWN_INVALID",
+          `${path}.authentication.smsOtp.cooldown.maxDelay`,
+          "maxDelay must not exceed the 24-hour SMS quota window.",
+        );
       if (auth.features.includes("email-verification") && !auth.methods.includes("email-password"))
         add(
           "EMAIL_VERIFICATION_REQUIRES_EMAIL_AUTHENTICATION",

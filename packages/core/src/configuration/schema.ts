@@ -141,6 +141,34 @@ export const AuthenticationSchema = z
         enabled: z.boolean().default(true),
         window: AuthDurationSchema.default("60s"),
         max: z.number().int().positive().max(1000000).default(10),
+        ip: z
+          .object({
+            window: AuthDurationSchema.default("60s"),
+            max: z.number().int().positive().max(1000000).default(10),
+          })
+          .strict()
+          .optional(),
+        account: z
+          .object({
+            window: AuthDurationSchema.default("15m"),
+            max: z.number().int().positive().max(1000000).default(10),
+          })
+          .strict()
+          .default({}),
+      })
+      .strict()
+      .default({}),
+    smsOtp: z
+      .object({
+        dailyLimit: z.number().int().positive().max(1000000).default(10),
+        cooldown: z
+          .object({
+            initialDelay: AuthDurationSchema.default("60s"),
+            multiplier: z.number().min(1).max(10).default(2),
+            maxDelay: AuthDurationSchema.default("15m"),
+          })
+          .strict()
+          .default({}),
       })
       .strict()
       .default({}),

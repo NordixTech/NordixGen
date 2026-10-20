@@ -881,6 +881,15 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await authPage.locator(".ng-country-options button").filter({ hasText: "Peru" }).click();
     await authPage.getByLabel("Phone number", { exact: true }).fill("999111001");
     await authPage.getByRole("button", { name: "Send code", exact: true }).click();
+    await expect(
+      authPage.getByRole("button", { name: /Request another code in \d+s/ }),
+    ).toBeDisabled();
+    const prematureSms = await authContext.request.post(`${web}/api/auth/phone-number/send-otp`, {
+      headers: { origin: web },
+      data: { phoneNumber: "+51999111001" },
+    });
+    expect(prematureSms.status()).toBe(429);
+    expect(Number(prematureSms.headers()["retry-after"])).toBeGreaterThan(0);
     const otp = await lastDevValue(/\[DEV AUTH\] SMS OTP for \+51999111001: (\d{6})/g);
     await authPage.getByLabel("Verification code", { exact: true }).fill(otp);
     await authPage.getByRole("button", { name: "Verify code", exact: true }).click();
