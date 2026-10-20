@@ -840,9 +840,11 @@ export async function verifyApplication(state, directory, expireAccountant) {
       .getByLabel("Confirm password / PIN", { exact: true })
       .fill("updated-password-2026");
     await authPage.getByRole("button", { name: "Save password", exact: true }).click();
-    await expect(
-      authPage.getByText("Password updated. You can now sign in.", { exact: true }),
-    ).toBeVisible();
+    await expect(authPage).toHaveURL(`${web}/sign-in`);
+    await authPage.getByLabel("Email", { exact: true }).fill("recovery@acceptance.example.test");
+    await authPage.getByLabel("Password", { exact: true }).fill("updated-password-2026");
+    await authPage.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(authPage).toHaveURL(`${web}/`);
     await authContext.clearCookies();
     await authPage.goto(`${web}/sign-in`);
     await authPage

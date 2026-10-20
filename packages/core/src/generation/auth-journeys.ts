@@ -4,6 +4,7 @@ import type { ResolvedIdentity } from "../project/types.js";
 const imports = `"use client";
 import {useState,type FormEvent} from "react";
 import {authClient} from "@/lib/auth/client";
+import {useSessionView} from "@/lib/auth/use-session-view";
 import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
 import {Notice} from "@/components/ui/notice";
@@ -16,7 +17,9 @@ export function authJourneyFiles(root: string, identity: ResolvedIdentity): Gene
         path: `${root}/components/auth/forgot-password-form.tsx`,
         content: `${imports}
 export function ForgotPasswordForm(){
+ const {isPending:identityPending}=useSessionView();
  const [pending,setPending]=useState(false),[message,setMessage]=useState("");
+ if(identityPending)return <Notice>Checking session...</Notice>;
  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const form=new FormData(event.currentTarget);setPending(true);setMessage("");
  try{const result=await authClient.requestPasswordReset({email:String(form.get("email")),redirectTo:window.location.origin+"/reset-password"});setMessage(result.error?.message??"If an account exists, check your email for a password reset link.");}catch{setMessage("Could not reach the authentication service.");}finally{setPending(false);}}
  return <form className="ng-panel" onSubmit={submit}><h1>Recover your account</h1>{message&&<Notice>{message}</Notice>}<Input id="email" name="email" label="Email" type="email" autoComplete="email" required/><Button type="submit" disabled={pending}>Send reset link</Button><a href="/sign-in">Back to sign in</a></form>;
@@ -28,11 +31,13 @@ export function ForgotPasswordForm(){
         content: `${imports}
 import {passwordSchema,passwordPolicy} from "@/lib/auth/password-policy";
 export function ResetPasswordForm(){
+ const {isPending:identityPending}=useSessionView();
  const [pending,setPending]=useState(false),[message,setMessage]=useState(""),[done,setDone]=useState(false);
+ if(identityPending)return <Notice>Checking session...</Notice>;
  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const form=new FormData(event.currentTarget),password=String(form.get("password")),parsed=passwordSchema.safeParse(password);setMessage("");
  if(!parsed.success){setMessage(parsed.error.issues[0].message);return;}if(password!==form.get("confirmPassword")){setMessage("Passwords do not match.");return;}
  const token=new URLSearchParams(window.location.search).get("token");if(!token){setMessage("This reset link is invalid. Request a new link.");return;}
- setPending(true);try{const result=await authClient.resetPassword({token,newPassword:password});if(result.error)setMessage(result.error.message??"Reset failed. Request a new link.");else{setDone(true);setMessage("Password updated. You can now sign in.");}}catch{setMessage("Could not reach the authentication service.");}finally{setPending(false);}}
+ setPending(true);try{const result=await authClient.resetPassword({token,newPassword:password});if(result.error)setMessage(result.error.message??"Reset failed. Request a new link.");else{setDone(true);setMessage("Password updated. You can now sign in.");window.location.assign("/sign-in");}}catch{setMessage("Could not reach the authentication service.");}finally{setPending(false);}}
  return <form className="ng-panel" onSubmit={submit}><h1>Set your password</h1>{message&&<Notice>{message}</Notice>}{!done&&<><Input id="password" name="password" label={passwordPolicy.numericOnly?"New PIN":"New password"} type="password" inputMode={passwordPolicy.numericOnly?"numeric":undefined} autoComplete="new-password" minLength={passwordPolicy.minLength} maxLength={passwordPolicy.maxLength} required/><Input id="confirmPassword" name="confirmPassword" label="Confirm password / PIN" type="password" inputMode={passwordPolicy.numericOnly?"numeric":undefined} autoComplete="new-password" required/><Button type="submit" disabled={pending}>Save password</Button></>}<a href="/sign-in">Back to sign in</a></form>;
 }
 `,
@@ -56,7 +61,9 @@ export default function AuthPage(){return <main className="ng-shell"><${componen
         content: `${imports}
 import {useRouter} from "next/navigation";
 export function PhoneForm({link=false}:{link?:boolean}){
+ const {isPending:identityPending}=useSessionView();
  const router=useRouter();const [phone,setPhone]=useState(""),[sent,setSent]=useState(false),[pending,setPending]=useState(false),[message,setMessage]=useState("");
+ if(identityPending)return <Notice>Checking session...</Notice>;
  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const form=new FormData(event.currentTarget);setPending(true);setMessage("");
  try{if(!sent){const result=await authClient.phoneNumber.sendOtp({phoneNumber:phone});if(result.error){setMessage(result.error.message??"Could not send code.");return;}setSent(true);setMessage("Enter the 6-digit code sent to your phone.");}
  else{const result=await authClient.phoneNumber.verify({phoneNumber:phone,code:String(form.get("code")),updatePhoneNumber:link,disableSession:link});if(result.error){setMessage(result.error.message??"Invalid verification code.");return;}
