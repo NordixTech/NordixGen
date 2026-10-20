@@ -23,7 +23,7 @@ import {Notice} from "@/components/ui/notice";
 ${phone ? 'import {PhoneForm} from "./phone-form";' : ""}
 ${signup && email ? 'import {passwordSchema} from "@/lib/auth/password-policy";\nimport {PasswordRequirements} from "./password-requirements";' : ""}
 const methods=${JSON.stringify(methods)};
-export function ${signup ? "SignUpForm" : "SignInForm"}(){
+export function ${signup ? "SignUpForm()" : "SignInForm({registered=false}:{registered?:boolean})"}{
  const router=useRouter();const {isPending:identityPending}=useSessionView();
  const [mode,setMode]=useState(methods[0].id),[pending,setPending]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
  ${signup && email ? 'const [password,setPassword]=useState("");' : ""}
@@ -34,7 +34,7 @@ export function ${signup ? "SignUpForm" : "SignInForm"}(){
    email
      ? `const result=${signup ? 'await authClient.signUp.email({name:String(data.get("name")??"").trim(),email:String(data.get("email")??""),password})' : username ? 'mode==="username"?await authClient.signIn.username({username:String(data.get("username")??""),password:String(data.get("password")??"")}):await authClient.signIn.email({email:String(data.get("email")??""),password:String(data.get("password")??"")})' : 'await authClient.signIn.email({email:String(data.get("email")??""),password:String(data.get("password")??"")})'};
  if(result.error){setError(result.error.message??"We could not ${signup ? "create your account" : "sign you in"}. Please try again.");return;}
- ${signup ? 'if(!result.data?.token){setMessage("Account created. Check your email to verify your account, then sign in.");return;}' : ""}
+ ${signup ? 'if(!result.data?.token){window.location.assign("/sign-in?registered=1");return;}' : ""}
  await authClient.getSession();router.replace("/");router.refresh();`
      : ""
  }
@@ -42,6 +42,7 @@ export function ${signup ? "SignUpForm" : "SignInForm"}(){
  if(identityPending)return <section className="ng-panel ng-auth-card"><Notice>Checking session...</Notice></section>;
  return <section className="ng-panel ng-auth-card">
   <header className="ng-auth-heading"><span className="ng-auth-mark" aria-hidden="true">${signup ? "+" : "↗"}</span><h1>${signup ? "Create your account" : "Welcome back"}</h1><p>${signup ? "A few details and you are ready to get started." : "Choose how you would like to sign in."}</p></header>
+  ${signup ? "" : '{registered&&<div className="ng-auth-confirmation"><Notice>Account created. Check your email to verify your account, then sign in.</Notice></div>'}
   {methods.length>1&&<div role="tablist" aria-label="${signup ? "Registration" : "Sign-in"} method" className="ng-auth-tabs">{methods.map((method,index)=><button key={method.id} id={"auth-tab-"+method.id} role="tab" type="button" aria-selected={mode===method.id} aria-controls="auth-method-panel" tabIndex={mode===method.id?0:-1} onClick={()=>{setMode(method.id);setError("");setMessage("");}} onKeyDown={event=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;event.preventDefault();const next=event.key==="Home"?0:event.key==="End"?methods.length-1:(index+(event.key==="ArrowRight"?1:methods.length-1))%methods.length;setMode(methods[next].id);setError("");setMessage("");document.getElementById("auth-tab-"+methods[next].id)?.focus();}}>{method.label}</button>)}</div>}
   <div id="auth-method-panel" role={methods.length>1?"tabpanel":undefined} aria-labelledby={methods.length>1?"auth-tab-"+mode:undefined}>
    ${phone ? '{mode==="phone"?<PhoneForm/>:' : ""}${
@@ -68,7 +69,7 @@ export function accountPageSource(signup: boolean): string {
   const component = signup ? "SignUpForm" : "SignInForm";
   return `import {${component}} from "@/components/auth/${signup ? "sign-up" : "sign-in"}-form";
 export const metadata={title:${JSON.stringify(signup ? "Create account" : "Sign in")}};
-export default function ${signup ? "SignUpPage" : "SignInPage"}(){return <main className="ng-shell ng-auth-page"><div className="ng-auth-wrap"><${component}/></div></main>;}
+export default ${signup ? "function SignUpPage()" : "async function SignInPage({searchParams}:{searchParams:Promise<{registered?:string}>})"}{${signup ? "" : "const query=await searchParams;"}return <main className="ng-shell ng-auth-page"><div className="ng-auth-wrap"><${component}${signup ? "" : ' registered={query.registered==="1"}'}/></div></main>;}
 `;
 }
 
@@ -88,6 +89,7 @@ export function PasswordRequirements({value}:{value:string}){
 }
 
 export const authStyles = `
+.ng-auth-confirmation{margin-bottom:24px}.ng-auth-confirmation .ng-notice{margin:0;font-size:13px;line-height:1.6}
 .ng-auth-page{display:grid;align-items:center;justify-items:center;padding:48px 24px 72px;min-height:calc(100dvh - 84px)}
 .ng-auth-wrap{width:100%;max-width:480px;margin:auto}
 .ng-auth-card{padding:32px;border:1px solid var(--color-border);border-radius:24px;min-width:0}
