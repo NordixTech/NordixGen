@@ -104,7 +104,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
             add(
               "PERMISSION_UNKNOWN",
               `${path}.authorization.rolePermissions.${role}`,
-              `Permission "${permission}" is not an application capability. Declare it on a backend operation or use a built-in IAM permission.`,
+              `Permission "${permission}" is not an application capability. Declare it on a backend operation or use a built-in IAM/storage permission.`,
             );
       if (!policy.roles.includes(policy.defaultRole))
         add(
@@ -223,25 +223,28 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
       operations.set(name, `${endpoint.backend}.${endpoint.operationId}`);
     }
     if (visible.length) inventory.add("/api-explorer");
+    const hasStorage = connected.some((backend) => backend.iac?.r2_storage.length);
+    if (hasStorage) inventory.add("/r2");
     if (selected?.authentication) inventory.add("/profile");
     const slugs = new Map<string, string>();
     for (const endpoint of visible) {
       const slug = entitySlug(endpoint.entity);
       if (
-        selected &&
-        [
-          ...(selected.authentication?.methods.includes("email-password")
-            ? ["forgot-password", "reset-password"]
-            : []),
-          "sign-in",
-          "sign-up",
-          ...(selected.authentication ? ["profile"] : []),
-        ].includes(slug)
+        (hasStorage && slug === "r2") ||
+        (selected &&
+          [
+            ...(selected.authentication?.methods.includes("email-password")
+              ? ["forgot-password", "reset-password"]
+              : []),
+            "sign-in",
+            "sign-up",
+            ...(selected.authentication ? ["profile"] : []),
+          ].includes(slug))
       )
         add(
           "GENERATED_NAME_COLLISION",
           `${path}.connectsTo`,
-          `Entity "${endpoint.entity}" conflicts with a generated authentication page. Rename the entity.`,
+          `Entity "${endpoint.entity}" conflicts with a generated platform page. Rename the entity.`,
         );
       const previous = slugs.get(slug);
       if (previous && previous !== endpoint.entity)

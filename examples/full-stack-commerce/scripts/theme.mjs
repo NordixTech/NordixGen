@@ -2,13 +2,16 @@ import { join } from "node:path";
 import { expect as baseExpect } from "@playwright/test";
 
 const expect = baseExpect.configure({ timeout: 15_000 });
-export async function verifyTheme(browser, page, web, directory, adminState) {
-  const button = (theme) => page.getByRole("button", { name: `${theme} theme`, exact: true });
-  const openMenu = async (target = page) => {
-    const menu = target.locator(".ng-account-menu");
-    if ((await menu.getAttribute("open")) === null) await menu.locator("summary").click();
-  };
-  await openMenu();
+async function openMenu(target) {
+  const menu = target.locator(".ng-account-menu");
+  await expect(menu.locator("summary")).not.toContainText("Checking session");
+  if ((await menu.getAttribute("open")) === null) await menu.locator("summary").click();
+}
+
+export async function verifyThemePreferences(browser, page, web, directory) {
+  const button = (theme) =>
+    page.getByRole("button", { name: `${theme} theme`, exact: true, includeHidden: true });
+  await openMenu(page);
   const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme-ready", "true");
@@ -19,14 +22,16 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
   await expect(button("Dark")).toHaveAttribute("aria-pressed", "true");
   await expect.poll(background).toBe("rgb(11, 15, 25)");
   await page.reload();
-  await openMenu();
+  await openMenu(page);
   await expect(page.locator("html")).toHaveAttribute("data-theme-ready", "true");
   await expect(button("Dark")).toHaveAttribute("aria-pressed", "true");
   await expect.poll(background).toBe("rgb(11, 15, 25)");
   await page.screenshot({ path: join(directory, "verified-theme-dark.png"), fullPage: true });
+  await openMenu(page);
   await button("Light").click();
   await expect.poll(background).toBe("rgb(248, 250, 252)");
   await page.screenshot({ path: join(directory, "verified-theme-light.png"), fullPage: true });
+  await openMenu(page);
   await button("System").click();
   await page.emulateMedia({ colorScheme: "dark" });
   await expect.poll(background).toBe("rgb(11, 15, 25)");
@@ -36,12 +41,11 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
   try {
     await other.goto(web);
     await expect(other.locator("html")).toHaveAttribute("data-theme-ready", "true");
-    await openMenu();
+    await openMenu(page);
     await button("Dark").click();
-    await expect(other.getByRole("button", { name: "Dark theme", exact: true })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    await expect(
+      other.getByRole("button", { name: "Dark theme", exact: true, includeHidden: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await other.evaluate(() => localStorage.removeItem("nordix-theme"));
     await expect(button("System")).toHaveAttribute("aria-pressed", "true");
   } finally {
@@ -82,6 +86,10 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
   } finally {
     await blocked.close();
   }
+}
+
+export async function verifyTheme(browser, page, web, directory, adminState) {
+  await verifyThemePreferences(browser, page, web, directory);
   const screens = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
   const screen = await screens.newPage();
   try {

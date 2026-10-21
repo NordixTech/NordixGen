@@ -210,6 +210,10 @@ export function resolveFrontend(
     if (frontend.ai.connectPortal.enabled) inventory.add("/connect-ai");
   }
   if (visible.length) inventory.add("/api-explorer");
+  const storageBackends = frontend.connectsTo
+    .filter((name) => backends[name].storage.length)
+    .sort();
+  if (storageBackends.length) inventory.add("/r2");
   for (const operation of visible) inventory.add(entities[operation.entity].page);
   if (identity) {
     inventory.add("/admin/roles");
@@ -235,6 +239,7 @@ export function resolveFrontend(
       ));
   return {
     name: frontend.name,
+    storageBackends,
     ...(frontend.ai?.enabled
       ? {
           ai: {
@@ -257,6 +262,7 @@ export function resolveFrontend(
         (frontend.ai?.enabled && (path === "/chat" || path === "/connect-ai")) ||
         path === "/admin/roles" ||
         path === "/profile" ||
+        (path === "/r2" && Boolean(identity)) ||
         !publicPage(path),
     })),
     operations: visible.map((operation) => operation.id),

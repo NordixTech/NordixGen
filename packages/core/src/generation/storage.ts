@@ -1,11 +1,15 @@
 import type { GeneratedFile } from "../plugins/contracts.js";
 import type { ResolvedProject } from "../project/types.js";
+import { storageManagerFile } from "./storage-manager.js";
 
 const port = `export type StorageBody=ReadableStream<Uint8Array>|ArrayBuffer|Uint8Array;
 export interface StorageDownload {body:ReadableStream<Uint8Array>;contentType:string;etag?:string;size?:number;}
 /** Authorization belongs to the calling use case/controller, before invoking this port. */
+export interface StorageObject {key:string;size:number;uploaded:string;etag:string;}
+export interface StoragePage {objects:StorageObject[];cursor?:string;}
 export interface StoragePort {
- upload(key:string,data:StorageBody,contentType:string):Promise<void>;
+ list(options?:{cursor?:string;prefix?:string;limit?:number}):Promise<StoragePage>;
+ upload(key:string,data:StorageBody,contentType:string,options?:{onlyIfAbsent?:boolean}):Promise<void>;
  downloadStream(key:string):Promise<StorageDownload|null>;
  getSignedUrl(key:string,expiresInSeconds?:number):Promise<string>;
  getPublicUrl(key:string):Promise<string|null>;
@@ -13,9 +17,10 @@ export interface StoragePort {
  exists(key:string):Promise<boolean>;
 }
 `;
-const adapter = String.raw`import type {StoragePort,StorageBody,StorageDownload} from "../../application/ports/storage-port.js";
+const adapter = String.raw`import type {StoragePort,StorageBody,StorageDownload,StoragePage} from "../../application/ports/storage-port.js";
 export interface R2Binding {
- put(key:string,data:StorageBody,options:{httpMetadata:{contentType:string}}):Promise<unknown>;
+ list(options:{cursor?:string;prefix?:string;limit:number}):Promise<{objects:{key:string;size:number;uploaded:Date;etag:string}[];truncated:boolean;cursor?:string}>;
+ put(key:string,data:StorageBody,options:{httpMetadata:{contentType:string};onlyIf?:{etagDoesNotMatch:string}}):Promise<unknown>;
  get(key:string):Promise<{body:ReadableStream<Uint8Array>;httpMetadata?:{contentType?:string};httpEtag?:string;size?:number}|null>;
  head(key:string):Promise<unknown|null>;
  delete(key:string):Promise<void>;
@@ -28,11 +33,13 @@ async function hmac(key:Uint8Array|string,message:string):Promise<ArrayBuffer>{
  const imported=await crypto.subtle.importKey("raw",typeof key==="string"?encoder.encode(key):key as Uint8Array<ArrayBuffer>,{name:"HMAC",hash:"SHA-256"},false,["sign"]);
  return crypto.subtle.sign("HMAC",imported,encoder.encode(message));
 }
+export class StorageConflictError extends Error {constructor(){super("A file with this name already exists. Choose another name.");this.name="StorageConflictError";}}
 /** A native binding serves data; S3 credentials are used only to sign direct download links. */
 export class CloudflareR2Adapter implements StoragePort {
  constructor(private readonly bucket:R2Binding,private readonly signing?:R2Signing,private readonly publicUrl?:string){}
  private key(key:string){if(!key||key.startsWith("/")||key.split("/").some(part=>part==="."||part==="..")||/[\x00-\x1f]/.test(key))throw Error("Invalid storage key");return key;}
- async upload(key:string,data:StorageBody,contentType:string){await this.bucket.put(this.key(key),data,{httpMetadata:{contentType}});}
+ async list(options:{cursor?:string;prefix?:string;limit?:number}={}):Promise<StoragePage>{const result=await this.bucket.list({...options,limit:Math.max(1,Math.min(options.limit??50,100))});return {objects:result.objects.map(item=>({key:item.key,size:item.size,uploaded:item.uploaded.toISOString(),etag:item.etag})),...(result.truncated?{cursor:result.cursor}:{})};}
+ async upload(key:string,data:StorageBody,contentType:string,options?:{onlyIfAbsent?:boolean}){const result=await this.bucket.put(this.key(key),data,{httpMetadata:{contentType},...(options?.onlyIfAbsent?{onlyIf:{etagDoesNotMatch:"*"}}:{})});if(result===null)throw new StorageConflictError();}
  async downloadStream(key:string):Promise<StorageDownload|null>{const object=await this.bucket.get(this.key(key));return object?{body:object.body,contentType:object.httpMetadata?.contentType??"application/octet-stream",etag:object.httpEtag,size:object.size}:null;}
  async delete(key:string){await this.bucket.delete(this.key(key));}
  async exists(key:string){return (await this.bucket.head(this.key(key)))!==null;}
@@ -58,6 +65,7 @@ export function storageFiles(project: ResolvedProject, backend: string): Generat
   if (!app.storage.length) return [];
   const root = `${app.path}/src`;
   return [
+    storageManagerFile(project, backend),
     { path: `${root}/application/ports/storage-port.ts`, content: port },
     { path: `${root}/platform/storage/cloudflare-r2-adapter.ts`, content: adapter },
     {

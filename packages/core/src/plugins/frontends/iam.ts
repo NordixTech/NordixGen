@@ -69,6 +69,7 @@ function title(value:string){return value==="iam"?"Administration":value.replace
 function permissionLabel(value:string){
  if(value==="iam:roles:manage")return "Manage roles & permissions";
  if(value==="iam:users:manage-roles")return "Assign user roles";
+ if(value.startsWith("storage:")){const [,key,action]=value.split(":");return (action==="read"?"Browse & download ":"Upload to ")+key;}
  const [subject,...actions]=value.split(":");
  const action=actions.join(" ");
  return (action==="read"?"View ":action==="write"?"Create & update ":title(action)+" ")+subject.replaceAll("-"," ");
@@ -76,6 +77,7 @@ function permissionLabel(value:string){
 function permissionDescription(value:string){
  if(value==="iam:roles:manage")return "Create roles and decide what each role can do.";
  if(value==="iam:users:manage-roles")return "View users and assign them an existing role.";
+ if(value.startsWith("storage:"))return value.endsWith(":read")?"List files, preview documents, and download through the backend or a signed URL.":"Upload new files to this storage instance. Existing file keys cannot be replaced.";
  return value.endsWith(":read")?"Browse and read these records.":value.endsWith(":write")?"Create records and make changes.":"Allow this application capability.";
 }
 export function IamAdministration(){

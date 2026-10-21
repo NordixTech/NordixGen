@@ -20,6 +20,7 @@ import { generateFrontendAccess, protectFrontendPage } from "./frontend-access.j
 import { generateFrontendForms } from "./frontend-forms.js";
 import { frontendTransportFiles } from "./frontend-transport.js";
 import { frontendEnvironmentFile } from "./runtime-environment.js";
+import { frontendStorageFiles } from "./storage-frontend.js";
 export const FRONTEND_STACK = {
   runtime: {
     "@tanstack/react-query": "^5.80.7",
@@ -58,6 +59,7 @@ export function frontendRenderContext(
 export function generateFrontend(project: ResolvedProject, name: string) {
   const context = frontendRenderContext(project, name);
   const contributions = [
+    { owner: "storage-manager", files: frontendStorageFiles(context) },
     { owner: "ai", files: frontendAiFiles(context) },
     { owner: "shell", files: generateFrontendShell(context) },
     { owner: "theme", files: generateThemeFiles(context) },

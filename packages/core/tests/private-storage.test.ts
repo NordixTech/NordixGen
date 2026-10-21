@@ -237,7 +237,16 @@ describe("private Workers and native R2 storage", () => {
     const context = vi.fn(() => {
       throw Error("Cloudflare context must not be initialized");
     });
-    const localFetch = vi.fn(async () => new Response("local backend"));
+    const localFetch = vi.fn(
+      async () =>
+        new Response("local backend", {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": "999",
+            "set-cookie": "session=local; HttpOnly",
+          },
+        }),
+    );
     const transport = frontendRuntime(
       files,
       "apps/store-web/src",
@@ -257,6 +266,13 @@ describe("private Workers and native R2 storage", () => {
     };
     expect(await (await transport.backendFetch("core-api", "/health")).text()).toBe(
       "local backend",
+    );
+    const decoded = await transport.backendFetch("core-api", "/health");
+    expect(decoded.headers.get("content-encoding")).toBeNull();
+    expect(decoded.headers.get("content-length")).toBeNull();
+    expect(decoded.headers.get("set-cookie")).toContain("HttpOnly");
+    expect((localFetch.mock.calls[0][0] as Request).headers.get("accept-encoding")).toBe(
+      "identity",
     );
     expect(context).not.toHaveBeenCalled();
     expect(new URL((localFetch.mock.calls[0][0] as Request).url).origin).toBe(

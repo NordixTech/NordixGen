@@ -12,6 +12,7 @@ export function dashboardShellFiles(context: FrontendRenderContext): GeneratedFi
     "/chat",
     "/connect-ai",
     "/profile",
+    "/r2",
     "/admin/roles",
     "/sign-in",
     "/sign-up",
@@ -48,6 +49,9 @@ export function dashboardShellFiles(context: FrontendRenderContext): GeneratedFi
     ...(context.frontend.ai?.connectPortal.enabled
       ? [{ href: "/connect-ai", label: "AI Connection", icon: "link", group: "Intelligence" }]
       : []),
+    ...(context.frontend.storageBackends.length
+      ? [{ href: "/r2", label: "Instancias R2", icon: "storage", group: "Workspace" }]
+      : []),
     ...(auth
       ? [{ href: "/admin/roles", label: "Administration", icon: "shield", group: "Manage" }]
       : []),
@@ -68,7 +72,7 @@ export function dashboardShellFiles(context: FrontendRenderContext): GeneratedFi
     {
       path: `${context.framework.codeRoot}/components/layout/brand.tsx`,
       content: `import Link from "next/link";
-export function Brand(){return <Link className="ng-brand" href="/" aria-label="NordixGen home"><span className="ng-brand-art" aria-hidden="true" dangerouslySetInnerHTML={{__html:${JSON.stringify(nordixLogo)}}}/><span className="ng-wordmark">Nordix</span><span className="ng-brand-gen">Gen</span></Link>;}
+export function Brand(){return <Link className="ng-brand" href="/" aria-label="NordixGen home"><span className="ng-brand-art" aria-hidden="true" dangerouslySetInnerHTML={{__html:${JSON.stringify(nordixLogo)}}}/><span className="ng-wordmark">NORDIX</span><span className="ng-brand-gen">Gen</span></Link>;}
 `,
     },
     {
@@ -80,7 +84,7 @@ import {usePathname} from "next/navigation";
 import {Brand} from "./brand";
 ${auth ? 'import {AuthControls} from "@/components/auth/auth-controls";\nimport {useSessionView} from "@/lib/auth/use-session-view";' : 'import {ThemeSwitcher} from "@/components/ui/theme-switcher";'}
 const links=${JSON.stringify(links)};
-const paths:Record<string,string>={home:"M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7",code:"m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20",grid:"M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",spark:"m12 3 2.8 6.2L21 12l-6.2 2.8L12 21l-2.8-6.2L3 12l6.2-2.8L12 3Z",link:"m10 14 4-4m-6 6-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m0 12a4 4 0 0 0 6 0l5-5a4 4 0 0 0-6-6l-1 1",shield:"m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Zm-4 9 3 3 5-6"};
+const paths:Record<string,string>={storage:"M3 5h18v15H3zM3 10h18M7 15h3",home:"M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7",code:"m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20",grid:"M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",spark:"m12 3 2.8 6.2L21 12l-6.2 2.8L12 21l-2.8-6.2L3 12l6.2-2.8L12 3Z",link:"m10 14 4-4m-6 6-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m0 12a4 4 0 0 0 6 0l5-5a4 4 0 0 0-6-6l-1 1",shield:"m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Zm-4 9 3 3 5-6"};
 function Icon({name}:{name:string}){return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]||paths.grid}/></svg>;}
 export function AppShell({children}:{children:ReactNode}){
  const pathname=usePathname();const drawer=useRef<HTMLDialogElement>(null);const trigger=useRef<HTMLButtonElement>(null);
