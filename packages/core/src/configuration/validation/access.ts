@@ -196,13 +196,13 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
     if (
       selected &&
       frontend.access.publicRoutes?.some(
-        (pattern) => pattern === "/admin/roles" || pattern === "/admin/**",
+        (pattern) => pattern === "/admin/roles" || pattern === "/admin/**" || pattern === "/audit",
       )
     )
       add(
         "FRONTEND_ACCESS_ROUTE_INVALID",
         `${path}.access.publicRoutes`,
-        "IAM administration is always protected and cannot be a public route.",
+        "IAM administration and audit history are always protected and cannot be public routes.",
       );
     const inventory = new Set(["/"]);
     const visible = config.endpoints.filter((e) => frontend.connectsTo.includes(e.backend));
@@ -226,6 +226,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
     const hasStorage = connected.some((backend) => backend.iac?.r2_storage.length);
     if (hasStorage) inventory.add("/r2");
     if (selected?.authentication) inventory.add("/profile");
+    if (selected?.authentication) inventory.add("/audit");
     const slugs = new Map<string, string>();
     for (const endpoint of visible) {
       const slug = entitySlug(endpoint.entity);
@@ -238,7 +239,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
               : []),
             "sign-in",
             "sign-up",
-            ...(selected.authentication ? ["profile"] : []),
+            ...(selected.authentication ? ["profile", "audit"] : []),
           ].includes(slug))
       )
         add(

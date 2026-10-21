@@ -217,6 +217,7 @@ export function resolveFrontend(
   for (const operation of visible) inventory.add(entities[operation.entity].page);
   if (identity) {
     inventory.add("/admin/roles");
+    inventory.add("/audit");
     inventory.add("/sign-in");
     inventory.add("/sign-up");
     if (identity.methods.includes("email-password")) {
@@ -261,6 +262,7 @@ export function resolveFrontend(
       authenticated:
         (frontend.ai?.enabled && (path === "/chat" || path === "/connect-ai")) ||
         path === "/admin/roles" ||
+        path === "/audit" ||
         path === "/profile" ||
         (path === "/r2" && Boolean(identity)) ||
         !publicPage(path),

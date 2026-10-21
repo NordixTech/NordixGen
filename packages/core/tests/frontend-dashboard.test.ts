@@ -17,10 +17,49 @@ describe("dashboard generation variants", () => {
     expect(shell).not.toContain('"label":"API Explorer"');
     expect(shell).not.toContain('"label":"AI Assistant"');
     expect(files["apps/store-web/src/app/profile/page.tsx"]).toBeUndefined();
+    expect(files["apps/store-web/src/app/audit/page.tsx"]).toBeUndefined();
     expect(files["apps/store-web/src/styles/dashboard.css"]).toContain("data:font/woff;base64,");
     expect(files["apps/store-web/public/fonts/CaesarDressing-OFL.txt"]).toContain(
       "SIL OPEN FONT LICENSE",
     );
+  });
+  it("generates a protected audit destination and rejects public overrides and business route collisions", () => {
+    const config = createSecuredConfig();
+    const project = resolvedFixture(config);
+    const files = generateFrontend(project, "store-web").virtualFileSystem.snapshot();
+    expect(
+      project.frontends["store-web"].pages.find((page) => page.path === "/audit")?.authenticated,
+    ).toBe(true);
+    expect(files["apps/store-web/src/app/audit/page.tsx"]).toContain(
+      'requireIamAccess("iam:roles:manage")',
+    );
+    expect(files["apps/store-web/src/components/iam/audit-log.tsx"]).toContain(
+      'session.hasPermission("iam:roles:manage")',
+    );
+    expect(files["apps/store-web/src/components/layout/app-shell.tsx"]).toContain(
+      'link.href!=="/audit"||canAudit',
+    );
+    config.frontends[0].access = { mode: "mixed", publicRoutes: ["/audit"] };
+    expect(
+      validateNordixConfig(config).diagnostics.some(
+        (d) => d.code === "FRONTEND_ACCESS_ROUTE_INVALID",
+      ),
+    ).toBe(true);
+    const collision = JSON.parse(
+      JSON.stringify(createSecuredConfig()).replaceAll('"Customer"', '"Audit"'),
+    );
+    collision.endpoints.push({
+      backend: "core-api",
+      entity: "Audit",
+      operationId: "listAudit",
+      method: "GET",
+      path: "/api/audit",
+    });
+    expect(
+      validateNordixConfig(collision).diagnostics.some(
+        (d) => d.code === "GENERATED_NAME_COLLISION",
+      ),
+    ).toBe(true);
   });
   it.each([false, true])("always protects the profile, with phone capability %s", (phone) => {
     const config = createSecuredConfig();

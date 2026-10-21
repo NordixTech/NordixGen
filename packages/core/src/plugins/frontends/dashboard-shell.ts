@@ -14,6 +14,7 @@ export function dashboardShellFiles(context: FrontendRenderContext): GeneratedFi
     "/profile",
     "/r2",
     "/admin/roles",
+    "/audit",
     "/sign-in",
     "/sign-up",
     "/forgot-password",
@@ -53,7 +54,10 @@ export function dashboardShellFiles(context: FrontendRenderContext): GeneratedFi
       ? [{ href: "/r2", label: "Instancias R2", icon: "storage", group: "Workspace" }]
       : []),
     ...(auth
-      ? [{ href: "/admin/roles", label: "Administration", icon: "shield", group: "Manage" }]
+      ? [
+          { href: "/admin/roles", label: "Administration", icon: "shield", group: "Manage" },
+          { href: "/audit", label: "Auditoría", icon: "shield", group: "Manage" },
+        ]
       : []),
   ];
   return [
@@ -88,11 +92,11 @@ const paths:Record<string,string>={storage:"M3 5h18v15H3zM3 10h18M7 15h3",home:"
 function Icon({name}:{name:string}){return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]||paths.grid}/></svg>;}
 export function AppShell({children}:{children:ReactNode}){
  const pathname=usePathname();const drawer=useRef<HTMLDialogElement>(null);const trigger=useRef<HTMLButtonElement>(null);
- ${auth ? 'const session=useSessionView();const canAdmin=session.hasPermission("iam:roles:manage")||session.hasPermission("iam:users:manage-roles");' : "const canAdmin=false;"}
+ ${auth ? 'const session=useSessionView();const canAudit=session.hasPermission("iam:roles:manage");const canAdmin=session.hasPermission("iam:roles:manage")||session.hasPermission("iam:users:manage-roles");' : "const canAdmin=false,canAudit=false;"}
  function close(){drawer.current?.close();}
  useEffect(()=>{close();},[pathname]);
  useEffect(()=>{const media=window.matchMedia("(min-width: 1024px)");const changed=()=>{if(media.matches)close();};media.addEventListener("change",changed);return()=>media.removeEventListener("change",changed);},[]);
- const navigation=(mobile=false)=><nav aria-label={mobile?"Mobile navigation":"Main navigation"}>{["Workspace","Application","Intelligence","Manage"].map(group=>{const items=links.filter(link=>link.group===group&&(link.href!=="/admin/roles"||canAdmin));return items.length?<section className="ng-nav-group" key={group}><p>{group}</p>{items.map(link=>link.href==="#assistant"?<button className="ng-nav-link" key={link.href} onClick={()=>{close();window.dispatchEvent(new Event("nordix-open-assistant"));}}><Icon name={link.icon}/><span>{link.label}</span></button>:<Link className="ng-nav-link" key={link.href} href={link.href} aria-current={(link.href==="/"?pathname==="/":pathname===link.href||pathname.startsWith(link.href+"/"))?"page":undefined} onClick={close}><Icon name={link.icon}/><span>{link.label}</span></Link>)}</section>:null;})}</nav>;
+ const navigation=(mobile=false)=><nav aria-label={mobile?"Mobile navigation":"Main navigation"}>{["Workspace","Application","Intelligence","Manage"].map(group=>{const items=links.filter(link=>link.group===group&&((link.href!=="/admin/roles"||canAdmin)&&(link.href!=="/audit"||canAudit)));return items.length?<section className="ng-nav-group" key={group}><p>{group}</p>{items.map(link=>link.href==="#assistant"?<button className="ng-nav-link" key={link.href} onClick={()=>{close();window.dispatchEvent(new Event("nordix-open-assistant"));}}><Icon name={link.icon}/><span>{link.label}</span></button>:<Link className="ng-nav-link" key={link.href} href={link.href} aria-current={(link.href==="/"?pathname==="/":pathname===link.href||pathname.startsWith(link.href+"/"))?"page":undefined} onClick={close}><Icon name={link.icon}/><span>{link.label}</span></Link>)}</section>:null;})}</nav>;
  return <div className="ng-app"><a className="ng-skip-link" href="#workspace-content">Skip to content</a><header className="ng-app-header"><div className="ng-header-start"><button className="ng-icon-button ng-mobile-toggle" type="button" aria-label="Open navigation" aria-haspopup="dialog" ref={trigger} onClick={()=>drawer.current?.showModal()}><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><Brand/></div><div className="ng-header-project">${context.projectName}</div>${auth ? "<AuthControls/>" : '<details className="ng-account-menu" onKeyDown={event=>{if(event.key==="Escape"){event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="Appearance menu"><span className="ng-avatar" aria-hidden="true">◐</span><span className="ng-account-label"><strong>Appearance</strong><small>Your preferences</small></span></summary><div className="ng-account-popover"><div className="ng-menu-theme"><span>Appearance</span><ThemeSwitcher/></div></div></details>'}</header><aside className="ng-sidebar">{navigation()}<div className="ng-sidebar-footer"><span className="ng-status-dot"/>Generated with NordixGen</div></aside><dialog ref={drawer} className="ng-nav-drawer" aria-label="Navigation" onClick={event=>{if(event.target===event.currentTarget)close();}} onClose={()=>trigger.current?.focus()}><div className="ng-drawer-heading"><Brand/><button className="ng-icon-button" type="button" aria-label="Close navigation" onClick={close}>×</button></div>{navigation(true)}<p className="ng-sidebar-footer">Generated with NordixGen</p></dialog><div id="workspace-content" className="ng-app-content" tabIndex={-1}>{children}</div></div>;
 }
 `,

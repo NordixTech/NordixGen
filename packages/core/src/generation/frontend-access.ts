@@ -48,7 +48,7 @@ export async function requirePageSession(path:string):Promise<VerifiedPageSessio
  if(!session)redirect("/sign-in");
  return session;
 }
-export async function requireIamAccess():Promise<void>{
+export async function requireIamAccess(requiredPermission?:"iam:roles:manage"):Promise<void>{
  await requirePageSession("/admin/roles");
  const cookie=(await headers()).get("cookie")??"";
  let response:Response;
@@ -57,7 +57,7 @@ export async function requireIamAccess():Promise<void>{
  if(response.status===403)redirect("/");
  if(!response.ok)throw new IdentityUnavailable();
  const principal:unknown=await response.json().catch(()=>null);
- if(!principal||typeof principal!=="object"||!("permissions" in principal)||!Array.isArray(principal.permissions)||!principal.permissions.some(value=>value==="*"||value==="iam:roles:manage"||value==="iam:users:manage-roles"))redirect("/");
+ if(!principal||typeof principal!=="object"||!("permissions" in principal)||!Array.isArray(principal.permissions)||!principal.permissions.some(value=>value==="*"||(requiredPermission?value===requiredPermission:value==="iam:roles:manage"||value==="iam:users:manage-roles")))redirect("/");
 }
 `,
     },
@@ -69,7 +69,7 @@ export function protectFrontendPage(
   context: FrontendRenderContext,
   file: GeneratedFile,
 ): GeneratedFile {
-  if (file.path.endsWith("/app/admin/roles/page.tsx"))
+  if (file.path.endsWith("/app/admin/roles/page.tsx") || file.path.endsWith("/app/audit/page.tsx"))
     return { ...file, content: `export const dynamic="force-dynamic";\n${file.content}` };
   const page = context.frontend.pages.find(
     (page) =>

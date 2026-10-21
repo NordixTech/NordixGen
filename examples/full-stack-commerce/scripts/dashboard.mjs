@@ -54,8 +54,15 @@ export async function verifyDashboard(browser, web, directory, adminState) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       );
-      await page.getByLabel("Account menu", { exact: true }).click();
-      await page.getByRole("link", { name: "My profile" }).click();
+      // Permission reconciliation may replace the account menu once during navigation.
+      await expect(async () => {
+        if (new URL(page.url()).pathname === "/profile") return;
+        const menu = page.locator(".ng-account-menu");
+        await expect(menu.locator("summary")).not.toContainText("Checking session");
+        if ((await menu.getAttribute("open")) === null) await menu.locator("summary").click();
+        await menu.getByRole("link", { name: "My profile" }).click({ timeout: 2000 });
+        await expect(page).toHaveURL(`${web}/profile`, { timeout: 2000 });
+      }).toPass({ timeout: 15000 });
       await expect(page.getByRole("heading", { name: "Your profile", exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
@@ -66,6 +73,19 @@ export async function verifyDashboard(browser, web, directory, adminState) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       );
+      await page.goto(`${web}/audit`);
+      await expect(page.getByRole("heading", { name: "Auditoría", exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Audit events", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Refresh activity", exact: true }),
+      ).toBeEnabled();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      await page.screenshot({
+        path: join(directory, `verified-audit-${width}.png`),
+        fullPage: true,
+      });
       await page.goto(web);
       await page.screenshot({
         path: join(directory, `verified-dashboard-${width}.png`),

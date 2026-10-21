@@ -53,11 +53,28 @@ function guard(
     require: load(`${root}/lib/auth/server.ts`).requirePageSession as (
       path: string,
     ) => Promise<unknown>,
-    requireIam: load(`${root}/lib/auth/server.ts`).requireIamAccess as () => Promise<void>,
+    requireIam: load(`${root}/lib/auth/server.ts`).requireIamAccess as (
+      requiredPermission?: "iam:roles:manage",
+    ) => Promise<void>,
     requireGuest: load(`${root}/lib/auth/server.ts`).requireGuestSession as () => Promise<void>,
   };
 }
 describe("verified server page access", () => {
+  it("protects audit history from user-assignment operators and rechecks current grants", async () => {
+    for (const permission of ["*", "iam:roles:manage", "iam:users:manage-roles", "notes:read"]) {
+      const f = guard("public");
+      f.fetchSession
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ session: { id: "s" }, user: { id: "u", role: "admin" } })),
+        )
+        .mockResolvedValueOnce(new Response(JSON.stringify({ permissions: [permission] })));
+      if (permission === "*" || permission === "iam:roles:manage")
+        await expect(f.requireIam("iam:roles:manage")).resolves.toBeUndefined();
+      else await expect(f.requireIam("iam:roles:manage")).rejects.toThrow("redirect:/");
+    }
+    const guest = guard("public", null);
+    await expect(guest.requireIam("iam:roles:manage")).rejects.toThrow("redirect:/sign-in");
+  });
   it("redirects verified members away from account entry pages but admits guests and expired sessions", async () => {
     const member = guard();
     await expect(member.requireGuest()).rejects.toThrow("redirect:/");

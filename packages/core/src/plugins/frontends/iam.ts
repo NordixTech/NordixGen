@@ -8,6 +8,30 @@ export function generateFrontendIam(context: FrontendRenderContext): readonly Ge
   return [
     { path: `${root}/components/iam/audit-activity.tsx`, content: auditActivity },
     {
+      path: `${root}/app/audit/page.tsx`,
+      content: `import {requireIamAccess} from "@/lib/auth/server";
+import {AuditLog} from "@/components/iam/audit-log";
+import "@/styles/iam.css";
+export default async function AuditPage(){
+ await requireIamAccess("iam:roles:manage");
+ return <main className="ng-iam-page"><header className="ng-iam-heading"><div><p className="ng-iam-eyebrow">SECURITY & ACCOUNTABILITY</p><h1>Auditoría</h1><p>Review who did what and when across your application.</p></div></header><AuditLog/></main>;
+}
+`,
+    },
+    {
+      path: `${root}/components/iam/audit-log.tsx`,
+      content: `"use client";
+import {useSessionView} from "@/lib/auth/use-session-view";
+import {AuditActivity} from "./audit-activity";
+export function AuditLog(){
+ const session=useSessionView();
+ if(session.isPending)return <p role="status">Checking your access…</p>;
+ if(!session.hasPermission("iam:roles:manage"))return <p role="alert">Your account cannot view audit history.</p>;
+ return <div className="ng-iam-card"><AuditActivity key={session.user?.id} revision={0} standalone/></div>;
+}
+`,
+    },
+    {
       path: `${root}/styles/iam.css`,
       content: iamStyles,
     },
@@ -170,7 +194,7 @@ function differences(before:unknown,after:unknown,path="$",result:{path:string;b
  return result;
 }
 const pretty=(value:unknown)=>value===undefined?"—":JSON.stringify(value,null,2);
-export function AuditActivity({revision}:{revision:number}){
+export function AuditActivity({revision,standalone=false}:{revision:number;standalone?:boolean}){
  const [filters,setFilters]=useState({actor:"",action:"",from:"",to:""});
  const [query,setQuery]=useState(""),[page,setPage]=useState(1),[refresh,setRefresh]=useState(0);
  const [data,setData]=useState<Page>({items:[],total:0,page:1,pageSize:25}),[loading,setLoading]=useState(true),[error,setError]=useState("");
@@ -179,7 +203,7 @@ export function AuditActivity({revision}:{revision:number}){
   return()=>{active=false;};
  },[page,query,refresh,revision]);
  function apply(event:FormEvent){event.preventDefault();const params=new URLSearchParams();for(const [key,value] of Object.entries(filters))if(value.trim())params.set(key,key==="from"||key==="to"?new Date(value).toISOString():value.trim());setPage(1);setQuery(params.size?"&"+params.toString():"");setRefresh(value=>value+1);}
- return <section id="iam-activity-panel" role="tabpanel" aria-labelledby="iam-activity-tab" className="ng-audit" aria-busy={loading}>
+ return <section id={standalone?undefined:"iam-activity-panel"} role={standalone?"region":"tabpanel"} aria-label={standalone?"Audit events":undefined} aria-labelledby={standalone?undefined:"iam-activity-tab"} className="ng-audit" aria-busy={loading}>
   <header><div><h2>Activity</h2><p>Authentication, access changes, and audited application operations.</p></div><button type="button" className="ng-button ng-button--secondary" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh activity</button></header>
   <form onSubmit={apply} className="ng-audit-filters">
    <label>Actor ID<input className="ng-input" value={filters.actor} maxLength={200} onChange={event=>setFilters({...filters,actor:event.target.value})}/></label>

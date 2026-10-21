@@ -39,7 +39,7 @@ Snapshots are copied before background work starts. Credential-like keys (passwo
 
 `GET /api/auth/iam/audit` requires a verified session and current `iam:roles:manage` permission. Optional filters are `actor`, `action`, `from` and `to`; dates are ISO timestamps including timezone. `page` starts at 1 and `pageSize` defaults to 25, with a maximum of 100. Results are `{ items, total, page, pageSize }`, ordered by creation time and UUID descending. Business-only backends without authentication record events but do not expose an unauthenticated audit reader.
 
-The **Activity** tab on `/admin/roles` exposes the same filters, pagination and refresh, with before/after JSON differences and request details. User-role-only operators cannot access it. The legacy `auth_iam_audit` table is not regenerated or imported.
+The **Auditoría** sidebar destination at `/audit` exposes filters by actor ID, action and date range, pagination and refresh, with before/after JSON differences and request details. The same viewer remains available in the **Activity** tab on `/admin/roles`. Both require `iam:roles:manage` (or `*`); user-role-only operators cannot access them. The standalone page rechecks grants on the server, and its client stops rendering the viewer when access is lost. The legacy `auth_iam_audit` table is not regenerated or imported.
 
 ## Verification
 

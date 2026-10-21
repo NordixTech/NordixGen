@@ -54,7 +54,26 @@ endpoints:
   - backend: api
     entity: Note
     operationId: listNotes
+    audit: true
     method: GET
     path: /api/notes
     permissions: [notes:read]
     pagination: standard
+  - backend: api
+    entity: Note
+    operationId: createNote
+    audit: true
+    method: POST
+    path: /api/notes
+    permissions: [notes:write]
+    requestBody: { useCase: { entity: Note, operation: create } }
+  - backend: api
+    entity: Note
+    operationId: deleteNote
+    audit: true
+    method: DELETE
+    path: /api/notes/{noteId}
+    permissions: [notes:write]
+    pathParams:
+      - name: noteId
+        field: { entity: Note, field: id }
