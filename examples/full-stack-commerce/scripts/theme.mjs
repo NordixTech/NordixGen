@@ -110,7 +110,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
     });
     await screens.addCookies(adminState.cookies);
     await screen.goto(`${web}/customer`);
-    await expect(screen.getByRole("status", { name: /role admin/ })).toBeVisible();
+    await expect(screen.locator(".ng-account-label small")).toHaveText("admin");
     await expect(screen.getByRole("table")).toBeVisible();
     // Account reconciliation can replace the account-scoped subtree once after navigation.
     // Ensure the dialog lifecycle (open, verify and close) is resilient to transition teardown.
