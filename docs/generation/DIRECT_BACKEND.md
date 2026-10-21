@@ -18,7 +18,7 @@ Generated Neon HTTP clients reuse their stateless client and Drizzle schema setu
 
 The functional tests execute generated Hono handlers, compile application/client contracts, assert single ownership/containment and central dependency categories, compare common readiness and exercise CLI output with an injected command runner. Retired backend registration/capability tests and malformed plugin-context checks were removed with their production APIs. Coverage gates are unchanged.
 
-Focused checks compile backend output with and without configured identity options and verify safe malformed-registration handling. The maintained commerce example supplies separate persisted HTTP and browser evidence. Optional provider configuration does not imply complete provider enrollment, recovery or administration screens.
+Focused checks compile backend output with and without configured identity options and verify safe malformed-registration handling. The maintained commerce example supplies separate persisted HTTP and browser evidence. Password recovery/reset and phone-linking screens are generated when configured. Optional provider configuration does not imply complete provider-specific enrollment or administration screens; see the [authentication setup guide](AUTHENTICATION.md).
 
 [Frontend generation](DIRECT_FRONTEND.md) now also uses direct typed functions without registration. The multi-module layout, public application wiring and module-owned persistence each retain their own implementation boundaries.
 

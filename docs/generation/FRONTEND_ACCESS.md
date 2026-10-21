@@ -4,7 +4,11 @@ The resolved page inventory is authoritative. `public` leaves business pages acc
 
 ```yaml
 access: { mode: authenticated, backend: api }
-# Or:
+```
+
+Or, to keep selected pages public:
+
+```yaml
 access: { mode: mixed, backend: api, publicRoutes: [/, /customer/**] }
 ```
 

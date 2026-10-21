@@ -1,0 +1,29 @@
+# Troubleshooting
+
+Read the failing stage and configuration path first. Generated-project paths below are relative to the owning application/repository. Keep credentials, tokens and signed links out of shared logs.
+
+| Symptom | Check and next action |
+| --- | --- |
+| Validation rejects a familiar field | Confirm `schemaVersion: 2` and consult the [current reference](configuration/YAML_V2.md). Old technology selectors and unknown fields are rejected; no automatic conversion exists. |
+| Validation succeeds but scaffolding/install fails | Confirm Node 24+, pnpm, Git identity and network access. Read the external tool output. Preflight cannot guarantee external availability; inspect partial output and retry into an empty target. |
+| `DATABASE_SHARED_ACROSS_BACKENDS` | Give each backend a dedicated named resource or consolidate its modules into one backend. Sharing R2 does not imply database sharing is allowed. |
+| Relation/readiness or module-cycle error | Keep stored relations/joins module-local, break actual FK/import cycles and avoid unsupported many-to-many mappings. A scalar identifier does not automatically call another module or check existence. |
+| Expected CRUD button or page is missing | Declare its HTTP operation before generation. Ambiguous actions, extra required context or missing bindings can suppress automatic actions; use the typed client/Explorer or author the UI. See [API screens](generation/API_SCREENS.md). |
+| Database commands cannot connect although the app can | Node database scripts need `DATABASE_URL` in their shell; `.dev.vars` alone configures the Worker runtime. Use the same target and apply migrations before serving requests. |
+| Local browser cannot reach an API | Browsers use frontend same-origin proxies. Check server-only `BACKEND_<NAME>_INTERNAL_URL`, application ports and hostname consistency. Cloud uses Service Bindings, not public backend fallback. |
+| Private page redirects after login | Confirm the selected identity authority and use the same hostname for frontend/backend locally. Check `BETTER_AUTH_URL`, cookies and trusted origins; do not mix `localhost` and `127.0.0.1`. Never bypass the guard to conceal an unavailable authority. |
+| API returns 401 or 403 | 401 means missing/invalid identity; 403 can mean insufficient grants or rejected origin. Inspect current database role/grants and send the exact trusted frontend origin on protected mutations. A visible UI control does not grant permission. |
+| YAML role changes do not update existing users | Seeds preserve existing ordinary roles/grants. Use protected IAM administration. First register an account, then use backend `auth:create-admin` for initial provisioning. |
+| Email/SMS is not delivered | Check the generated backend delivery secrets and production mode. SMTP selection needs complete SMTP configuration; otherwise use Resend for email. SMS requires Twilio. Nonproduction Mailpit/console is simulation, not production delivery. See [authentication](generation/AUTHENTICATION.md). |
+| SMS requests stay blocked after restart | Quotas and cooldowns are persisted. Wait for the server-provided interval and inspect intended limits; delivery failures still consume reserved attempts. Disabling login rate limits does not disable SMS budgets. |
+| Docker fails to bind a port | Use generated repository `.env` port overrides, then recreate services. Backend ports are private unless the debug override is enabled. For split layouts, start the first backend repository before consumers. |
+| Local synthetic seed is pending/failed | Inspect the original failure and database contents before recovery. Automatic retry is blocked to avoid duplicates. Delete volumes only for disposable data; ordinary `docker compose down` preserves them. |
+| Chat returns missing-provider or model errors | Set a backend provider key and, if needed, a valid `AI_MODEL`. With multiple keys, credential detection order selects the provider. No key is needed for non-chat MCP tools. |
+| MCP client cannot connect or discover tools | Use the public gateway `/mcp`, exact `MCP_PUBLIC_URL`, correct credentials and current owner/key grants. Run gateway and backend together locally. The generic frontend proxy rejects MCP. See [AI/MCP](generation/AI_MCP.md). |
+| New custom AI tool is absent | Export a direct `defineTool` declaration from a `*.tool.ts` under backend `src/`, restart discovery and assign its capability through IAM. |
+| Storage upload/signing fails | Verify exact frontend upload CORS, scoped S3 credentials and the 100 MiB bound. Update origins after domain changes. Local Miniflare does not automatically provide cloud signing. Management routes need a session and storage grants. |
+| Split deployment cannot find new bucket bindings | Deploy the infrastructure owner first, inspect its output marker, then deploy consumers. Keep stable OpenTofu addresses; a rename does not migrate objects. |
+| Infrastructure apply is interrupted or locked | Inspect partial changes, state and active builds before retrying or removing a stale lock. Back up state separately. Review planned bucket deletion/replacement before merge because apply may permanently empty it. |
+| Audit event is absent after a successful request | Business capture requires `audit: true` and persistence. Audit writes are asynchronous best effort and do not roll back successful operations. Inspect backend logs/schema; do not treat absence as proof that the operation did not happen. |
+
+For generator bugs, report the revision, tool versions, failing stage, a minimal sanitized YAML and expected/actual behavior. For generated-app bugs, include which files were customized and whether the problem reproduces in a fresh disposable output. The [capability map](CAPABILITIES.md) distinguishes unsupported behavior from a regression.

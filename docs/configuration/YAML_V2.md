@@ -19,7 +19,7 @@ The product requirements remain in [the specification](../SPECIFICATION.md). Thi
 
 Clean, Hexagonal and Onion are executable per-module choices. The mixed-family example is generation-ready and uses the same fixed stack, public contracts and composition root. Public `validate` and `generate` share readiness checks and reject unsupported mappings before side effects.
 
-No v1 converter, second generation engine, in-place regeneration, arbitrary non-Cloudflare IaC, AI, event bus, distributed transaction or arbitrary plugin system is specified. Local Docker and native Cloudflare CI/CD are generated operational capabilities; see the CLI workflow.
+No v1 converter, second generation engine, in-place regeneration, arbitrary non-Cloudflare IaC, event bus, distributed transaction or arbitrary plugin system is specified. Local Docker, native Cloudflare CI/CD and optional AI/MCP are generated capabilities; see the [CLI workflow](../generation/CLI_WORKFLOW.md) and [AI guide](../generation/AI_MCP.md).
 
 ### The initial export limitation
 

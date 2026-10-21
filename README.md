@@ -4,6 +4,8 @@ NordixGen is an internal Nordix tool for generating the starting point of client
 
 A generated backend is a modular monolith: business modules run together in one process. Clean, Hexagonal and Onion are executable per-module architectures and can coexist in the same backend. Modules communicate through explicit, typed application contracts and direct in-process calls. Project configuration describes the business systemâ€”its repositories and paths, applications and connections, databases, modules, entities, endpoints, pagination, and authentication/authorization needsâ€”rather than selecting unrelated technology stacks.
 
+Start with the [documentation index](docs/README.md) for a task-based reading order, [getting started](docs/GETTING_STARTED.md) for your first project, and the [capability map](docs/CAPABILITIES.md) for supported features and limitations. After generation, follow [extending a generated project](docs/EXTENDING_PROJECTS.md).
+
 ## Implementation status
 
 The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
