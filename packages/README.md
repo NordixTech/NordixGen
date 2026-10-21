@@ -1,18 +1,8 @@
-# Packages Directory
+# Packages
 
-Este directorio alberga los paquetes que componen la plataforma NordixGen bajo un monorepo administrado por `pnpm`:
+The pnpm workspace contains two packages:
 
-- **`packages/core`**: Motor principal de NordixGen.
-  - Esquemas de validación Zod (`nordix.config.yaml`).
-  - Generador del Grafo Semántico (Nordix Intermediate Representation - IR).
-  - Virtual File System (VFS) determinista y ordenamiento topológico.
-  - Matriz de validación e incompatibilidades.
+- [core](core/README.md): authoritative YAML v2 definitions, parsing, structural and semantic diagnostics, generated editor schema, immutable resolved project model and scoped backend/module/frontend views, virtual filesystem and concrete renderer internals.
+- cli: interactive canonical configuration initialization, configuration/readiness validation and generation preflight. Generation currently stops before any output or external commands because modular integration is incomplete.
 
-- **`packages/cli`**: Interfaz de línea de comandos ejecutable mediante `npx nordixgen`.
-  - Prompts interactivos y formato de terminal (`@clack/prompts`, `commander`).
-  - Orquestador de plantillas upstream (`create-next-app`, Cloudflare templates).
-  - Comandos: `init`, `generate`, `validate`.
-
-- **`packages/plugin-hono`**: Generador oficial para backend Hono (Clean Architecture en Cloudflare Workers).
-
-- **`packages/plugin-nextjs`**: Generador oficial para frontend Next.js 15 (Tailwind v4, Feature-Driven, TanStack Query + Zustand).
+There are no separate plugin-hono or plugin-nextjs workspace packages. Remaining renderer implementations live inside core and will move through the planned direct-generation refactor. See [validation behavior and evidence](../docs/configuration/VALIDATION.md).

@@ -1,701 +1,145 @@
-# NordixGen: Especificación Integral de Requisitos, Arquitectura y Capacidades
-
-> **Documento de Consolidación de Requisitos y Capacidades del Sistema**  
-> **Estado:** Documento de Especificación Oficial (No comiteado a Git).  
-> **Alcance Inicial:** Foco exclusivo en el **Golden Path** (Next.js + Tailwind CSS v4 + Hono + Drizzle ORM + Neon PostgreSQL + Cloudflare), con arquitectura modular extensible a múltiples frontends/backends y despliegues con IaC.
-
----
-
-## 🎯 1. Filosofía y Principios Rectores
-
-1. **Generación 100% Algorítmica y Determinista:**
-   - El motor generador **no utiliza LLMs para escribir código**. No hay alucinaciones de sintaxis ni variabilidad entre ejecuciones.
-   - Si el archivo YAML no cambia, el proyecto generado es exactamente idéntico.
-2. **Rol de la Inteligencia Artificial (Capa Externa / Skill):**
-   - La IA interviene únicamente antes de la generación mediante una **Skill de Asistencia**.
-   - Guía al desarrollador en lenguaje natural para modelar su negocio y producir un archivo `nordix.config.yaml` válido, estructurado y optimizado.
-3. **El Golden Path (Ruta Dorada Oficial):**
-   - Aunque la plataforma admite definir múltiples aplicaciones y frameworks, el esfuerzo de ingeniería inicial se concentra en una combinación insignia de máximo rendimiento y coste de nube $0 / ultrabajo:
-     - **Frontend:** Next.js 15 (App Router) + Tailwind CSS v4 + Feature-Driven Architecture.
-     - **Backend:** Hono (TypeScript) + Clean Architecture (Ports & Adapters) + Cloudflare Workers.
-     - **Persistencia & ORM:** PostgreSQL en Neon (Serverless) + Drizzle ORM (<30 KB bundle).
-     - **Despliegue & Edge:** Cloudflare Pages + Workers + R2 (Almacenamiento compatible S3, $0 egress).
-     - **CI/CD:** **Nativo de Cloudflare (Cloudflare Workers Builds & Pages Git Integration)**: Cero configuración de secretos externos, builds automáticos en el edge, preview deployments por PR y rollbacks instantáneos.
-     - **Aceleración de Base de Datos:** Cloudflare Hyperdrive para pooling y caché global de PostgreSQL.
-     - **Desarrollo Local:** Docker Compose (PostgreSQL 16, Mailpit, MinIO, Redis).
-
----
-
-## 📦 2. Modelo de Distribución Open Source y Paquetes NPX / NPM
-
-NordixGen se diseña y publica como un ecosistema open-source modular en el registro público de `npm`:
-
-```mermaid
-flowchart TD
-    User["Desarrollador en Terminal"] -->|npx nordixgen| CLI["@nordixgen/cli (Binario ejecutable)"]
-    CLI --> Core["@nordixgen/core (Parser YAML, AST-IR, Matriz, VFS)"]
-    
-    subgraph Plugins ["Generadores y Adaptadores (Monorepo de Paquetes)"]
-        Core --> PluginHono["@nordixgen/plugin-hono"]
-        Core --> PluginNext["@nordixgen/plugin-nextjs"]
-        Core --> PluginDocker["@nordixgen/plugin-docker"]
-        Core --> PluginIaC["@nordixgen/plugin-terraform"]
-    end
-    
-    Core --> Upstream["Upstream Template Orchestrator (create-next-app, wrangler)"]
-    Upstream --> OutDir["Proyecto Final Generado (Monorepo pnpm)"]
-```
-
-### Formas de Consumo:
-1. **Ejecución Instantánea sin Instalación (Recomendada):**
-   ```bash
-   npx nordixgen init
-   npx nordixgen generate -f nordix.config.yaml -o ./mi-proyecto
-   ```
-2. **Instalación Global:**
-   ```bash
-   npm install -g nordixgen
-   nordixgen generate -f nordix.config.yaml
-   ```
-
-### Arquitectura de Paquetes en el Monorepo del CLI:
-- **`nordixgen` / `@nordixgen/cli`:** Interfaz de línea de comandos, comandos interactivos (`init`, `generate`, `validate`), spinners y formateo de terminal con `@clack/prompts`.
-- **`@nordixgen/core`:** Motor de esquemas Zod, validador de YAML, constructor del Grafo Semántico (Nordix-IR), Virtual File System (VFS), motor de ordenamiento topológico y Matriz de Incompatibilidad.
-- **Plugins Especializados:** Cada generador de framework vive como un módulo independiente que implementa el contrato del IR, permitiendo a la comunidad agregar soporte para `.NET`, `NestJS`, `Django`, `Angular` o `React Native` sin tocar el núcleo.
-
-### Estrategia de Ramas Git y Pipeline de Publicación Automática a NPM:
-Para el desarrollo propio de NordixGen como herramienta CLI open-source, se establece el siguiente flujo de trabajo estricto de Git:
-
-```mermaid
-gitGraph
-   commit id: "Initial Release"
-   branch develop
-   checkout develop
-   commit id: "Dev Setup"
-   branch feature/yaml-parser
-   checkout feature/yaml-parser
-   commit id: "Zod Schema"
-   commit id: "IR Builder"
-   checkout develop
-   merge feature/yaml-parser id: "Merge PR #1"
-   checkout main
-   merge develop id: "Release v0.1.0" tag: "v0.1.0"
-   checkout develop
-   branch feature/hono-plugin
-   checkout feature/hono-plugin
-   commit id: "Hono Generator"
-   checkout develop
-   merge feature/hono-plugin id: "Merge PR #2"
-   checkout main
-   merge develop id: "Release v0.2.0" tag: "v0.2.0"
-```
-
-1. **Ramas Principales:**
-   - **`main` (Producción & Distribución):** Representa el código estable liberado al mundo. **Cada commit o pull request mergeado a `main` dispara automáticamente el pipeline de release continuo a NPM**.
-   - **`develop` (Integración Continua):** Rama central donde convergen todas las características probadas. Los desarrolladores integran aquí sus cambios mediante Pull Requests antes de preparar una liberación a `main`.
-   - **`feature/<nombre-feature>` (Trabajo Aislado):** Ramas cortas creadas desde `develop` para desarrollar una capacidad específica (ej. `feature/parser-yaml`, `feature/hono-generator`, `feature/cloudflare-iac`). Una vez completada y testeada, se abre un PR hacia `develop`.
-   - **`hotfix/<nombre-fix>` (Parche Crítico):** Se ramifica directamente de `main` en caso de bug crítico en producción y se mergea de vuelta tanto a `main` (disparando release) como a `develop`.
-
-2. **Pipeline Automatizado de Publicación en `main`:**
-   - Al detectar un push en `main`:
-     - Valida la suite completa de pruebas (`test:unit`, `test:integration`, `lint`, `typecheck`) bajo la versión de **Node.js Active LTS (Node 24)**.
-     - Determina la nueva versión mediante **Semantic Release / Changesets** analizando los commits convencionales (`feat:`, `fix:`, `chore:`).
-     - Compila los paquetes (`pnpm build`).
-     - Publica automáticamente los paquetes actualizados (`@nordixgen/cli`, `@nordixgen/core`, etc.) al registro oficial de `npm` con **Provenance OIDC** y etiqueta `@latest`.
-     - Genera automáticamente el Git Tag y la GitHub Release con su Changelog detallado.
-   - De este modo, cualquier usuario en cualquier parte del mundo ejecuta inmediatamente `npx nordixgen@latest` y recibe la versión recién publicada.
-
-3. **Requisitos de Runtime y Compatibilidad con Node.js:**
-   - **Node.js Runtime Oficial:** Node.js **v24 (Active LTS)**.
-   - Todo paquete publicado en el ecosistema NordixGen declara en su `package.json`:
-     ```json
-     "engines": {
-       "node": ">=24.0.0"
-     }
-     ```
-   - Al ejecutar `npx nordixgen`, el CLI valida activamente la versión de Node del usuario anfitrión (`process.version`). Si detecta una versión inferior a v24, muestra una alerta explicativa y guía al usuario para actualizar con su gestor de versiones preferido (`fnm` / `nvm`).
-   - Los desarrolladores del proyecto gestionan sus versiones fácilmente con **`fnm` (Fast Node Manager)**:
-     - `fnm install 24`: Instala Node 24.
-     - `fnm default 24`: Fija Node 24 como la versión predeterminada del sistema.
-     - `fnm use 24`: Cambia al instante de versión.
-     - Archivo `.node-version` / `.nvmrc` en la raíz del repositorio con contenido `24` para auto-switch instantáneo con `fnm env --use-on-cd`.
-
----
-
-## 🧩 3. Soporte para Múltiples Frontends y Múltiples Backends
-
-Un sistema de software moderno rara vez consiste en un solo frontend y un solo backend. NordixGen permite declarar **múltiples aplicaciones cliente y múltiples servicios de backend** dentro de un mismo monorepo:
-
-### Casos de Uso Multi-App:
-- **E-commerce:** Frontend Web Tienda (`apps/web-store`), Panel de Administración Web (`apps/web-admin`), App Móvil (`apps/mobile-app`), Backend API Core (`apps/api-core`), Worker de Procesamiento Asíncrono de Pagos (`apps/worker-payments`).
-- **SaaS B2B:** Portal de Clientes, Landing Page de Marketing, Microservicios de Auth y Facturación.
-
-### Declaración en YAML:
-El esquema soporta tanto la forma simplificada (`frontend:` / `backend:`) como la forma plural de alta escala:
-
-```yaml
-# Múltiples Frontends
-frontends:
-  - name: store-web
-    framework: nextjs
-    type: web
-    styling: tailwind
-    stateManagement: zustand
-    path: apps/store-web
-  - name: admin-portal
-    framework: nextjs
-    type: web
-    styling: tailwind
-    stateManagement: zustand
-    path: apps/admin-portal
-
-# Múltiples Backends
-backends:
-  - name: core-api
-    framework: hono
-    architecture: clean
-    path: apps/api-core
-    auth:
-      type: jwt
-      roles: [admin, customer]
-  - name: notifications-worker
-    framework: hono
-    architecture: modular
-    path: apps/worker-notifications
-```
-
-### Orquestación en Monorepo:
-- **Espacio de Trabajo pnpm (`pnpm-workspace.yaml`):** Agrupa `apps/*` y `packages/*`.
-- **Scripts Paralelos en Root `package.json`:**
-  - `pnpm dev`: Inicia todas las apps en paralelo con prefijos de consola coloreados.
-  - `pnpm dev:store-web`, `pnpm dev:admin-portal`, `pnpm dev:core-api`.
-- **Puertos Locales Asignados Automáticamente:**
-  - Frontend 1: `http://localhost:3000`
-  - Frontend 2: `http://localhost:3001`
-  - Backend 1 (Hono Core): `http://localhost:8787`
-  - Backend 2 (Worker Notificaciones): `http://localhost:8788`
-
----
-
-## 🛠️ 4. Orquestación de Upstream Starter Templates & Version Tracking
-
-NordixGen **no genera archivos de inicialización desde strings crudos** cuando la comunidad oficial del framework ofrece herramientas canónicas de scaffolding.
-
-### Enfoque: Scaffolding Upstream Oficial + Inyección de Arquitectura
-1. **Fase 1: Scaffolding Upstream:**
-   - Para Next.js: NordixGen orquesta y parametriza `create-next-app` (o desempaqueta una plantilla canónica oficial curada) con flags estrictos:
-     ```bash
-     npx create-next-app@15.1.7 [app-name] --typescript --tailwind --app --no-src-dir --import-alias "@/*" --use-pnpm
-     ```
-   - Para Cloudflare / Hono: Utiliza los templates base oficiales validados de Cloudflare Workers (`npm create cloudflare@latest`).
-2. **Fase 2: Inyección de Arquitectura y Dominio (El Valor Real de NordixGen):**
-   - Una vez instanciado el esqueleto oficial en el Virtual File System (VFS), NordixGen inyecta de forma algorítmica y determinista:
-     - La Clean Architecture (capas de dominio, aplicación, infraestructura).
-     - Los modelos y esquemas relacionales de Drizzle ORM.
-     - Los endpoints y controladores tipados con validación Zod.
-     - El módulo de autenticación Web Crypto y middlewares RBAC/PBAC.
-     - El cliente de API tipado para el frontend.
-     - Las vistas completas de tablas, filtros y modales por entidad.
-3. **Matriz de Fijación y Seguimiento de Versiones (Version Matrix & Node.js Binding):**
-   - **Enlace Estricto de Node.js:** Cada paquete generado por NordixGen y el propio CLI vinculan explícitamente en `package.json` su motor compatible (`engines: { "node": ">=24.0.0" }` o `>=26.0.0`).
-   - **Líneas de Node.js Oficiales:**
-     - **Node.js 26 (Current / Próximo LTS):** Versión de última generación con soporte para las APIs más recientes de ECMAScript y V8.
-     - **Node.js 24 (Active LTS):** Línea recomendada para entornos de producción de máxima estabilidad empresarial.
-   - **Archivo `.nvmrc` y `.node-version`:** Se generan automáticamente en la raíz del proyecto para asegurar que cualquier desarrollador o runner de CI use la versión exacta.
-   - **Package Manager:** `pnpm >= 10.0.0` (con enforcement estricto vía `packageManager` en `package.json`).
-   - **Frameworks Principales Fijados:**
-     - Next.js: `^15.1.7` (React 19, App Router).
-     - Tailwind CSS: `^4.0.0` (Lightning CSS, `@theme`).
-     - Hono: `^4.7.0` (Edge native).
-     - Drizzle ORM: `^0.39.0` + Drizzle Kit `^0.30.0`.
-     - Neon Serverless Driver: `@neondatabase/serverless ^0.10.4`.
-
----
-
-## 📋 5. Matriz Completa de Capacidades Especificables en el YAML
-
-A continuación se detalla cada sección, campo y capacidad que puede declararse en la especificación central `nordix.config.yaml`.
-
-### A. Modelado de Datos y Entidades (`entities` & `enums`)
-
-#### 1. Enums Globales (`enums`)
-- Listas de valores reutilizables entre frontend y backend (ej. `OrderStatus: [PENDING, PAID, SHIPPED, CANCELLED]`).
-- Mapeados a `pgEnum` en Drizzle y a tipos TypeScript estrictos.
-
-#### 2. Campos de Entidad (`fields`)
-- **Tipos de datos soportados:**
-  - `string`: Cadenas con longitud configurable (`varchar` o `text`).
-  - `number`: Números enteros o de coma flotante (`integer`, `doublePrecision`, `decimal`).
-  - `boolean`: Valores verdadero/falso.
-  - `date`: Fechas y timestamps con zona horaria (`timestamp with time zone`).
-  - `uuid`: Identificadores únicos universales.
-  - `json`: Estructuras flexibles (`jsonb`).
-  - `enum`: Referencia a un enum definido globalmente.
-- **Restricciones y Modificadores:**
-  - `required`: Booleano (default: `true`).
-  - `unique`: Booleano (default: `false`).
-  - `default`: Valor por defecto literal.
-  - `description`: Comentario para OpenAPI/Swagger.
-
-#### 3. Llaves Primarias y Auditoría
-- **Primary Key:** Inyección automática de `id: uuid().defaultRandom().primaryKey()`.
-- **Timestamps:** (`timestamps: true`): Inyecta `createdAt` y `updatedAt`.
-- **Soft Delete:** (`softDelete: true`): Inyecta `deletedAt`. Todas las consultas de lectura filtran registros eliminados de forma transparente.
-- **Políticas de Cascada (`onDelete`):** `cascade`, `set-null`, `restrict`, `no-action`.
-
-#### 4. Relaciones entre Entidades (`relations`)
-- Cardinalidades: `many-to-one`, `one-to-many`, `one-to-one`, `many-to-many` (tabla intermedia autogenerada).
-- Ordenamiento topológico automático (Algoritmo de Kahn) para sembradores y migraciones.
-
----
-
-### B. Sistema de API y Endpoints
-
-1. **Endpoints CRUD Estándar:** 5 endpoints RESTful por entidad (`List` paginado, `GetById`, `Create`, `Update`, `Delete`).
-2. **Endpoints Complejos con JOINs Declarativos:**
-   - Proyecciones relacionales que cruzan múltiples entidades (`inner` o `left`).
-   - Parámetros tipados: `queryParams`, `pathParams`, `requestBody` (DTOs de Zod).
-   - Consultas emitidas mediante la Relational Query API de Drizzle (`db.query.*.findMany`).
-
----
-
-### C. Seguridad, Autenticación y Autorización
-
-1. **Mecanismos de Autenticación:**
-   - **Correo y Contraseña:** Hashing con **Web Crypto PBKDF2 / SHA-256** (100% nativo de Cloudflare Workers, 0 ms cold starts).
-   - **Usuario y PIN:** Para terminales POS o apps móviles rápidas.
-   - **OAuth 2.0:** Google y GitHub out-of-the-box.
-   - **2FA / TOTP:** Códigos temporales de 6 dígitos compatibles con Google Authenticator.
-2. **Flujos de Correo Electrónico:**
-   - Confirmación de cuenta con tokens temporales firmados.
-   - Restablecimiento de contraseña.
-   - **Local:** Captura SMTP con **Mailpit** (puerto 1025) y consola web (`http://localhost:8025`).
-   - **Producción:** Resend, SendGrid o Cloudflare Email Routing.
-3. **Manejo de Tokens y Sesión:**
-   - Access Tokens JWT de corta duración + Refresh Tokens en base de datos.
-4. **Autorización Granular (RBAC & PBAC):**
-   - Definición de Roles (`admin`, `manager`, `customer`).
-   - Definición de Permisos (`products:create`, `orders:cancel`).
-   - Protección de endpoints por roles o permisos específicos.
-
----
-
-### D. Entorno Local de Desarrollo (Docker Compose)
-
-Un solo comando (`pnpm docker:up`) levanta:
-1. **PostgreSQL 16 Alpine (Puerto 5432):** Base de datos con volumen persistente y healthcheck.
-2. **Mailpit (Puertos 1025 y 8025):** Servidor SMTP para capturar y visualizar emails en desarrollo.
-3. **MinIO (Puertos 9000 y 9001):** Almacenamiento compatible con S3 / Cloudflare R2 con consola web.
-4. **Redis 7 Alpine (Puerto 6379):** Caché, sesiones y colas.
-
----
-
-### E. Seeders y Datos Sintéticos (`faker`)
-- Script autoejecutable (`pnpm db:seed`) que puebla la base de datos con datos realistas generados por `@faker-js/faker`, respetando el orden de dependencias de claves foráneas.
-
----
-
-### F. Formato de Errores Estandarizado (RFC 7807 Problem Details)
-- Respuestas uniformes con cabecera `Content-Type: application/problem+json` (`type`, `title`, `status`, `detail`, `instance`, `invalidParams`).
-- Catálogo de excepciones: `NotFoundError`, `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`.
-
----
-
-### G. Manejo de Estado en Frontend, Caché de Datos y Clientes API Autogenerados
-
-Para garantizar que los frontends no solo reciban vistas estáticas sino una **integración viva, reactiva y de máximo rendimiento** con el backend especificado, NordixGen implementa un modelo de **Estado Dual (Server State + Client State)** altamente eficiente:
-
-```mermaid
-flowchart TD
-    subgraph Frontend_App ["Frontend (Next.js 15 App Router / React)"]
-        subgraph Server_State ["1. Server State (Caché & Sincronización Remota)"]
-            TanStack["TanStack Query (React Query v5)"]
-            Hooks["Hooks Autogenerados (useUsers, useUserById, useCreateUser, useOrdersSummary)"]
-            Cache["Query Cache Global (Deduplicación, Stale-While-Revalidate, Invalidation)"]
-            TanStack --> Hooks
-            Hooks --> Cache
-        end
-        
-        subgraph Client_State ["2. Client State (Memoria UI & Sesión Local)"]
-            Zustand["Zustand Store (Ultra-ligero, <2 KB, sin re-renders innecesarios)"]
-            UIStore["UI Stores: authStore, sidebarStore, cartStore, filterStore"]
-            Zustand --> UIStore
-        end
-        
-        ApiClient["3. SDK Cliente API Tipado End-to-End (@/lib/api-client)"]
-        FetchWrapper["Fetch Wrapper Seguro con Reintentos y RFC 7807 Error Interceptor"]
-        
-        Hooks --> ApiClient
-        ApiClient --> FetchWrapper
-    end
-    
-    subgraph Backend_App ["Backend (Hono Clean Architecture)"]
-        HonoRoutes["Endpoints REST (/api/users, /api/orders, /api/orders/summary)"]
-    end
-    
-    FetchWrapper -->|HTTP / JSON Tipado| HonoRoutes
-```
-
-#### 1. Arquitectura de Estado Dual: ¿Por qué es la más eficiente?
-- **Server State (TanStack Query v5):**
-  - **El Problema:** Almacenar datos de servidor en stores globales clásicos (Redux o Zustand puro) genera datos desincronizados, re-fetching manual caótico y complejidad de caché.
-  - **La Solución:** TanStack Query maneja automáticamente la caché de peticiones, revalidación en segundo plano (`stale-while-revalidate`), deduplicación de llamadas idénticas, reintentos exponenciales y mutaciones optimistas.
-- **Client State (Zustand v5):**
-  - Manejo exclusivo del estado de la interfaz de usuario: usuario autenticado en sesión, tema (dark/light), modales abiertos, estado del sidebar, filtros seleccionados o carrito temporal.
-  - Cero boilerplate, selectors atómicos para evitar renderizados innecesarios y soporte de persistencia local (`persist` middleware para `localStorage`).
-
-#### 2. Código Autogenerado por Entidad y Endpoint:
-Para cada entidad declarada en el YAML (ej. `User`, `Order`) y cada endpoint complejo (`/api/orders/summary`), NordixGen genera automáticamente en el frontend:
-1. **Cliente de Servicios (`apps/web/src/services/<entity>.service.ts`):**
-   - Métodos tipados listos para invocar:
-     - `userService.getAll(params?: UserQueryParams): Promise<PaginatedResponse<User>>`
-     - `userService.getById(id: string): Promise<User>`
-     - `userService.create(dto: CreateUserDto): Promise<User>`
-     - `userService.update(id: string, dto: UpdateUserDto): Promise<User>`
-     - `userService.delete(id: string): Promise<void>`
-     - `orderService.getSummary(params: OrderSummaryParams): Promise<OrderSummaryResult>`
-2. **Hooks React Query Listos para Usar (`apps/web/src/hooks/queries/use<Entity>.ts`):**
-   - `useUsersQuery(filters)`: Query hook con estados reactivos (`data`, `isLoading`, `isError`, `error`).
-   - `useCreateUserMutation()`: Con invalidación automática de la caché de listas al crearse un usuario (`queryClient.invalidateQueries({ queryKey: ['users'] })`).
-   - `useUpdateUserMutation()` y `useDeleteUserMutation()` con soporte para **Mutaciones Optimistas** opcionales.
-3. **Stores de Zustand Especializados (`apps/web/src/stores/`):**
-   - `useAuthStore`: Token JWT, usuario activo, permisos computados `hasPermission('users:create')`, login/logout.
-   - `useUIStore`: Alertas globales, toast notifications, control de modales.
-
-#### 3. Parámetros del YAML para Configuración de Estado en Frontends:
-Cada frontend puede personalizar o seleccionar su estrategia de estado:
-
-```yaml
-frontends:
-  - name: store-web
-    framework: nextjs
-    type: web
-    styling: tailwind
-    stateManagement:
-      client: zustand            # zustand (default) | context | none
-      server: tanstack-query     # tanstack-query (default) | swr | native-fetch
-      generateHooks: true        # Genera automáticamente useEntityQueries y useEntityMutations
-      optimisticUpdates: true    # Genera lógica de actualización instantánea en UI
-    connectsTo: core-api         # Enlace explícito al backend para generar el SDK de endpoints
-    path: apps/store-web
-```
-
----
-
-### H. Módulo de Integración con LLM (AI Agentic Tooling)
-- Exposición automática de todos los Casos de Uso de la aplicación como herramientas para agentes inteligentes:
-  - `GET /api/agent/tools`: Catálogo JSON Schema compatible con OpenAI, Anthropic y Gemini.
-  - `POST /api/agent/execute`: Despacho seguro de acciones con validación Zod y auditoría.
-
----
-
-## 🚀 6. CI/CD Nativo en Cloudflare (Workers Builds & Pages Git Integration)
-
-Para nuestro **Golden Path**, el pipeline de integración y despliegue continuo se ejecuta **nativamente dentro de la propia infraestructura de Cloudflare**, eliminando por completo la necesidad de runners externos como GitHub Actions:
-
-```mermaid
-flowchart LR
-    A["Push a GitHub / GitLab"] --> B["Cloudflare Git Webhook"]
-    
-    subgraph Cloudflare_Native_Builds ["Cloudflare Edge Build Engine"]
-        B --> C["Cloudflare Workers Builds (Backend APIs)"]
-        B --> D["Cloudflare Pages Builds (Frontend Next.js)"]
-        C --> E["Build Command: pnpm db:migrate && pnpm build"]
-        D --> F["Build Command: pnpm build"]
-    end
-    
-    E --> G["Deploy Automático a Workers (.workers.dev / Dominio)"]
-    F --> H["Deploy Automático a Pages (.pages.dev / Dominio)"]
-    B --> I["Preview URLs instantáneas por cada Pull Request"]
-```
-
-### ¿Por qué Cloudflare Native CI/CD es superior para el Golden Path?
-1. **Cero Secretos que Mantener en GitHub:**
-   - No necesitas crear `CLOUDFLARE_API_TOKEN` ni `CLOUDFLARE_ACCOUNT_ID` en GitHub Secrets.
-   - La conexión se autentica de forma segura mediante la aplicación oficial de Cloudflare para GitHub/GitLab.
-2. **Soporte Nativo de Monorepo (Root Directory):**
-   - Cloudflare permite configurar el directorio raíz (`Root Directory`) de cada proyecto:
-     - Frontend Tienda: `apps/store-web`
-     - Frontend Admin: `apps/admin-portal`
-     - Backend API: `apps/api-core`
-   - **Smart Builds:** Cloudflare detecta qué archivos cambiaron en el commit y solo recompila y despliega la aplicación que tuvo modificaciones, ahorrando tiempo y evitando builds innecesarios.
-3. **Migraciones y Pruebas en el Build Command:**
-   - En el backend, el comando de build se configura como:
-     ```bash
-     pnpm db:migrate && pnpm build
-     ```
-   - Las migraciones de Drizzle sobre Neon se ejecutan antes del despliegue del worker, asegurando que la base de datos esté sincronizada.
-4. **Preview Deployments Automáticas por Pull Request:**
-   - Al abrir un PR, Cloudflare Pages y Workers Builds generan automáticamente enlaces únicos de staging (ej. `pr-14.quantum-store.pages.dev`), comentando el link de previsualización directamente en el Pull Request.
-5. **Rollbacks Instantáneos en 1 Clic:**
-   - Si una versión en producción presenta errores, se puede revertir a cualquier despliegue anterior de forma instantánea desde la interfaz de Cloudflare o CLI sin necesidad de realizar commits de reversión.
-6. **Pipelines Durables Avanzados con `@cloudflare/ci` (Cloudflare Workflows):**
-   - Para flujos con lógica de aprobación, tests E2E o pasos complejos, Cloudflare soporta pipelines definidos en TypeScript ejecutados sobre **Cloudflare Workflows**, donde cada paso es persistente y con reintentos automáticos.
-7. **GitHub Actions (Solo como Fallback Opcional):**
-   - Se mantiene únicamente como alternativa para proyectos que decidan usar proveedores fuera de Cloudflare (ej. despliegue en VPS propio con Docker).
-
----
-
-## ☁️ 7. Infrastructure as Code (IaC) para Cloudflare & Neon
-
-NordixGen integra un módulo de **Infraestructura como Código (IaC)** en la carpeta `infra/terraform/` basado en **Terraform / OpenTofu** para aprovisionar toda la topología cloud con un solo comando (`terraform apply`):
-
-```mermaid
-flowchart TD
-    TF["Terraform / OpenTofu (infra/terraform/)"] --> CF_Pages["Cloudflare Pages (Proyectos Frontend)"]
-    TF --> CF_Workers["Cloudflare Workers (APIs Backend)"]
-    TF --> CF_R2["Cloudflare R2 (Buckets de Almacenamiento con CORS)"]
-    TF --> CF_Hyperdrive["Cloudflare Hyperdrive (Acelerador Global Postgres)"]
-    TF --> Neon_DB["Neon Serverless PostgreSQL (Proyecto + Rama)"]
-    TF --> CF_DNS["Cloudflare DNS & Dominios Personalizados"]
-```
-
-### Recursos Gestionados por el Módulo de IaC:
-1. **Cloudflare Hyperdrive:**
-   - **El arma secreta del Golden Path.**
-   - Cloudflare Hyperdrive mantiene un pool de conexiones persistentes cerca del servidor de Neon y cachea consultas SQL en más de 300 centros de datos mundiales.
-   - **Resultado:** Reduce la latencia de conexión a PostgreSQL de ~150ms a **menos de 15ms** en Cloudflare Workers.
-2. **Cloudflare R2 Buckets:**
-   - Creación de buckets para subida de archivos (imágenes, documentos) con políticas de ciclo de vida y cabeceras CORS preconfiguradas.
-3. **Cloudflare D1 & KV:**
-   - Bases de datos SQLite distribuidas y almacenamiento clave-valor para sesiones ultrarrápidas.
-4. **Cloudflare Workers & Pages Projects:**
-   - Configuración de variables de entorno y bindings automáticos (R2, Hyperdrive, D1) vinculados a cada Worker.
-5. **DNS & Custom Domains:**
-   - Creación de registros DNS y vinculación de dominios personalizados con certificados SSL automáticos.
-
----
-
-## 🔬 8. Ejemplo del YAML Más Avanzado Soportado
-
-```yaml
-# yaml-language-server: $schema=./nordix.schema.json
-# ==============================================================================
-# NORDIXGEN ENTERPRISE MULTI-APP & IAC SHOWCASE
-# ==============================================================================
-
-name: nexus-enterprise
-version: 1.0.0
-description: "Plataforma SaaS E-commerce en Cloudflare Edge con Hono, Next.js y Terraform IaC"
-structure: monorepo
-
-# Múltiples Frontends
-frontends:
-  - name: store-web
-    framework: nextjs
-    type: web
-    styling: tailwind
-    stateManagement:
-      client: zustand
-      server: tanstack-query
-      generateHooks: true
-      optimisticUpdates: true
-    connectsTo: core-api
-    authUI: true
-    path: apps/store-web
-  - name: admin-portal
-    framework: nextjs
-    type: web
-    styling: tailwind
-    stateManagement:
-      client: zustand
-      server: tanstack-query
-      generateHooks: true
-      optimisticUpdates: true
-    connectsTo: core-api
-    authUI: true
-    path: apps/admin-portal
-
-# Múltiples Backends
-backends:
-  - name: core-api
-    framework: hono
-    architecture: clean
-    path: apps/api-core
-    auth:
-      type: jwt
-      providers: [credentials, google, github]
-      twoFactor: true
-      passwordRecovery: true
-      roles: [admin, manager, customer]
-  - name: worker-notifications
-    framework: hono
-    architecture: modular
-    path: apps/worker-notifications
-    auth:
-      type: none
-
-# Base de datos y ORM
-database:
-  engine: postgres
-  provider: neon
-  orm: drizzle
-
-# Entorno local Docker
-docker:
-  postgres: true
-  mailpit: true
-  minio: true
-  redis: true
-
-# Módulo de Agentes Inteligentes
-llm:
-  enabled: true
-  exposeUseCases: true
-  endpoint: /api/agent
-
-# Nube, CI/CD e IaC
-deployment:
-  provider: cloudflare
-  ci: cloudflare-native                 # CI/CD nativo en el Edge (Workers Builds & Pages)
-  iac: terraform                       # Genera infra/terraform/ con R2, Hyperdrive y Workers
-
-# Enums Globales
-enums:
-  UserRole: [ADMIN, MANAGER, CUSTOMER]
-  UserStatus: [ACTIVE, INACTIVE, SUSPENDED]
-  ProductStatus: [DRAFT, PUBLISHED, ARCHIVED]
-  OrderStatus: [PENDING, PAID, SHIPPED, DELIVERED, CANCELLED]
-
-# Entidades del Dominio
-entities:
-  User:
-    description: "Usuarios del sistema con roles y estado"
-    fields:
-      email:
-        type: string
-        required: true
-        unique: true
-      name:
-        type: string
-        required: true
-      role:
-        type: enum
-        enumName: UserRole
-        default: CUSTOMER
-      status:
-        type: enum
-        enumName: UserStatus
-        default: ACTIVE
-    softDelete: true
-    timestamps: true
-
-  Category:
-    description: "Categorías de productos"
-    fields:
-      name:
-        type: string
-        required: true
-        unique: true
-      slug:
-        type: string
-        required: true
-        unique: true
-      description:
-        type: string
-        required: false
-    softDelete: true
-    timestamps: true
-
-  Product:
-    description: "Catálogo de productos de la tienda"
-    fields:
-      name:
-        type: string
-        required: true
-      sku:
-        type: string
-        required: true
-        unique: true
-      price:
-        type: number
-        required: true
-      stock:
-        type: number
-        required: true
-        default: 0
-      description:
-        type: string
-        required: false
-      status:
-        type: enum
-        enumName: ProductStatus
-        default: DRAFT
-    relations:
-      category:
-        type: many-to-one
-        target: Category
-        foreignKey: category_id
-        onDelete: set-null
-    softDelete: true
-    timestamps: true
-
-  Order:
-    description: "Órdenes de compra de clientes"
-    fields:
-      orderNumber:
-        type: string
-        required: true
-        unique: true
-      totalAmount:
-        type: number
-        required: true
-      status:
-        type: enum
-        enumName: OrderStatus
-        default: PENDING
-    relations:
-      customer:
-        type: many-to-one
-        target: User
-        foreignKey: user_id
-        onDelete: restrict
-    softDelete: true
-    timestamps: true
-
-  OrderItem:
-    description: "Líneas de detalle por orden"
-    fields:
-      quantity:
-        type: number
-        required: true
-      unitPrice:
-        type: number
-        required: true
-    relations:
-      order:
-        type: many-to-one
-        target: Order
-        foreignKey: order_id
-        onDelete: cascade
-      product:
-        type: many-to-one
-        target: Product
-        foreignKey: product_id
-        onDelete: restrict
-    softDelete: false
-    timestamps: true
-
-# Endpoints Complejos y Joins
-endpoints:
-  - path: /api/orders/summary
-    method: GET
-    summary: "Consulta agregada de órdenes con datos de clientes y detalle"
-    entity: Order
-    authRequired: true
-    roles: [admin, manager]
-    queryParams:
-      - name: startDate
-        type: string
-        required: false
-      - name: status
-        type: string
-        required: false
-    joins:
-      - entity: User
-        type: inner
-        fields: [id, name, email]
-      - entity: OrderItem
-        type: left
-        fields: [id, quantity, unitPrice]
-```
+# NordixGen product requirements and capabilities
+
+## 1. Purpose
+
+NordixGen is an internal Nordix tool for generating the starting point of client projects from a declarative YAML configuration. It automates repetitive setup and creates a consistent, maintainable application structure using the technology stack Nordix has chosen to support.
+
+The generated application uses TypeScript, Next.js App Router, Tailwind CSS, Hono, Drizzle ORM, PostgreSQL hosted by Neon, Better Auth, TanStack Query, and Zustand. These are fixed product choices. Project authors configure their application and business model rather than choose among unrelated frameworks, ORMs, database providers, authentication libraries, styling systems, or state libraries.
+
+NordixGen is a generator, not a runtime dependency of the generated application. Generated code belongs to the client project and can be extended as ordinary application code.
+
+## 2. Generated system shape
+
+A project may contain one or more frontend and backend applications, placed in configured repositories and paths. Frontends declare which backends they consume. A backend is a modular monolith: its business modules execute in one process and share the backend's runtime and platform services.
+
+Clean, Hexagonal and Onion are executable per-module architectures and can coexist in the same backend. The selected family defines dependency direction and the organization of the module's domain, application operations, and adapters. It does not change the public contract another module uses to call that module.
+
+Modules communicate through explicit, typed application contracts and direct in-process calls. A module publishes only declared application operations. A consuming module names the public operations it imports. Contracts use application-level input/output types and errors; they do not expose Hono request objects, Drizzle tables, repositories, or private domain types. The backend composition root wires module implementations together. Internal communication is not an HTTP call to the same backend and does not imply a generic event bus or distributed transaction system.
+
+## 3. Project configuration requirements
+
+The YAML configuration describes project structure and business requirements. It should support:
+
+- A project name and relevant project metadata.
+- Repository definitions and application paths, including colocated and separately located applications where supported.
+- Frontend applications and the backend applications each frontend connects to.
+- One or more named PostgreSQL database resources hosted by Neon. A backend selects its persistence resource; each backend has one database connection scope in the initial design.
+- Backend modular monoliths and their business modules, with an architecture family selected for each module.
+- Explicit ownership of each entity and application operation by a backend/module.
+- Public application operations exported by a module and the imports required by another module.
+- Entity fields, identifiers, defaults, enums, relationships, timestamps, soft-delete configuration, and supported constraints.
+- Explicit HTTP endpoint operations with method, path, operation identifier, path/query parameters, request body, response shape, pagination, and access requirements.
+- Better Auth configuration needed by a project, such as supported credential or provider settings and authentication features.
+- Roles and permission grants needed by application endpoints.
+
+Fixed implementation technologies are implicit and are not selectors in project YAML. In particular, frontend framework and styling, backend HTTP framework, ORM, database engine/provider, authentication implementation, and frontend state libraries are not interchangeable configuration choices. Architecture is the bounded exception: each business module selects Clean, Hexagonal, or Onion from the internally supported set.
+
+The YAML schema must reject unknown values and invalid references with actionable diagnostics. A generated editor schema should be derived from the same canonical configuration definitions so editor assistance agrees with CLI validation.
+
+The [YAML v2 reference](configuration/YAML_V2.md) specifies syntax, defaults, ownership, module contracts and access rules. Runtime validation, editor schema and the [shared resolved project model](configuration/RESOLVED_MODEL.md) implement that contract. Multiple Clean modules generate and pass integrated database/browser verification; see [validation behavior](configuration/VALIDATION.md).
+
+## 4. Parsing, validation, and generation requirements
+
+NordixGen parses YAML and reports syntax errors, including duplicate mapping keys. Structural validation checks types, required fields, allowed values, defaults, identifier formats, and unknown keys. Semantic validation checks relationships between declarations, including repository and path references, database references, frontend/backend connections, entity ownership, field and relation references, endpoint ownership, pagination profiles, and access-policy references.
+
+Validation and generation must use the same resolved project model and support rules. A configuration that passes validation must not later fail simply because generation resolves a different framework, architecture, ORM, or capability combination. Diagnostics should identify the configuration path and explain the invalid or unresolved reference.
+
+The resolved model should normalize names, fields, relations, operation inputs/outputs, pagination, module ownership, module dependencies, and effective access requirements once. Frontend and backend generators should consume the same operation contracts rather than independently infer their meaning from raw YAML.
+
+Generation should be deterministic for the same configuration and generator versions. It should detect unsafe output paths, duplicate file ownership, and conflicting generated files before writing the project. Pure generation logic should be separate from command execution, filesystem effects, package installation, and optional remote repository operations.
+
+NordixGen should use maintained upstream scaffolding tools for Next.js and Hono where practical, then add the configured application structure and generated business code. The generator should report unsupported configurations before side effects.
+
+## 5. Business modules and architecture rules
+
+Every business module owns its business entities, application operations, and persistence mappings. Ownership is explicit and exclusive. Architecture families describe internal dependency organization within that ownership boundary.
+
+The generated module must keep domain and application behavior independent of Hono transport and Drizzle persistence details. HTTP controllers and persistence adapters translate between platform concerns and application contracts. The concrete folder layout may vary by architecture family, but each family's dependency direction must be real and reviewable, not just a naming convention.
+
+Module imports must refer to an operation explicitly exported by the owner. Unknown modules, unknown operations, private operations, undeclared dependencies, duplicate ownership, and forbidden cross-module imports must produce actionable validation errors. Synchronous dependency cycles should be rejected with a useful cycle path unless a later design defines safe cycle semantics.
+
+A module must not read or write another module's private table or repository. Cross-module data needed for a use case is obtained through the owner's public application contract. A foreign identifier may be represented as a scalar value; it does not imply an ORM-level relationship, cross-module join, existence guarantee, or business rule by itself.
+
+An import declaration grants a typed dependency and wiring opportunity. It does not invent business orchestration. For example, importing a customer lookup must not silently cause every invoice operation to call it or impose an unrequested customer-status rule. Such behavior belongs in explicit application logic or in a separately specified mapping feature.
+
+## 6. Database and persistence requirements
+
+PostgreSQL on Neon is the supported database engine/provider combination, and Drizzle is the supported ORM. A project may declare multiple named databases for separate backends or applications. The Golden Path strictly rejects sharing a named database resource across multiple backends. Each persisted backend exclusively owns one dedicated resource; consolidate business modules into one modular monolith or declare separate resources. The initial backend model uses one selected database resource per backend; multiple live database connections inside a single backend and cross-database transactions are outside the initial contract.
+
+The generator should create schemas, repository/query adapters, migrations, and seed support for declared entities and supported relationships. Migrations should be reproducible and include platform-owned authentication tables where needed. Generated queries should honor declared pagination and supported filters, ordering, soft-delete rules, and endpoint projection constraints.
+
+Persistence ownership follows module ownership. A module's tables and adapters are private to that module. Schema aggregation for migration tooling may combine module-owned tables without making their repositories public application contracts. Cross-module SQL joins or direct access to another module's table are not implied by a scalar foreign identifier.
+
+Connection strings and credentials must not be stored in project YAML or generated source. Runtime secrets are supplied through the environment in the eventual application execution/deployment setup.
+
+## 7. HTTP endpoints and frontend API contracts
+
+An entity describes domain data; it does not automatically publish a CRUD API. The `endpoints` declarations are the sole source of business HTTP routes. A module may export an operation for another in-process module without exposing it over HTTP. An HTTP route exists only when a corresponding endpoint is declared. Health checks and Better Auth's handler are explicit platform routes, not implicit business CRUD.
+
+An endpoint declaration defines its HTTP method and path, operation identity, input bindings, request validation, response type, pagination behavior, and effective access requirements. Route paths must be unique within the relevant backend scope. Invalid entity/field bindings, missing inputs, duplicate operation identifiers, and unsupported response mappings must be diagnosed before generation.
+
+For each frontend/backend connection, NordixGen should derive typed clients and operation metadata from the backend's declared endpoints. The frontend may generate TanStack Query hooks, forms, API exploration tools, and entity screens using those contracts. It must not advertise mutations or routes absent from the declared endpoint set. Cache identity should include sufficient backend/module/operation context to avoid collisions.
+
+Transport DTOs are separate from internal domain, persistence, and module-contract types. Serialization rules for dates, nullable values, numeric types, and errors must match actual HTTP behavior.
+
+## 8. Authentication and authorization requirements
+
+Better Auth provides identity, credential handling, sessions, and supported external identity-provider integrations. Authentication UI is a client feature: sign-in/sign-up forms and account controls do not by themselves make application pages private. Frontend access policy must be explicit, with public, authenticated, or mixed access as required by the project. Protected page access must be checked server-side using a validated Better Auth session; merely finding a cookie is not proof of a valid session.
+
+The generated backend validates sessions on protected endpoints. Missing or invalid identity receives an unauthorized response; an authenticated actor without the required grant receives a forbidden response. Public endpoints remain intentionally callable without a session. State-changing authenticated requests validate trusted origins.
+
+Application authorization uses RBAC: permissions in code, roles in the database. Business endpoints declare required permissions; direct role restrictions are deprecated and nonempty endpoint `roles` lists are rejected. The static typed permission registry comes from backend operation capabilities plus built-in IAM permissions. Roles and their grants live in PostgreSQL and can be administered without regenerating or redeploying. A user has one server-owned role; untrusted signup cannot select it. Every required permission must be granted; the system administrator's `*` covers all known capabilities. YAML roles/grants initialize newly created roles only and never overwrite administrator edits. Generated platform IAM endpoints and the protected Next.js administration screen manage roles and user assignments with separate permissions. See [identity and IAM behavior](generation/IDENTITY_ACCESS.md), including first-administrator provisioning and system/default-role protections.
+
+Frontend permission helpers are for presentation only. Every protected operation must enforce authorization in the backend/application layer. Internal module calls do not pass through HTTP middleware, so trusted actor/context must be propagated to application operations that require business authorization. Caller-supplied identity claims must not be treated as verified identity without an explicit trusted boundary.
+
+Authentication and authorization remain distinct: Better Auth verifies identity/session; project roles/permissions govern what that identity may do. The design must identify one authentication authority for a frontend when it connects to multiple backends with authentication.
+
+## 9. Frontend requirements
+
+The generated frontend uses Next.js App Router and Tailwind CSS. It follows a feature-oriented organization for project screens and reusable UI. TanStack Query handles remote server data, caching, loading/error state, and mutation invalidation. Zustand holds shared client-side UI state. Local component and form state remains local rather than being placed in a global store without need.
+
+Generated frontend API types and operations must correspond to the declared backend routes. Forms and entity screens should be produced only when the necessary operations exist. Pagination, search/filter input, empty/loading/error states, and access-aware UI should reflect the backend contract. Frontend access checks improve the user experience but never replace server-side endpoint authorization.
+
+Generated frontends support a per-frontend semantic theme with Light, Dark and System modes. For each mode independently, main colors (primary through border) are all-or-none; omitted main palettes use Nordix defaults. Status colors are independently optional and default individually. Palette configuration is validated with actionable diagnostics and included in the shared resolved model and editor schema. CSS variables and Tailwind v4 tokens drive all generated UI, including IAM administration. A synchronous head initializer applies persisted preferences before body rendering; accessible global controls, a Zustand theme hook, live system changes and cross-tab synchronization provide runtime mode selection. Storage failure falls back to configuration without preventing theme changes. Arbitrary runtime palette editing is outside scope.
+
+## 10. CLI and generated project behavior
+
+The CLI should provide commands to initialize a configuration, validate it, and generate a project. Initialization should produce a valid starter configuration for the fixed stack and let the project author describe application paths, databases, modules, entities, endpoints, and access rules without asking for fixed technology selections.
+
+Generation should create or use configured repositories and paths, run the upstream scaffolding tools, render the project files, and report progress and errors clearly. It should avoid overwriting a non-empty target unexpectedly. Every generated repository must initialize Git on main, commit the generated project and create develop from that commit. GitHub repository creation remains optional; when selected, publish both branches atomically. Optional GitHub repository creation/publishing may use the user's existing authenticated GitHub CLI session and should occur only when explicitly configured or requested.
+
+Generated projects should be ordinary editable applications and should not need NordixGen installed at runtime. A configuration change followed by generation should produce a consistent output for the same generator version. Automatic in-place regeneration over user-modified output is not assumed unless separately specified.
+
+## 11. Deployment and operations capabilities
+
+Local Docker environments are generated capabilities. Each application owns a multi-stage Dockerfile, and each repository owns a root `docker-compose.yml`, `.dockerignore` and `docker:up`, `docker:down`, `docker:logs` scripts. Next.js builds use standalone output, repository-root tracing and a non-root runtime. Hono runs through a local Node adapter, keeping the independent Cloudflare Worker entry point. Backend runner images contain production dependencies and transpiled application code; build/typecheck occur in the builder stage.
+
+Each persisted backend receives its own PostgreSQL 16 Alpine service, persistent volume, database healthcheck and Neon HTTP proxy. The proxy preserves the existing Neon HTTP persistence adapter while connecting to local PostgreSQL. Backend startup applies pending migrations before serving requests and records completion of synthetic seeds once per database. Interrupted/failed seeds stop with an actionable error instead of being silently rerun. IAM role initialization remains idempotent and preserves administrator edits. The CLI prepares initial migration SQL once during generation and includes its journal in the client repository; Docker rebuilds reuse that stable history. No login identities are created by synthetic business seeds.
+
+Compose publishes distinct, overridable frontend host ports. Browser business/auth/IAM requests remain on the frontend origin; the frontend proxy uses private bridge URLs. Backend host ports are disabled unless the optional debug override is selected. Split repositories contain only their owned apps/databases and share a project-named private bridge, whose first backend repository starts before consumers. Generated READMEs document overrides, startup order and data lifecycle. `docker:down` deliberately deletes local volumes; ordinary `docker compose down` preserves them. This local workflow builds application images and does not provide source hot reload.
+
+Generated repositories include Cloudflare staging/production Worker environments, Next.js OpenNext configuration, native build/deploy commands, a standalone guided setup CLI, a manual DEPLOYMENT guide and a Neon PITR DISASTER_RECOVERY guide. The setup assistant configures account destinations, persistent Neon branches, build/runtime secrets and native Git push triggers separately from generation. Optional Cloudflare R2 infrastructure uses generated OpenTofu files and native Workers Builds; see [infrastructure operations](INFRASTRUCTURE.md). Arbitrary hosting changes and off-site database backups remain outside this contract. Local containers remain a local development format.
+
+The use of an upstream Hono scaffold that targets Cloudflare Workers does not itself provide deployment configuration or provision resources. NordixGen's own build/release automation is distinct from generated workflows for client applications.
+
+Cloud frontends communicate with their backends exclusively through named service bindings. Server components call the binding transport directly; browser clients use generated same-origin BFF routes. Backend workers.dev, preview URLs and public routes are disabled. No public HTTP fallback is allowed in the cloud. Direct R2 signed downloads are an explicit exception for file delivery. See [deployment architecture](DEPLOYMENT.md).
+
+## 12. Product quality requirements
+
+- Generated TypeScript should compile using the generated project's declared dependencies.
+- YAML diagnostics should point to the relevant configuration path and state how to correct it.
+- Module and entity boundaries should be explicit in generated code and validated before output.
+- A business operation should have one source contract consumed by its HTTP and frontend adapters.
+- Protected operations should enforce access on the server, independent of frontend behavior.
+- Generation should avoid path traversal, duplicate file ownership, and silent configuration loss.
+- The core should remain deterministic and testable without requiring cloud accounts or remote repository creation.
+- The implementation should use direct, typed code for the fixed stack rather than a generic plugin/capability framework.
+
+## 13. Current implementation note
+
+The runtime accepts YAML v2 only: architecture belongs to each explicit business module and technology selectors have been removed. The shared immutable model resolves ownership, public application signatures, effective policy, transport contracts and separate module/entity graphs once. Both CLI commands require the same resolution and readiness checks.
+
+Clean modular generation is implemented. Hexagonal/Onion and many-to-many emission have explicit unsupported-generation diagnostics. Business operations come exclusively from declared endpoints: entities never acquire implicit CRUD use cases, repository adapters, HTTP routes or screens. The maintained commerce example verifies the connected local product after fresh generation. Optional provider enrollment/recovery flows, cloud deployment and automatic transactions remain outside that evidence. See [current evidence and limitations](configuration/VALIDATION.md).
+## Refactor decisions retained in the implementation
+
+The separate baseline-preservation proposal was discarded. The former RF-06 planning proposal contributed only small file-ownership/collection checks and backend dependency manifests to the direct pipeline; it did not introduce a planning engine or a separate prerequisite. RF-18 conversion was rejected: previous YAML is diagnosed, not migrated or archived as another supported format. RF-19 established the integrated commerce example; RF-20 repeats that verification after cleanup. Future Hexagonal/Onion work does not block supported Clean generation.

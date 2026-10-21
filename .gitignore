@@ -7,6 +7,7 @@ dist/
 build/
 .turbo/
 out/
+*.tsbuildinfo
 
 # Environment files
 .env
@@ -29,6 +30,7 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
+.cursor/mcp.json
 *.swp
 *.swo
 
@@ -39,3 +41,10 @@ coverage/
 # Generated sandbox/examples during tests
 sandbox/
 tmp/
+examples/*
+!examples/full-stack-commerce/
+!examples/cloudflare-cicd/
+!examples/ai-playground/
+
+# Local tooling cache
+.nordixgen/

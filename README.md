@@ -1,101 +1,82 @@
-# NordixGen 🚀
+# NordixGen
 
-> **Motor declarativo y determinista para la generación de proyectos full-stack empresariales.**  
-> Diseña tu arquitectura, entidades, endpoints, autenticación y despliegue en un único archivo YAML. Genera código limpio, tipado y listo para producción sin alucinaciones de IA.
+NordixGen is an internal Nordix tool for generating the starting point of client projects from a declarative YAML configuration. It focuses on the stack Nordix uses and maintains: TypeScript, Next.js App Router, Tailwind CSS, Hono, Drizzle ORM, PostgreSQL on Neon, Better Auth, TanStack Query, and Zustand.
 
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen.svg)](https://nodejs.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Cloudflare Ready](https://img.shields.io/badge/Deploy-Cloudflare%20Edge-orange.svg)](https://cloudflare.com/)
+A generated backend is a modular monolith: business modules run together in one process. Clean, Hexagonal and Onion are executable per-module architectures and can coexist in the same backend. Modules communicate through explicit, typed application contracts and direct in-process calls. Project configuration describes the business systemâ€”its repositories and paths, applications and connections, databases, modules, entities, endpoints, pagination, and authentication/authorization needsâ€”rather than selecting unrelated technology stacks.
 
----
+## Implementation status
 
-## ⚡ ¿Qué es NordixGen?
+The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
 
-**NordixGen** es un CLI y plataforma modular distribuida en `npm` (`@nordixgen/cli`, `@nordixgen/core`) orientada a eliminar el trabajo repetitivo de configuración y boilerplate al iniciar proyectos de software de gran escala.
+**Clean, Hexagonal and Onion module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Modules of all three families share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Architecture-specific ports and dependency checks preserve each module's inward boundaries. Focused persistence, identity, browser access, forms and cache-isolation checks pass. A maintained fresh full-stack acceptance check now exercises the connected product; the same check must pass again after repository cleanup.
 
-A partir de un archivo declarativo `nordix.config.yaml`, NordixGen construye:
-- **Clean Architecture** estricta en el Backend (Dominio, Casos de Uso, Puertos y Adaptadores).
-- **Feature-Driven Architecture** en el Frontend (Next.js 15 App Router, Tailwind CSS v4).
-- **Manejo de Estado Dual de Alto Rendimiento:** **TanStack Query v5** para caché remota y sincronización automática del servidor + **Zustand v5** para estado atómico de UI.
-- **SDKs y Hooks Tipados End-to-End** generados automáticamente para cada entidad y endpoint.
-- **Modelos y Esquemas ORM** con Drizzle ORM sobre PostgreSQL (Neon).
-- **Seguridad y Autorización:** Web Crypto nativo, JWT, Refresh Tokens, y control granular de acceso basado en Roles y Permisos (RBAC/PBAC).
-- **CI/CD Nativo en el Edge con Cloudflare** (Workers Builds & Pages Git Integration) + Infraestructura como Código (Terraform/OpenTofu).
-- **Entorno Local con Docker Compose:** PostgreSQL, Mailpit, MinIO y Redis en un solo comando.
+## Generate and explore the commerce example
 
----
+The [full-stack commerce example](examples/full-stack-commerce/README.md) shows a complete two-module application you can generate from its [YAML configuration](examples/full-stack-commerce/project.yaml). Follow its quick start to generate, verify and explore a running local demo with `pnpm example:commerce --keep`, or use the public CLI directly with that YAML. The same example runs in CI as a fresh-generation database/HTTP/browser check. Its README maps the demonstrated features, explains the example helpers, and provides the cleanup command.
 
-## 🏆 El Golden Path Oficial
+## Target generated project
 
-NordixGen está diseñado de forma modular para que la comunidad pueda extenderlo a cualquier framework (.NET, NestJS, Django, Angular, etc.). Sin embargo, la **Ruta Dorada Oficial** de máxima eficiencia y coste cero o ultrabajo es:
+From a `nordix.config.yaml` file, NordixGen scaffolds a Next.js frontend and Hono backend, then generates project code for declared business entities and operations. The generated project includes Drizzle persistence for PostgreSQL/Neon, Better Auth identity and sessions, typed frontend API clients, TanStack Query hooks, Zustand UI state, and entity screens based on connected backend operations.
 
-| Capa | Tecnología Oficial | Justificación Técnica |
-| :--- | :--- | :--- |
-| **Frontend** | Next.js 15 (App Router) + Tailwind CSS v4 | Máximo rendimiento web, React Server Components, estilos ultra-ligeros con `@theme`. |
-| **Frontend State** | TanStack Query v5 + Zustand v5 | Sincronización remota sin re-renders manuales + UI atómica sin boilerplate. |
-| **Backend** | Hono (TypeScript) + Clean Architecture | Edge-native, 0 ms cold-starts en Cloudflare Workers, separación estricta de capas. |
-| **Base de Datos** | PostgreSQL en Neon (Serverless) | Escalado automático a cero, branch de bases de datos por cada Pull Request. |
-| **ORM** | Drizzle ORM | Bundle ultra-ligero (<30 KB), TypeScript nativo, queries relacionales ultrarrápidas. |
-| **Aceleración DB**| Cloudflare Hyperdrive | Pooling y caché distribuida de consultas PostgreSQL en más de 300 ciudades. |
-| **CI/CD** | Cloudflare Native Builds | Sin runners externos ni secretos en GitHub; builds en el Edge y Preview URLs automáticas. |
-| **IaC** | Terraform / OpenTofu | Aprovisionamiento cloud completo (R2, Hyperdrive, Pages, Workers, DNS) con un solo comando. |
-| **Desarrollo Local**| Docker Compose | Postgres 16, Mailpit (visualizador de emails), MinIO (compatible S3/R2) y Redis. |
+Authentication supports configurable password/PIN policies (8-character default), Google/GitHub/Microsoft/Facebook OAuth, phone SMS OTP, recovery/reset screens and a basic phone-linking profile. Session durations, company email restrictions and database-backed rate limits are configured per backend; local development supports Mailpit and console simulation, while production fails safely without delivery credentials.
 
----
+Authentication screens and access control are separate concerns. The generated sign-in/sign-up UI lets users authenticate; the backend validates sessions and enforces static capability requirements using current database roles/grants. The generated `/admin/roles` screen and `/api/auth/iam/*` platform endpoints administer roles and user assignments with separate permissions. Migrations seed initial roles without overwriting later edits; `pnpm auth:create-admin operator@example.com` promotes an existing account. See [identity and IAM](docs/generation/IDENTITY_ACCESS.md).
 
-## 📦 Modelo de Distribución y Uso
+Authentication and IAM changes are recorded asynchronously in a unified audit store. Declare `audit: true` on a business endpoint to include it; the protected Activity tab provides actor/action/date filters, pagination and before/after inspection. Audit failures do not roll back the primary operation. See [audit logging](docs/generation/AUDIT_LOGGING.md).
 
-### 1. Ejecución Instantánea sin Instalación (Recomendado)
+Optional AI infrastructure exposes declared business operations as permission-filtered tools shared by an authenticated streaming chat and a remote MCP server. MCP uses a separate public gateway Worker with a Service Binding to the private Hono backend, OAuth 2.1/PKCE and/or scoped personal API keys. Frontends independently enable a floating/page assistant and `/connect-ai` portal. Provider credentials and model overrides stay in runtime environment variables. See [AI configuration](docs/configuration/YAML_V2.md#ai-chat-tools-and-mcp).
+
+Generated frontends support semantic design tokens with per-project light/dark palettes and a persistent Light/Dark/System switcher. Each mode accepts either all seven main colors or none; status colors default individually. See [theme configuration](docs/configuration/YAML_V2.md#frontend-design-tokens-and-theme).
+
+Business HTTP operations are described through endpoint declarations. Entity definitions describe data; they do not form the intended API contract by themselves. Health checks, Better Auth handlers and IAM administration are platform routes.
+
+NordixGen generates application scaffolding, source code, and local Docker environments. Each application receives a multi-stage Dockerfile; each repository receives Compose orchestration for its own applications, dedicated PostgreSQL volumes and Neon HTTP proxies. Run `docker compose up -d --build` or `pnpm docker:up` in a generated repository. See [local Docker usage](docs/generation/CLI_WORKFLOW.md#local-docker-environments). Generated repositories also include Cloudflare native CI/CD commands, a guided account setup assistant, a manual deployment guide and Neon PITR recovery instructions. `develop` deploys staging and `main` deploys production; no generated GitHub Actions runners are required.
+
+## Configure CI/CD with a database
+
+Every generated repository starts with an initial commit on `main` and `develop` pointing to that commit. Creating a GitHub remote remains optional. Publish both branches before connecting deployments.
+
+From the generated repository root, choose either:
+
+1. **Guided assistant:** run `pnpm cicd:setup`. Select your Cloudflare account, GitHub repository, build token and Neon project (or create one). Run `pnpm cicd:setup --profile client-name` to configure another destination. Tokens are masked input or shell environment values; account profiles are ignored by Git.
+2. **Manual setup:** follow the generated `docs/DEPLOYMENT.md` to create Neon branches, configure build/runtime secrets and connect each Cloudflare Worker to its Git branch. The guide lists the same build/deploy commands used by the assistant.
+
+Pushes to `develop` deploy staging; pushes to `main` deploy production using native Cloudflare builds. Better Auth remains in the backend. The generated `docs/DISASTER_RECOVERY.md` explains Neon point-in-time recovery. See [the CLI workflow](docs/generation/CLI_WORKFLOW.md#native-cloudflare-cicd-and-neon) for scope and verification.
+
+Try the [Cloudflare CI/CD example](examples/cloudflare-cicd/README.md) for a small public list/create application you can connect to your own accounts.
+
+## Use the CLI
+
+From this checkout, install dependencies with pnpm 10.5.2 and run `pnpm build` first (Node.js 24+). These commands use the current development CLI.
+
 ```bash
-# Inicializar un archivo de configuración interactivo
-npx nordixgen init
+# Create a starter configuration
+node packages/cli/dist/index.js init
 
-# Validar tu archivo YAML
-npx nordixgen validate -f nordix.config.yaml
+# Validate configuration and supported generation readiness
+node packages/cli/dist/index.js validate -f nordix.config.yaml
 
-# Generar el proyecto completo en un monorepo
-npx nordixgen generate -f nordix.config.yaml -o ./mi-nuevo-proyecto
+# Generate a supported project into a new or empty directory
+node packages/cli/dist/index.js generate -f nordix.config.yaml -o ./my-client-project
 ```
 
-### 2. Instalación Global
+The initializer emits a public database-backed example with list/create operations and an optional frontend. Generation prepares supported output, checks prerequisites, runs pinned official scaffolds, installs each repository workspace, and verifies application types and backend boundaries before mandatory local Git initialization (initial commit on `main`, `develop` at the same commit) and optional GitHub publication of both branches. Configure the emitted environment examples and apply database migrations before starting the applications. See [CLI workflow and evidence](docs/generation/CLI_WORKFLOW.md).
+
+The [approved YAML reference](docs/configuration/YAML_V2.md) defines the target contract. [Validation behavior and evidence](docs/configuration/VALIDATION.md) explains what currently works, how to run checks, diagnostic categories and supported scope and limitations. The core resolution API builds the [shared project model](docs/configuration/RESOLVED_MODEL.md) independently of generation readiness.
+
+## Development requirements
+
+Generated applications deploy to Cloudflare Workers with private frontend-to-backend service bindings. Optional R2 infrastructure uses OpenTofu, separate staging/production state and native PR plan comments. See [deployment](docs/DEPLOYMENT.md) and [infrastructure](docs/INFRASTRUCTURE.md).
+
+- Node.js `>=24`
+- pnpm `>=10`
+
 ```bash
-npm install -g nordixgen
-nordixgen generate -f nordix.config.yaml
+pnpm install --frozen-lockfile
+pnpm test
+pnpm build
 ```
 
----
+## License
 
-## 🌿 Flujo de Trabajo Git y Publicación de Paquetes
-
-NordixGen implementa un modelo de desarrollo profesional y publicación continua:
-
-- **`main` (Distribución & Producción):** Cada commit o Pull Request fusionado en `main` activa de inmediato el workflow de CI/CD que compila, ejecuta pruebas y publica automáticamente `@nordixgen/cli` y `@nordixgen/core` al registro de `npm` con **npm Provenance (OIDC)** y el tag `@latest`.
-- **`develop` (Integración):** Rama activa donde convergen todas las características probadas antes de hacer un release.
-- **`feature/*`:** Ramas de trabajo aisladas para cada mejora o componente.
-
----
-
-## 🛠️ Requisitos de Desarrollo
-
-- **Node.js:** Versión `>= 24.0.0` (Active LTS).
-- **Gestor de versiones recomendado:** [`fnm` (Fast Node Manager)](https://github.com/Schniz/fnm):
-  ```bash
-  fnm install 24
-  fnm default 24
-  fnm use 24
-  ```
-- **Gestor de paquetes:** `pnpm >= 10.0.0`.
-
----
-
-## 📚 Documentación Técnica
-
-- 📖 [Especificación Integral de Requisitos y Capacidades](docs/SPECIFICATION.md)
-- 🗺️ [Plan de Implementación y Fases de Desarrollo](docs/IMPLEMENTATION_PLAN.md)
-- 📦 [Arquitectura del Monorepo de Paquetes](packages/README.md)
-
----
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia [MIT](LICENSE).
+NordixGen is licensed under the [MIT License](LICENSE).

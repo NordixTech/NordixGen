@@ -1,7 +1,7 @@
 {
   "name": "nordixgen-monorepo",
   "private": true,
-  "description": "Enterprise Declarative Architecture & Scaffolding Platform for Full-Stack Projects",
+  "description": "Initialize Nordix full-stack projects from strict YAML v2",
   "engines": {
     "node": ">=24.0.0",
     "pnpm": ">=10.0.0"
@@ -10,8 +10,18 @@
   "scripts": {
     "build": "pnpm --filter \"./packages/*\" build",
     "test": "pnpm --filter \"./packages/*\" test",
-    "lint": "pnpm --filter \"./packages/*\" lint",
-    "typecheck": "pnpm --filter \"./packages/*\" typecheck"
+    "generate:schema": "pnpm --filter @nordixgen/core generate:schema",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --build",
+    "example:commerce": "node examples/full-stack-commerce/scripts/run.mjs",
+    "example:docker": "node packages/cli/tests/docker-acceptance.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@hono/node-server": "2.1.5",
+    "@playwright/test": "1.64.1",
+    "typescript": "^5.8.2"
   },
   "keywords": [
     "nordixgen",

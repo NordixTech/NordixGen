@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  local-docker:
+    name: Generated Docker environment (${{ matrix.layout }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [monorepo, split]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm example:docker ${{ matrix.layout }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-acceptance-${{ matrix.layout }}
+          if-no-files-found: ignore
+          path: |
+            tmp/docker-acceptance/*/*.log
+            tmp/docker-acceptance/*/*.png
+            tmp/docker-acceptance/*/report.json
+  validate:
+    name: Lint, Typecheck & Tests (Node.js 24)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_USER: nordixgen_test
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: nordixgen_test
+        options: >-
+          --health-cmd "pg_isready -U nordixgen_test -d nordixgen_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      neon-proxy:
+        image: ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a
+        env:
+          PG_CONNECTION_STRING: postgres://nordixgen_test:test-only@postgres:5432/nordixgen_test
+        ports:
+          - 14444:4444
+    env:
+      NORDIXGEN_TEST_DATABASE_URL: postgresql://nordixgen_test:test-only@db.localtest.me:5432/nordixgen_test
+      NORDIXGEN_TEST_PROXY_PORT: 14444
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+
+      - name: Setup Node.js (Active LTS 24)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check code formatting and linting (Biome)
+        run: pnpm lint
+
+      - name: Run TypeScript typecheck
+        run: pnpm typecheck
+
+      - name: Build monorepo packages
+        run: pnpm build
+
+      - name: Run automated unit tests (Vitest)
+        run: pnpm test
+
+  generated-application:
+    name: Generated full-stack application acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install verification dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install isolated acceptance browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Generate, build and verify a fresh connected application
+        run: pnpm example:commerce
+      - name: Retain acceptance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-application-acceptance
+          if-no-files-found: ignore
+          path: |
+            tmp/examples/full-stack-commerce/*/report.json
+            tmp/examples/full-stack-commerce/*/behaviors.json
+            tmp/examples/full-stack-commerce/*/operation-artifacts.json
+            tmp/examples/full-stack-commerce/*/*.png
+            tmp/examples/full-stack-commerce/*/*.log
