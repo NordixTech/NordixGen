@@ -40,8 +40,6 @@ afterEach(async () => {
 
 describe("canonical configuration initialization and command preflight", () => {
   it.each([
-    ["hexagonal", "MODULE_ARCHITECTURE_UNIMPLEMENTED"],
-    ["onion", "MODULE_ARCHITECTURE_UNIMPLEMENTED"],
     ["cycle", "RELATION_CYCLE"],
     ["association", "RELATION_MAPPING_UNIMPLEMENTED"],
   ])(
@@ -143,25 +141,31 @@ describe("canonical configuration initialization and command preflight", () => {
     await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("generates a supported backend through the injected runner and preserves the config", async () => {
-    const directory = await temporary();
-    const file = join(directory, "valid.yaml");
-    const output = join(directory, "output");
-    const source = createStarterConfiguration("client-app", true);
-    await writeFile(file, source);
-    const runner = vi.fn(fixtureCommand);
-    await runGenerate(file, output, runner);
-    expect(runner.mock.calls.some((call) => call[0] === "pnpm")).toBe(true);
-    expect(await readFile(join(output, "apps/api/src/index.ts"), "utf8")).toContain("new Hono");
-    expect(await readFile(join(output, "apps/web/src/app/providers.tsx"), "utf8")).toContain(
-      "QueryClientProvider",
-    );
-    const pkg = JSON.parse(await readFile(join(output, "apps/api/package.json"), "utf8"));
-    expect(pkg.dependencies).toHaveProperty("hono");
-    expect(pkg.devDependencies).toHaveProperty("typescript");
-    expect(await readFile(file, "utf8")).toBe(source);
-    await expect(runGenerate(file, output, runner)).rejects.toThrow(/new or empty/);
-  });
+  it.each(["clean", "hexagonal", "onion"])(
+    "generates a %s backend through the injected runner and preserves the config",
+    async (architecture) => {
+      const directory = await temporary();
+      const file = join(directory, "valid.yaml");
+      const output = join(directory, "output");
+      const source = createStarterConfiguration("client-app", true).replace(
+        "architecture: clean",
+        `architecture: ${architecture}`,
+      );
+      await writeFile(file, source);
+      const runner = vi.fn(fixtureCommand);
+      await runGenerate(file, output, runner);
+      expect(runner.mock.calls.some((call) => call[0] === "pnpm")).toBe(true);
+      expect(await readFile(join(output, "apps/api/src/index.ts"), "utf8")).toContain("new Hono");
+      expect(await readFile(join(output, "apps/web/src/app/providers.tsx"), "utf8")).toContain(
+        "QueryClientProvider",
+      );
+      const pkg = JSON.parse(await readFile(join(output, "apps/api/package.json"), "utf8"));
+      expect(pkg.dependencies).toHaveProperty("hono");
+      expect(pkg.devDependencies).toHaveProperty("typescript");
+      expect(await readFile(file, "utf8")).toBe(source);
+      await expect(runGenerate(file, output, runner)).rejects.toThrow(/new or empty/);
+    },
+  );
 
   it("presents invalid configuration paths/corrections and nonzero command status", async () => {
     const directory = await temporary();
@@ -193,13 +197,22 @@ describe("canonical configuration initialization and command preflight", () => {
     await expect(access(join(directory, "out"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("accepts implemented single Clean generation in validate", async () => {
-    const directory = await temporary();
-    const file = join(directory, "valid.yaml");
-    await writeFile(file, createStarterConfiguration("client-app", false));
-    await createProgram().parseAsync(["node", "nordixgen", "validate", "-f", file]);
-    expect(process.exitCode).toBeUndefined();
-  });
+  it.each(["clean", "hexagonal", "onion"])(
+    "accepts %s generation in validate",
+    async (architecture) => {
+      const directory = await temporary();
+      const file = join(directory, "valid.yaml");
+      await writeFile(
+        file,
+        createStarterConfiguration("client-app", false).replace(
+          "architecture: clean",
+          `architecture: ${architecture}`,
+        ),
+      );
+      await createProgram().parseAsync(["node", "nordixgen", "validate", "-f", file]);
+      expect(process.exitCode).toBeUndefined();
+    },
+  );
 });
 
 describe("modular generation execution", () => {

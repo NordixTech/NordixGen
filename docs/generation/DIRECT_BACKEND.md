@@ -2,7 +2,7 @@
 
 The backend registry, plugin descriptors, selections and capability negotiation have been removed. `generateBackend(project, backendName)` consumes the shared resolved project and returns an in-memory VFS, scaffold command and centrally maintained runtime/development dependencies. It never starts commands or writes files.
 
-The integrated scope supports multiple independent Clean modules per backend. See [module layout and boundaries](CLEAN_MODULES.md). [Public module communication](PUBLIC_MODULES.md) is integrated with typed contracts, explicit wiring and trusted context. Hexagonal/Onion and many-to-many emission remain explicit readiness errors. `validate` and `generate` use that same boundary. The integrated commerce example verifies this scope with real database and browser behavior.
+The integrated scope supports multiple Clean, Hexagonal and Onion modules per backend. See [module layout and boundaries](CLEAN_MODULES.md). [Public module communication](PUBLIC_MODULES.md) is integrated with typed contracts, explicit wiring and trusted context. All three architecture families are executable; many-to-many emission remains an explicit readiness error. `validate` and `generate` use that same boundary. Mixed-family compiler, HTTP and database tests verify all three families. The integrated Clean commerce example additionally verifies the connected browser product.
 
 Focused domain, application, Hono, Drizzle, identity and authorization renderers are direct typed functions. One Hono renderer owns route/bootstrap aggregation, and one Drizzle renderer owns the current schema aggregation. The collector rejects unsafe paths, escapes and case-insensitive duplicate normalized paths, even equal content, naming both producers. Different full paths with the same basename are valid. There is no file merging or last-writer-wins.
 
@@ -21,3 +21,17 @@ Focused checks compile backend output with and without configured identity optio
 [Frontend generation](DIRECT_FRONTEND.md) now also uses direct typed functions without registration. The multi-module layout, public application wiring and module-owned persistence each retain their own implementation boundaries.
 
 The maintained [commerce example](../../examples/full-stack-commerce/README.md) verifies fresh public-CLI generation, application compilation, Worker bundling, real PostgreSQL migrations/seeds, HTTP authorization, browser forms and account-cache isolation. Run `pnpm example:commerce` from the repository root; each run writes revision, environment and stage/behavior results into a new ignored `tmp/examples/full-stack-commerce/<id>/` directory. This verifies the supported local topology, not cloud deployment or every optional identity-provider journey.
+
+## Architecture contracts
+
+The fixed stack, operation semantics and public module API do not vary with architecture. The finite layout resolver selects paths for shared entity, DTO, use-case, clock, SQL and HTTP generators; there is no renderer registry or duplicated backend pipeline.
+
+- **Clean:** domain entities, application use cases/outbound ports, infrastructure adapters and presentation controllers retain their existing paths and behavior.
+- **Hexagonal:** `core/domain` holds state and `core/application` holds operations and explicit inbound/outbound ports. Driving `adapters/inbound/http` controllers depend on inbound interfaces, implemented by application operations; driven `adapters/outbound` persistence/clock adapters implement the outbound interfaces. Driving adapters cannot import driven adapters.
+- **Onion:** the independent `domain` is the center. `application/services` implements application contracts in `application/contracts` and depends on application-owned persistence/clock ports. Outer `infrastructure/http` controllers invoke those contracts; infrastructure provides concrete implementations. Domain cannot depend on the application ring or any outer ring.
+
+Hexagonal and Onion inbound contracts describe `execute` using application response values and a separate optional operation context. The existing public wrappers enforce trusted context and policies, preserve application results and receive the same explicitly constructed services. No new business workflow or domain service is invented from entity declarations.
+
+Module bootstraps, schema aggregation and module-scoped database types use the selected architecture paths. Identity, database connection, migrations, HTTP policy and public wiring each retain one backend owner. The generated AST checker uses each module's actual domain/application roots, rejects inward infrastructure imports (including type-only and literal dynamic imports), domain-to-application dependencies, cross-module private imports and public re-exports of private code.
+
+`architecture-modules.test.ts` compiles mixed families and exercises deliberate boundary violations. `module-public.test.ts` executes cross-family calls and security/failure cases. `persistence-integration.test.ts` additionally generates/applies migrations and exercises real PostgreSQL reads/writes, validation, defaults, joined pagination and soft deletion for each family alongside Clean. Local persistence tests require the explicit isolated database opt-in described in [Clean modules](CLEAN_MODULES.md).

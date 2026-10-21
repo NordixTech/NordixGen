@@ -12,7 +12,7 @@ NordixGen is a generator, not a runtime dependency of the generated application.
 
 A project may contain one or more frontend and backend applications, placed in configured repositories and paths. Frontends declare which backends they consume. A backend is a modular monolith: its business modules execute in one process and share the backend's runtime and platform services.
 
-Clean is the implemented module architecture. Hexagonal and Onion are recognized future families and fail generation readiness until their renderers are implemented. The selected family defines dependency direction and the organization of the module's domain, application operations, and adapters. It does not change the public contract another module uses to call that module.
+Clean, Hexagonal and Onion are executable per-module architectures and can coexist in the same backend. The selected family defines dependency direction and the organization of the module's domain, application operations, and adapters. It does not change the public contract another module uses to call that module.
 
 Modules communicate through explicit, typed application contracts and direct in-process calls. A module publishes only declared application operations. A consuming module names the public operations it imports. Contracts use application-level input/output types and errors; they do not expose Hono request objects, Drizzle tables, repositories, or private domain types. The backend composition root wires module implementations together. Internal communication is not an HTTP call to the same backend and does not imply a generic event bus or distributed transaction system.
 

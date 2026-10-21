@@ -100,6 +100,7 @@ function endpointDtoFiles(
   dtoDirectory: string,
   portDirectory: string,
   useCaseDirectory: string,
+  context: BackendRenderContext,
 ): GeneratedFile[] {
   const name = endpointTypeName(endpoint);
   const endpointDtoDirectory = posix.join(dtoDirectory, "endpoints");
@@ -234,10 +235,19 @@ function endpointDtoFiles(
     )} as const;`,
     "",
   ].join("\n");
+  const inboundPath = posix.join(
+    context.framework.codeRoot,
+    context.architecture.inboundPort,
+    `${name}.port.ts`,
+  );
+  const explicitPort = context.domainModel.modules[0]?.architecture !== "clean";
   const useCaseContent = [
+    ...(explicitPort
+      ? [`import type {${name}Port} from "${importPath(useCasePath, inboundPath)}";`]
+      : []),
     ...(endpoint.audit
       ? [
-          `import type {OperationContext} from "${importPath(useCasePath, posix.join(useCaseDirectory, "../../../../platform/application/contracts.ts"))}";`,
+          `import type {OperationContext} from "${importPath(useCasePath, posix.join(context.platformRoot, "application/contracts.ts"))}";`,
         ]
       : []),
     `import { InputSchema, ResponseSchema } from "${importPath(useCasePath, dtoPath)}";`,
@@ -248,7 +258,7 @@ function endpointDtoFiles(
         ]
       : []),
     "",
-    `export class ${name}UseCase {`,
+    `export class ${name}UseCase${explicitPort ? ` implements ${name}Port` : ""} {`,
     `  constructor(private readonly query: ${name}QueryPort${requestBodyDynamicDefaults.length > 0 ? ", private readonly clock: Clock" : ""}) {}`,
     `  async execute(rawInput: unknown${endpoint.audit ? ",context?:OperationContext" : ""}) {`,
     "    const input = InputSchema.parse(rawInput);",
@@ -289,6 +299,19 @@ function endpointDtoFiles(
     { path: dtoPath, content: dtoContent },
     { path: useCasePath, content: useCaseContent },
     { path: portPath, content: portContent },
+    ...(explicitPort
+      ? [
+          {
+            path: inboundPath,
+            content: [
+              `import type {Response} from "${importPath(inboundPath, dtoPath)}";`,
+              `import type {OperationContext} from "${importPath(inboundPath, posix.join(context.platformRoot, "application/contracts.ts"))}";`,
+              `export interface ${name}Port {execute(input:unknown,context?:OperationContext):Promise<Response>;}`,
+              "",
+            ].join("\n"),
+          },
+        ]
+      : []),
   ];
 }
 
@@ -339,7 +362,9 @@ export function generateApplicationFiles(context: BackendRenderContext): readonl
     });
   }
   for (const endpoint of model.endpoints) {
-    files.push(...endpointDtoFiles(endpoint, dtoDirectory, portDirectory, useCaseDirectory));
+    files.push(
+      ...endpointDtoFiles(endpoint, dtoDirectory, portDirectory, useCaseDirectory, context),
+    );
   }
   return files;
 }

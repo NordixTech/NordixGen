@@ -68,8 +68,9 @@ describe
       await sql("DROP SCHEMA public CASCADE");
       await sql("CREATE SCHEMA public");
     }
-    async function prepare(auth = true) {
+    async function prepare(auth = true, architecture: "clean" | "hexagonal" | "onion" = "clean") {
       const config = auth ? persistenceFixture() : constrainedPersistenceFixture();
+      config.backends[0].modules.billing.architecture = architecture;
       const project = resolvedFixture(config);
       const result = generateBackend(project, "api");
       if (!result.success) throw Error("Persistence fixture is not generation-ready");
@@ -1138,4 +1139,47 @@ describe
       expect(constraints.map((row) => row.nullable_label)).toEqual([null, null]);
       expect(new Set(constraints.map((row) => row.code)).size).toBe(2);
     }, 60_000);
+    it.each(["hexagonal", "onion"] as const)(
+      "migrates %s alongside Clean and executes persisted HTTP writes, validation, pagination and soft delete",
+      async (architecture) => {
+        if (directory) await rm(directory, { recursive: true, force: true });
+        directory = "";
+        await reset();
+        await prepare(true, architecture);
+        const seeded = await (
+          load(`${root}/platform/database/seed.ts`) as unknown as DatabaseTools
+        ).seedDatabase({ seed: 2026 });
+        expect(seeded.Customer).toHaveLength(5);
+        const created = (
+          await rows("/api/invoices", "POST", {
+            customerId: "11111111-1111-4111-8111-111111111111",
+            total: 12.5,
+            note: "Architecture acceptance",
+          })
+        )[0].entity;
+        expect(created).toMatchObject({
+          total: 12.5,
+          discount: null,
+          isDeleted: false,
+          payload: { currency: "USD" },
+        });
+        const id = String(created.id);
+        expect((await request("/api/invoices", "POST", { total: "invalid" })).status).toBe(400);
+        const updated = (await rows(`/api/invoices/${id}`, "PATCH", { total: 17.25 }))[0].entity;
+        expect(updated.total).toBe(17.25);
+        expect(Number((await sql("SELECT total FROM invoice WHERE id=$1", [id]))[0].total)).toBe(
+          17.25,
+        );
+        expect((await page("/api/invoices?search=Architecture")).total).toBe(1);
+        await rows("/api/lines", "POST", { invoiceId: id, quantity: 3, unitPrice: 2.5 });
+        const joined = await page("/api/invoices/with-lines?search=Architecture");
+        expect(joined.items[0].joins.InvoiceLine).toHaveLength(1);
+        await rows(`/api/invoices/${id}`, "DELETE");
+        expect((await sql("SELECT is_deleted FROM invoice WHERE id=$1", [id]))[0].is_deleted).toBe(
+          true,
+        );
+        expect((await page("/api/invoices?search=Architecture")).total).toBe(0);
+      },
+      60_000,
+    );
   });

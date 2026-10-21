@@ -1,4 +1,4 @@
-# Accepted YAML v2 configuration; modular generation is not integrated yet.
+# Executable YAML v2 configuration with per-module architecture selection.
 schemaVersion: 2
 name: client-platform
 version: 1.0.0

@@ -61,9 +61,9 @@ export function generateModulePublicFiles(
   const module = project.modules[context.moduleId as string];
   const operations = context.domainModel.endpoints;
   const contracts = `${root}/public/contracts.ts`;
-  const applicationContracts = `${root}/application/operation-contracts.ts`;
+  const applicationContracts = `${root}/${context.architecture.applicationRoot}/operation-contracts.ts`;
   const runtime = `${root}/public/runtime.ts`;
-  const imports = `${root}/application/ports/module-dependencies.ts`;
+  const imports = `${root}/${context.architecture.applicationRoot}/ports/module-dependencies.ts`;
   const bootstrap = `${root}/bootstrap.ts`;
   const exported = operations.filter((operation) => module.exports.includes(operation.id));
   const shared = `${context.platformRoot}/application/contracts.ts`;
@@ -131,9 +131,9 @@ export function generateModulePublicFiles(
           {
             path: bootstrap,
             content: [
-              'import {createRouteDependencies} from "./infrastructure/adapters/create-route-dependencies.js";',
+              `import {createRouteDependencies} from "${importPath(bootstrap, posix.join(root, context.architecture.directories.adapter, "create-route-dependencies.ts"))}";`,
               'import {createApplicationApi} from "./public/runtime.js";',
-              'import type {ModuleDependencies} from "./application/ports/module-dependencies.js";',
+              `import type {ModuleDependencies} from "${importPath(bootstrap, imports)}";`,
               `import type {DrizzleDatabase} from "${importPath(bootstrap, context.sharedDatabaseFile as string)}";`,
               `import type {AccessGuard} from "${importPath(bootstrap, access)}";`,
               ...(context.domainModel.backend.storage.length

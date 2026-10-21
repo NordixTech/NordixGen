@@ -6,12 +6,12 @@ The approved [YAML v2 contract](YAML_V2.md) is implemented by the core Zod schem
 
 `parseNordixYaml(source, filename)` and `validateNordixConfig(input)` check configuration independently of generation readiness. `resolveProjectYaml` and `resolveProject` additionally build the [shared resolved model](RESOLVED_MODEL.md). Both CLI `validate` and `generate` require the same resolution and readiness. Supported generation and failure behavior:
 
-- One or multiple Clean modules per backend generate through the [direct flow](../generation/DIRECT_BACKEND.md), including explicit typed public module calls.
-- Hexagonal/Onion report `MODULE_ARCHITECTURE_UNIMPLEMENTED`; no Clean fallback is emitted.
+- One or multiple Clean, Hexagonal and Onion modules per backend generate through the [direct flow](../generation/DIRECT_BACKEND.md), including explicit typed public module calls.
+- Architecture choices select explicit built-in layouts and ports; there is no fallback or plugin discovery.
 - Many-to-many reports `RELATION_MAPPING_UNIMPLEMENTED`; no partial join table is emitted.
 - Syntax, structure, reference and stored-cycle errors precede readiness. Unsupported or invalid input exits with status 1.
 
-For invalid or unsupported input, the CLI creates no output directory and starts no scaffolding, dependency installation, Git command or remote publication. `init` writes a canonical ready starter and refuses overwrites. Supported Clean input uses the direct modular pipeline; no legacy backend-wide path or architecture fallback exists.
+For invalid or unsupported input, the CLI creates no output directory and starts no scaffolding, dependency installation, Git command or remote publication. `init` writes a canonical ready starter and refuses overwrites. Supported input uses the direct modular pipeline; no legacy backend-wide path or architecture fallback exists.
 
 ## Diagnostic categories
 

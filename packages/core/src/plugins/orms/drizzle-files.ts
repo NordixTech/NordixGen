@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import type { ResolvedField } from "../../project/types.js";
+import { resolveArchitectureLayout } from "../architecture/layout.js";
 import type {
   BackendRenderContext,
   DomainModelContext,
@@ -128,7 +129,7 @@ export function generateDrizzleSchemaFiles(
         content: [
           ...model.modules.map(
             (module) =>
-              `export * from "${importPath(indexPath, posix.join(context.moduleRoots[module.id], "infrastructure/database/schema/index.ts"))}";`,
+              `export * from "${importPath(indexPath, posix.join(context.moduleRoots[module.id], resolveArchitectureLayout(module.architecture).schema, "index.ts"))}";`,
           ),
           'export * from "./enums.js";',
           'export * from "./audit-schema.js";',
@@ -212,7 +213,7 @@ export function generateDrizzleSchemaFiles(
       "",
     ].join("\n"),
   });
-  const client = posix.join(context.framework.codeRoot, "infrastructure/database/client.ts");
+  const client = posix.join(context.framework.codeRoot, context.architecture.databaseClient);
   files.push({
     path: client,
     content: [
