@@ -39,11 +39,18 @@ export function generateAuthorizationFiles(
     {
       path: `${root}/policy.ts`,
       content: `import {createAccessControl} from "better-auth/plugins/access";
-export const permissions = ${JSON.stringify(identity.permissions)} as const;
+${context.domainModel.backend.ai ? 'import customTools from "../ai/custom-tools.js";\nimport type {AppTool} from "../ai/define-tool.js";' : ""}
+export const permissions = ${context.domainModel.backend.ai ? `[...new Set([...${JSON.stringify(identity.permissions)},...(customTools as AppTool[]).flatMap(tool=>tool.permissions)])].sort()` : `${JSON.stringify(identity.permissions)} as const`};
 export type Permission = (typeof permissions)[number];
-export const ac = createAccessControl(${statementSource} as const);
+${
+  context.domainModel.backend.ai
+    ? `const statement:Record<string,string[]>=Object.create(null);const requests:Record<string,Record<string,string[]>>=Object.create(null);
+for(const permission of permissions){if(!/^\\S+$/.test(permission)||permission.includes("*"))throw Error("Custom tool permissions must be explicit tokens without whitespace or wildcards.");const index=permission.indexOf(":");const raw=index<0?permission:permission.slice(0,index);const resource=Object.hasOwn(Object.prototype,raw)?"$"+raw:raw;const action=index<0?"access":permission.slice(index+1);(statement[resource]??=[]).push(action);requests[permission]={[resource]:[action]};}
+export const ac=createAccessControl(statement);`
+    : `export const ac = createAccessControl(${statementSource} as const);`
+}
 const catalog=ac.newRole(ac.statements);
-const requests=${requestsSource} as const;
+${context.domainModel.backend.ai ? "" : `const requests=${requestsSource} as const;`}
 export interface AuthorizationPrincipal { role?:string|null; permissions?:readonly string[]; }
 export interface AuthorizationRequirements { permissions:readonly Permission[]; }
 export function isAuthorized(principal:AuthorizationPrincipal,requirements:AuthorizationRequirements):boolean {

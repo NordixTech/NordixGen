@@ -49,9 +49,12 @@ export function generateFrontendShell(context: FrontendRenderContext): readonly 
         'import {Providers} from "./providers";',
         'import {ThemeSwitcher} from "@/components/ui/theme-switcher";',
         ...(auth ? ['import {AuthControls} from "@/components/auth/auth-controls";'] : []),
+        ...(context.frontend.ai?.chat.enabled && context.frontend.ai.chat.placement === "floating"
+          ? ['import {FloatingAssistant} from "@/components/ai/assistant-chat";']
+          : []),
         `export const metadata:Metadata={title:${JSON.stringify(context.projectName)},description:"Generated with NordixGen"};`,
         "export default function RootLayout({children}:{children:ReactNode}) {",
-        `return <html lang="en" data-theme=${JSON.stringify(context.frontend.theme.default)} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{__html:${JSON.stringify(themeInitializationScript(context.frontend.theme.default))}}}/></head><body><Providers><header className="ng-topbar ng-app-topbar"><Link className="ng-brand" href="/" aria-label="NordixGen home"><span aria-hidden="true" className="ng-brand-mark">N</span><span>Nordix<span className="ng-brand-accent">Gen</span></span></Link><div className="ng-topbar-actions"><ThemeSwitcher/>${auth ? "<AuthControls />" : ""}</div></header>{children}</Providers></body></html>;`,
+        `return <html lang="en" data-theme=${JSON.stringify(context.frontend.theme.default)} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{__html:${JSON.stringify(themeInitializationScript(context.frontend.theme.default))}}}/></head><body><Providers><header className="ng-topbar ng-app-topbar"><Link className="ng-brand" href="/" aria-label="NordixGen home"><span aria-hidden="true" className="ng-brand-mark">N</span><span>Nordix<span className="ng-brand-accent">Gen</span></span></Link><div className="ng-topbar-actions">${context.frontend.ai?.chat.enabled && context.frontend.ai.chat.placement === "page" ? '<Link href="/chat">Assistant</Link>' : ""}${context.frontend.ai?.connectPortal.enabled ? '<Link href="/connect-ai">Connect AI</Link>' : ""}<ThemeSwitcher/>${auth ? "<AuthControls />" : ""}</div></header>{children}${context.frontend.ai?.chat.enabled && context.frontend.ai.chat.placement === "floating" ? "<FloatingAssistant/>" : ""}</Providers></body></html>;`,
         "}",
         "",
       ].join("\n"),

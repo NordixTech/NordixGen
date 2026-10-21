@@ -43,10 +43,8 @@ jobs:
         run: |
           pnpm lint
           pnpm typecheck
+          pnpm build
           pnpm test
-
-      - name: Build production packages
-        run: pnpm build
 
       - name: Pack workspace packages
         run: |

@@ -113,6 +113,14 @@ export async function executeGeneration(
         directory,
         `Application "${app.name}" module-boundary verification failed`,
       );
+    if (app.backend && project.backends[app.name].ai?.mcp.enabled)
+      await checkedCommand(
+        runner,
+        "pnpm",
+        ["--dir", "mcp-gateway", "run", "typecheck"],
+        directory,
+        `Application "${app.name}" MCP gateway verification failed`,
+      );
   }
   console.log("Local generation and application checks completed.");
   await finishRepositories(project, root, settings, runner);

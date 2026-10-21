@@ -51,6 +51,7 @@ export async function proxyBackend(backend:string,request:Request,path:string):P
  try{
   const url=new URL(request.url);const headers=new Headers(request.headers);
   headers.delete("x-nordix-client-ip");
+  headers.delete("x-nordix-mcp-gateway");
   headers.set("x-nordix-client-ip",process.env.NODE_ENV==="development"||process.env.NORDIX_LOCAL_RUNTIME==="1"?"127.0.0.1":request.headers.get("cf-connecting-ip")??"unknown");
   for(const name of ["host","connection","content-length","forwarded","x-forwarded-host","x-forwarded-proto"])headers.delete(name);
   const init:RequestInit & {duplex?:"half"}={method:request.method,headers,signal:request.signal};
@@ -79,6 +80,7 @@ export const dynamic="force-dynamic";
 async function handler(request:Request,context:{params:Promise<{backend:string;path:string[]}>}){
  const {backend,path}=await context.params;
  if(!${JSON.stringify(connections)}.includes(backend))return new Response(null,{status:404});
+ if(path[0]==="mcp")return new Response(null,{status:404});
  return proxyBackend(backend,request,"/"+path.map(encodeURIComponent).join("/"));
 }
 export {handler as GET,handler as POST,handler as PUT,handler as PATCH,handler as DELETE,handler as OPTIONS,handler as HEAD};

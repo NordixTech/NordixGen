@@ -124,6 +124,21 @@ export function dockerFiles(
       .map((frontend) => publicFrontend(frontend.name))
       .join(",");
     const environment: Record<string, string> = { PORT: "8787", NODE_ENV: "development" };
+    if (app.ai) {
+      for (const key of [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "GROQ_API_KEY",
+        "AI_MODEL",
+      ])
+        environment[key] = interpolation(`${environmentName(app.name)}_${key}`, "");
+      if (app.ai.mcp.enabled)
+        environment.MCP_PUBLIC_URL = interpolation(
+          `${environmentName(app.name)}_MCP_PUBLIC_URL`,
+          "http://localhost:8790",
+        );
+    }
     if (app.identity) {
       environment.BETTER_AUTH_URL = origins.split(",")[0] || publicBackend(app.name);
       environment.BETTER_AUTH_SECRET = interpolation(
@@ -237,6 +252,35 @@ export function dockerFiles(
       // The proxy may still be binding its listener after the database becomes healthy.
       restart: "on-failure:5",
     };
+    if (app.ai?.mcp.enabled) {
+      const gatewayPath = `${app.path}/mcp-gateway`;
+      files[posix.join(gatewayPath, "Dockerfile")] = [
+        ...base,
+        `RUN pnpm --filter ${quote(`${app.name}-mcp-gateway`)} deploy --legacy --prod /out`,
+        ...runner,
+        copy("/out/node_modules", "./node_modules", "builder"),
+        copy("/out/package.json", "./package.json", "builder"),
+        copy(`${appDirectory(gatewayPath)}/index.ts`, "./index.ts", "builder"),
+        copy(`${appDirectory(gatewayPath)}/local-server.mjs`, "./local-server.mjs", "builder"),
+        "USER nextjs",
+        "ENV PORT=8790",
+        "EXPOSE 8790",
+        'CMD ["node","local-server.mjs"]',
+        "",
+      ].join("\n");
+      services[`mcp-${app.name}`] = {
+        build: build(gatewayPath),
+        environment: {
+          PORT: "8790",
+          BACKEND_INTERNAL_URL: internalBackend(app.name),
+          OAUTH_ENABLED: app.ai.mcp.authMethods.includes("oauth") ? "1" : "0",
+        },
+        ports: [`127.0.0.1:${interpolation(`MCP_${environmentName(app.name)}_PORT`, 8790)}:8790`],
+        depends_on: { [`backend-${app.name}`]: { condition: "service_healthy" } },
+        networks: network,
+        restart: "on-failure:5",
+      };
+    }
   }
   for (const app of Object.values(project.frontends).filter(
     (app) => app.repository.name === repository.name,

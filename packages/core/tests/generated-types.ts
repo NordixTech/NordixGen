@@ -36,6 +36,7 @@ export async function generatedTypeErrors(
         jsx: ts.JsxEmit.Preserve,
         baseUrl: directory,
         typeRoots: [join(parent, "node_modules/@types")],
+        types: ["node"],
         paths: { "@/*": ["./*"] },
         ...options,
       },

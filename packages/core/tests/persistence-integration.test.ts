@@ -17,11 +17,12 @@ import * as pg from "drizzle-orm/pg-core";
 import * as hono from "hono";
 import * as cors from "hono/cors";
 import * as httpException from "hono/http-exception";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as zod from "zod";
 import { generateBackend } from "../src/generation/backend.js";
 import { generateFrontend } from "../src/generation/frontend.js";
 import { ACCOUNT_POLICY } from "../src/project/account-policy.js";
+import { aiDependencies } from "./ai-dependencies.js";
 import { resolvedFixture } from "./fixtures.js";
 import { frontendRuntime } from "./frontend-runtime.js";
 import { generatedRuntime } from "./generated-runtime.js";
@@ -68,8 +69,21 @@ describe
       await sql("DROP SCHEMA public CASCADE");
       await sql("CREATE SCHEMA public");
     }
-    async function prepare(auth = true, architecture: "clean" | "hexagonal" | "onion" = "clean") {
+    async function prepare(
+      auth = true,
+      architecture: "clean" | "hexagonal" | "onion" = "clean",
+      enableAi = false,
+    ) {
       const config = auth ? persistenceFixture() : constrainedPersistenceFixture();
+      if (enableAi) {
+        Object.assign(config.backends[0], {
+          ai: { enabled: true, mcp: { enabled: true, authMethods: ["oauth", "api-key"] } },
+        });
+        const mutation = config.endpoints.find(
+          (operation) => operation.operationId === "createInvoice",
+        );
+        if (mutation) mutation.audit = true;
+      }
       config.backends[0].modules.billing.architecture = architecture;
       const project = resolvedFixture(config);
       const result = generateBackend(project, "api");
@@ -106,6 +120,7 @@ describe
       ).join("\n");
       generatedFiles = result.virtualFileSystem.snapshot();
       load = generatedRuntime(generatedFiles, {
+        ...aiDependencies,
         zod,
         hono,
         "hono/cors": cors,
@@ -1139,6 +1154,223 @@ describe
       expect(constraints.map((row) => row.nullable_label)).toEqual([null, null]);
       expect(new Set(constraints.map((row) => row.code)).size).toBe(2);
     }, 60_000);
+    // This end-to-end case includes fresh migrations, real password hashing, chat
+    // persistence and MCP token HTTP calls. Allow a bounded two minutes under CI
+    // coverage; the one-minute budget expired on shared runners after a green PR.
+    it("migrates AI token tables and executes scoped MCP tools through real Better Auth and PostgreSQL", async () => {
+      if (directory) await rm(directory, { recursive: true, force: true });
+      directory = "";
+      await reset();
+      await prepare(true, "clean", true);
+      const live = generatedRuntime(generatedFiles, {
+        ...aiDependencies,
+        zod,
+        hono,
+        "hono/cors": cors,
+        "hono/http-exception": httpException,
+        "@hono/zod-validator": validator,
+        "drizzle-orm": orm,
+        "drizzle-orm/pg-core": pg,
+        "drizzle-orm/neon-http": neonOrm,
+        "drizzle-orm/neon-http/migrator": migrator,
+        "drizzle-orm/neon-serverless": neonTransactions,
+        "@neondatabase/serverless": neon,
+        "@faker-js/faker": faker,
+        "better-auth": betterAuth,
+        "better-auth/api": authApi,
+        "better-auth/plugins/access": access,
+        "@better-auth/drizzle-adapter": authAdapter,
+        "node:path": path,
+        "node:url": url,
+      });
+      const liveApp = live(`${root}/index.ts`).default as hono.Hono;
+      const env = {
+        DATABASE_URL: databaseUrl,
+        BETTER_AUTH_URL: "https://web.example.test",
+        MCP_PUBLIC_URL: "https://mcp.example.test",
+        BETTER_AUTH_SECRET: "isolated-ai-test-secret-only-32-characters",
+        AUTH_TRUSTED_ORIGINS: "https://web.example.test",
+      };
+      const ctx = {
+        waitUntil: (task: Promise<unknown>) => auditTasks.push(task),
+        passThroughOnException: () => {},
+        props: {},
+      };
+      const signup = await liveApp.request(
+        "https://web.example.test/api/auth/sign-up/email",
+        {
+          method: "POST",
+          headers: { origin: env.BETTER_AUTH_URL, "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "AI operator",
+            email: "ai@example.test",
+            password: "test-long-password-123",
+          }),
+        },
+        env,
+        ctx,
+      );
+      expect(signup.status, await signup.clone().text()).toBe(200);
+      const user = (await signup.json()).user;
+      const cookie = signup.headers
+        .getSetCookie()
+        .map((value) => value.split(";")[0])
+        .join("; ");
+      const chatRequest = (path: string, method = "GET") =>
+        liveApp.request(
+          `https://web.example.test/api/ai/chats${path}`,
+          { method, headers: { cookie, origin: env.BETTER_AUTH_URL } },
+          env,
+          ctx,
+        );
+      const chatCreated = await chatRequest("", "POST");
+      expect(chatCreated.status, await chatCreated.clone().text()).toBe(201);
+      const chatId = (await chatCreated.json()).id;
+      const store = (
+        live(`${root}/platform/ai/history.ts`) as {
+          createChatStore: (url: string) => {
+            acquire: (id: string, owner: string) => Promise<string>;
+            save: (
+              id: string,
+              owner: string,
+              token: string,
+              messages: unknown[],
+              release: boolean,
+            ) => Promise<void>;
+            load: (id: string, owner: string) => Promise<{ messages: unknown[] }>;
+            action: (
+              id: string,
+              owner: string,
+              token: string,
+              call: string,
+              execute: () => Promise<unknown>,
+            ) => Promise<unknown>;
+            release: (id: string, owner: string, token: string) => Promise<void>;
+          };
+        }
+      ).createChatStore(databaseUrl);
+      const lease = await store.acquire(chatId, user.id);
+      await expect(store.acquire(chatId, user.id)).rejects.toThrow("still responding");
+      await expect(store.load(chatId, "another-user")).rejects.toThrow("not found");
+      const action = vi.fn(async () => ({ saved: true }));
+      expect(await store.action(chatId, user.id, lease, "call-1", action)).toEqual({ saved: true });
+      expect(await store.action(chatId, user.id, lease, "call-1", action)).toEqual({ saved: true });
+      expect(action).toHaveBeenCalledTimes(1);
+      const savedMessage = {
+        id: "message-1",
+        role: "user",
+        parts: [{ type: "text", text: "Private history" }],
+      };
+      await store.save(chatId, user.id, lease, [savedMessage], true);
+      expect((await store.load(chatId, user.id)).messages).toEqual([savedMessage]);
+      expect((await (await chatRequest("")).json()).chats[0].title).toBe("Private history");
+      expect((await chatRequest(`/${chatId}`, "DELETE")).status).toBe(204);
+      expect(
+        (await sql("SELECT count(*)::int AS n FROM ai_chat_message WHERE chat_id=$1", [chatId]))[0]
+          .n,
+      ).toBe(0);
+      expect(
+        (await sql("SELECT count(*)::int AS n FROM ai_chat_action WHERE chat_id=$1", [chatId]))[0]
+          .n,
+      ).toBe(0);
+      await sql("UPDATE auth_user SET role='admin' WHERE id=$1", [user.id]);
+      await (live(`${root}/platform/database/seed.ts`) as unknown as DatabaseTools).seedDatabase({
+        seed: 2026,
+      });
+      const created = await liveApp.request(
+        "https://web.example.test/api/ai/keys",
+        {
+          method: "POST",
+          headers: { cookie, origin: env.BETTER_AUTH_URL, "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "MCP acceptance",
+            permissions: ["invoices:read", "invoices:write"],
+          }),
+        },
+        env,
+        ctx,
+      );
+      expect(created.status, await created.clone().text()).toBe(200);
+      const key = await created.json();
+      const stored = await sql("SELECT key FROM apikey WHERE id=$1", [key.id]);
+      expect(stored[0].key).not.toBe(key.key);
+      const gateway = live("apps/api/mcp-gateway/index.ts").default as {
+        fetch: (request: Request, env: unknown) => Promise<Response>;
+      };
+      const request = async (method: string, params: unknown = {}) => {
+        const response = await gateway.fetch(
+          new Request("https://mcp.example.test/mcp", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${key.key}`,
+              "Content-Type": "application/json",
+              Accept: "application/json, text/event-stream",
+              "MCP-Protocol-Version": "2025-11-25",
+            },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+          }),
+          {
+            OAUTH_ENABLED: "1",
+            BACKEND: { fetch: (request: Request) => liveApp.fetch(request, env, ctx) },
+          },
+        );
+        const text = await response.text();
+        return {
+          status: response.status,
+          body: JSON.parse(
+            text
+              .split("\n")
+              .find((line) => line.startsWith("data: "))
+              ?.slice(6) ?? text,
+          ),
+        };
+      };
+      const catalog = await request("tools/list");
+      expect(catalog.status).toBe(200);
+      expect(
+        catalog.body.result.tools.some(
+          (tool: { name: string }) => tool.name === "billing_createInvoice",
+        ),
+      ).toBe(true);
+      const denied = await request("tools/call", {
+        name: "billing_createInvoice",
+        arguments: { customerId: "11111111-1111-4111-8111-111111111111", total: 9.5 },
+      });
+      expect(denied.body.result.isError).toBe(true);
+      const result = await request("tools/call", {
+        name: "billing_createInvoice",
+        arguments: {
+          customerId: "11111111-1111-4111-8111-111111111111",
+          total: 9.5,
+          confirm: true,
+        },
+      });
+      expect(result.body.result.isError, JSON.stringify(result.body)).not.toBe(true);
+      const rows = JSON.parse(result.body.result.content[0].text);
+      expect(
+        Number((await sql("SELECT total FROM invoice WHERE id=$1", [rows[0].entity.id]))[0].total),
+      ).toBe(9.5);
+      await drainAudit();
+      expect(
+        (await sql("SELECT count(*)::int AS n FROM audit_logs WHERE action='ai.createInvoice'"))[0]
+          .n,
+      ).toBeGreaterThan(0);
+      const revoked = await liveApp.request(
+        `https://web.example.test/api/ai/keys/${key.id}`,
+        { method: "DELETE", headers: { cookie, origin: env.BETTER_AUTH_URL } },
+        env,
+        ctx,
+      );
+      expect(revoked.status).toBe(200);
+      const unauthorized = await gateway.fetch(
+        new Request("https://mcp.example.test/mcp", { headers: { "x-api-key": key.key } }),
+        {
+          OAUTH_ENABLED: "1",
+          BACKEND: { fetch: (request: Request) => liveApp.fetch(request, env, ctx) },
+        },
+      );
+      expect(unauthorized.status).toBe(401);
+    }, 120_000);
     it.each(["hexagonal", "onion"] as const)(
       "migrates %s alongside Clean and executes persisted HTTP writes, validation, pagination and soft delete",
       async (architecture) => {
