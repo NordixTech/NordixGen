@@ -37,9 +37,13 @@ export async function withIamTransaction<T>(connectionString:string, run:(tx:Tra
 }
 
 async function snapshot(tx:Transaction) {
- const roles=await tx.select().from(schema.authRoles).orderBy(schema.authRoles.id);
- const grants=await tx.select().from(schema.authRolePermissions).orderBy(schema.authRolePermissions.role_id,schema.authRolePermissions.permission);
- const users=await tx.select({id:schema.authUser.id,role:schema.authUser.role}).from(schema.authUser).orderBy(schema.authUser.id);
+ const result=await tx.execute(sql\`SELECT
+  COALESCE((SELECT json_agg(r ORDER BY r.id) FROM auth_roles r),'[]') AS roles,
+  COALESCE((SELECT json_agg(p ORDER BY p.role_id,p.permission) FROM auth_role_permissions p),'[]') AS grants,
+  COALESCE((SELECT json_agg(u ORDER BY u.id) FROM (SELECT id,role FROM auth_user) u),'[]') AS users\`);
+ const row=result.rows[0] as {roles:(typeof schema.authRoles.$inferSelect)[];grants:(typeof schema.authRolePermissions.$inferSelect)[];users:{id:string;role:string}[]};
+ const roles=row.roles.map(role=>({...role,created_at:new Date(role.created_at),updated_at:new Date(role.updated_at)}));
+ const {grants,users}=row;
  return {roles:roles.map(role=>({...role,permissions:grants.filter(grant=>grant.role_id===role.id).map(grant=>grant.permission)})),users};
 }
 const authorized=(permissions:readonly string[],permission:Permission)=>isAuthorized({permissions},{permissions:[permission]});
@@ -52,9 +56,9 @@ async function requireActor(tx:Transaction,actor:string,permission:Permission) {
 export async function createRole(connection:string,role:RoleInput,actor:string,capture?:(event:AuditEvent)=>void):Promise<"ok"|"forbidden"|"conflict"> {
  let event:AuditEvent|undefined;
  const outcome=await withIamTransaction(connection,async tx=>{
-  const {state,allowed}=await requireActor(tx,actor,"iam:roles:manage");
-  if(!allowed)return "forbidden";
-  if(state.roles.some(existing=>existing.id===role.id))return "conflict";
+  const result=await tx.execute(sql\`SELECT EXISTS(SELECT 1 FROM auth_user u JOIN auth_roles r ON r.id=u.role JOIN auth_role_permissions p ON p.role_id=r.id WHERE u.id=\${actor} AND p.permission IN ('*','iam:roles:manage')) AS allowed,EXISTS(SELECT 1 FROM auth_roles WHERE id=\${role.id}) AS conflict\`);
+  if(!result.rows[0]?.allowed)return "forbidden";
+  if(result.rows[0].conflict)return "conflict";
   await tx.insert(schema.authRoles).values({id:role.id,name:role.name,description:role.description??null});
   if(role.permissions.length)await tx.insert(schema.authRolePermissions).values(role.permissions.map(permission=>({id:crypto.randomUUID(),role_id:role.id,permission})));
   event={actorId:actor,action:"iam.role.created",resourceType:"role",resourceId:role.id,before:null,after:{...role,description:role.description??null}};

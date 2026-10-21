@@ -1,3 +1,10 @@
+# Only YAML example sources are versioned; generated applications stay local.
+/examples/**/*
+!/examples/**/
+!/examples/**/*.yaml
+!/examples/**/*.yml
+/examples/**/generated/
+
 # Dependencies
 node_modules/
 .pnpm-store/
@@ -38,14 +45,9 @@ Thumbs.db
 coverage/
 .vitest/
 
-# Generated sandbox/examples during tests
+# Generated sandboxes during tests
 sandbox/
 tmp/
-examples/*
-!examples/full-stack-commerce/
-!examples/cloudflare-cicd/
-!examples/ai-playground/
-!examples/r2-dashboard/
 
 # Local tooling cache
 .nordixgen/

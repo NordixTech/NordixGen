@@ -44,6 +44,10 @@ variable "public_domains" {
  type = map(object({ domain = string, zone_id = string }))
  default = {}
 }
+variable "storage_upload_origins" {
+ type = map(list(string))
+ default = {}
+}
 `;
   const storage = project.iac?.cloudflare.r2_storage ?? {};
   // Each resource has a stable logical address. Developers edit these files after generation.
@@ -52,6 +56,21 @@ variable "public_domains" {
       ([key, config]) => `resource "cloudflare_r2_bucket" "${key}" {
  account_id = var.account_id
  name = var.environment == "staging" ? ${JSON.stringify(r2BucketName(project.project.name, "staging", key))} : ${JSON.stringify(r2BucketName(project.project.name, "production", key))}
+}
+resource "cloudflare_r2_bucket_cors" "${key}" {
+ count = length(lookup(var.storage_upload_origins, "${key}", [])) > 0 ? 1 : 0
+ account_id = var.account_id
+ bucket_name = cloudflare_r2_bucket.${key}.name
+ rules = [{
+  id = "direct-upload"
+  allowed = {
+   origins = var.storage_upload_origins["${key}"]
+   methods = ["PUT"]
+   headers = ["content-type", "if-none-match"]
+  }
+  expose_headers = ["ETag"]
+  max_age_seconds = 3600
+ }]
 }
 ${
   config.visibility === "public"
@@ -81,7 +100,7 @@ ${app.storage.map((key) => `  ${JSON.stringify(key)} = { binding = ${JSON.string
 `;
   for (const environment of ["staging", "production"])
     files[`infra/terraform/${environment}.tfvars`] =
-      `environment = "${environment}"\n# For each public bucket, set public_domains with its domain and Cloudflare zone_id.\n`;
+      `environment = "${environment}"\n# For each public bucket, set public_domains with its domain and Cloudflare zone_id.\n# Direct browser uploads: storage_upload_origins = { documents = ["https://app.example.com"] }\n# cicd:setup supplies the connected frontend origins automatically via TF_VAR_storage_upload_origins.\n`;
   files["infra/terraform/.gitignore"] =
     ".terraform/\n*.tfstate*\n*.tfplan\n*.plan.json\nbackend.generated.hcl\n";
   return files;

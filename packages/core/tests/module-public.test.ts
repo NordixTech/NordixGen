@@ -106,6 +106,7 @@ function makeFixture(
   };
   const find = vi.fn(async () => [customer]);
   const db = {
+    batch: (queries: readonly Promise<unknown>[]) => Promise.all(queries),
     query: { CustomerTable: { findMany: find }, InvoiceTable: { findMany: async () => [] } },
     select: () => ({ from: () => ({ where: async () => [{ count: 1 }] }) }),
   };

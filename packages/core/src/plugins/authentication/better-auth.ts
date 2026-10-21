@@ -105,10 +105,14 @@ function authSchemaContent(
     );
   }
   return [
+    'import {relations} from "drizzle-orm";',
     'import { bigint, boolean, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";',
     'import {authRoles} from "./iam-schema.js";',
     "",
     ...tables.flatMap((table) => [table, ""]),
+    "export const authUserRelations=relations(authUser,({many})=>({sessions:many(session),accounts:many(account)}));",
+    "export const sessionRelations=relations(session,({one})=>({user:one(authUser,{fields:[session.userId],references:[authUser.id]})}));",
+    "export const accountRelations=relations(account,({one})=>({user:one(authUser,{fields:[account.userId],references:[authUser.id]})}));",
   ].join("\n");
 }
 
@@ -262,7 +266,7 @@ function authRuntimeContent(
     `    session: {expiresIn:${durationSeconds(identity.session?.expiresIn ?? "7d")},updateAge:${durationSeconds(identity.session?.updateAge ?? "1d")}},`,
     `    account: {accountLinking:{enabled:true,trustedProviders:${JSON.stringify(providers)},allowDifferentEmails:false}},`,
     `    rateLimit: {enabled:${limit.enabled},storage:"database",window:${limitRule.window},max:${limitRule.max},customRules:${JSON.stringify({ "/get-session": false, "/iam/*": false, ...Object.fromEntries(["/sign-in/*", "/sign-up/*", "/request-password-reset", "/reset-password", "/set-password", "/change-password", "/send-verification-email", "/phone-number/*", "/two-factor/*"].map((path) => [path, limitRule])) })}},`,
-    '    advanced: {ipAddress:{ipAddressHeaders:["x-nordix-client-ip"]}},',
+    '    advanced: {database:{joins:true},ipAddress:{ipAddressHeaders:["x-nordix-client-ip"]}},',
     `    databaseHooks:{user:{create:{before:async (user,ctx)=>{assertAllowedEmail(user.email,${JSON.stringify(domains)});const name=ctx?.path==="/phone-number/verify"&&typeof ctx.body?.name==="string"?ctx.body.name.trim().slice(0,100):"";return {data:name?{...user,name}:user};}},update:{before:async user=>{if(user.email!==undefined)assertAllowedEmail(user.email,${JSON.stringify(domains)});return {data:user};}}}},`,
     `    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema: { ...schema, ...iamSchema, ${ai?.mcp.enabled ? "...aiSchema," : ""} user: schema.authUser, auth_roles: iamSchema.authRoles, auth_role_permissions: iamSchema.authRolePermissions } }),`,
     `    user: {validateUserInfo:async ({user,source})=>{if(source.method==="oauth"&&source.action==="link-account"&&!user.emailVerified)return {error:"oauth_email_not_verified",errorDescription:"Verify your provider email before signing in."};if(${JSON.stringify(domains)}.length&&(!user.email||!(${JSON.stringify(domains)} as string[]).includes(user.email.split("@")[1]?.toLowerCase()??"")))return {error:"email_domain_restricted",errorDescription:"Registration restricted to authorized company domains"};}, additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } } },`,

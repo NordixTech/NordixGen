@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
-import { command } from "../../../examples/full-stack-commerce/scripts/resources.mjs";
+import { command } from "./acceptance/resources.mjs";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const id = randomBytes(6).toString("hex");

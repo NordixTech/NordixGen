@@ -52,6 +52,7 @@ export function nordixIamPlugin(config:{connectionString:string;defaultRole:stri
    },indexes:[{fields:["roleId","permission"],unique:true}]},
   },
   endpoints:{
+   iamBootstrap:createAuthEndpoint("/iam/bootstrap",{method:"GET",use},async ctx=>{const user=ctx.context.session!.user;return ctx.json({user:{id:user.id,name:user.name,email:user.email,role:ctx.context.principal.role,permissions:ctx.context.principal.permissions},session:{id:ctx.context.session!.session.id}});}),
    iamAudit:createAuthEndpoint("/iam/audit",{method:"GET",use,query:z.object({page:z.coerce.number().int().min(1).max(100000).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(25),actor:z.string().min(1).max(200).optional(),action:z.string().min(1).max(200).optional(),from:z.string().datetime({offset:true}).optional(),to:z.string().datetime({offset:true}).optional()}).strict().refine(value=>!value.from||!value.to||new Date(value.from)<=new Date(value.to),"From must not be later than to.")},async ctx=>{
     check(ctx.context.principal,"iam:roles:manage");return ctx.json(await readAudit(config.connectionString,ctx.query));
    }),

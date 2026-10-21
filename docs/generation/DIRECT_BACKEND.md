@@ -14,13 +14,15 @@ Backend versions have one source in `generation/dependencies.ts`; Drizzle Kit, F
 
 ## Evidence
 
+Generated Neon HTTP clients reuse their stateless client and Drizzle schema setup within a Worker isolate. The cache holds one configuration, keyed by the complete connection string and local proxy setting; changing credentials, database or proxy rebuilds it. It does not cache SQL results, sessions, IAM grants, request headers or execution contexts, and does not retain a WebSocket connection or transaction. Session and permission checks still execute for each operation. This avoids repeatedly preparing the same schema in authentication, IAM and business adapters; it does not guarantee that the full application fits the Workers Free CPU budget.
+
 The functional tests execute generated Hono handlers, compile application/client contracts, assert single ownership/containment and central dependency categories, compare common readiness and exercise CLI output with an injected command runner. Retired backend registration/capability tests and malformed plugin-context checks were removed with their production APIs. Coverage gates are unchanged.
 
 Focused checks compile backend output with and without configured identity options and verify safe malformed-registration handling. The maintained commerce example supplies separate persisted HTTP and browser evidence. Optional provider configuration does not imply complete provider enrollment, recovery or administration screens.
 
 [Frontend generation](DIRECT_FRONTEND.md) now also uses direct typed functions without registration. The multi-module layout, public application wiring and module-owned persistence each retain their own implementation boundaries.
 
-The maintained [commerce example](../../examples/full-stack-commerce/README.md) verifies fresh public-CLI generation, application compilation, Worker bundling, real PostgreSQL migrations/seeds, HTTP authorization, browser forms and account-cache isolation. Run `pnpm example:commerce` from the repository root; each run writes revision, environment and stage/behavior results into a new ignored `tmp/examples/full-stack-commerce/<id>/` directory. This verifies the supported local topology, not cloud deployment or every optional identity-provider journey.
+Internal acceptance checks verify fresh CLI generation, compilation, PostgreSQL persistence, authorization and browser behavior. Run `pnpm test:acceptance`; isolated run artifacts are written under ignored `tmp/acceptance/commerce/`.
 
 ## Architecture contracts
 
@@ -35,3 +37,7 @@ Hexagonal and Onion inbound contracts describe `execute` using application respo
 Module bootstraps, schema aggregation and module-scoped database types use the selected architecture paths. Identity, database connection, migrations, HTTP policy and public wiring each retain one backend owner. The generated AST checker uses each module's actual domain/application roots, rejects inward infrastructure imports (including type-only and literal dynamic imports), domain-to-application dependencies, cross-module private imports and public re-exports of private code.
 
 `architecture-modules.test.ts` compiles mixed families and exercises deliberate boundary violations. `module-public.test.ts` executes cross-family calls and security/failure cases. `persistence-integration.test.ts` additionally generates/applies migrations and exercises real PostgreSQL reads/writes, validation, defaults, joined pagination and soft deletion for each family alongside Clean. Local persistence tests require the explicit isolated database opt-in described in [Clean modules](CLEAN_MODULES.md).
+
+Authentication migrations also install the invoker-rights public.nordix_consume_limits PostgreSQL function. Run the generated db:migrate command before deploying updated authentication code. It consumes ordered, locked abuse counters in one database statement; if any rule blocks an attempt, every counter change rolls back. IAM access changes keep their advisory transaction lock, current actor checks, state-bound confirmations and last-administrator protection.
+
+Generated frontends can hydrate the first entity list from server reads with cache: no-store. Every render creates a separate query cache, private query keys include user and role, and the backend verifies authorization again for the actual data read. Browser query freshness is ten seconds; mutations still invalidate affected queries. Server identity is a presentation seed until Better Auth settles, never a replacement for backend authorization or a fallback after sign-out. Identity outages show a retryable service error rather than an invented permission denial.

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import type { GeneratedFile } from "../plugins/contracts.js";
+import { storageProxySource } from "./storage-proxy.js";
 
 /** Stable across account changes, unique across generated projects and applications. */
 export function cloudflareWorkerName(project: string, app: string): string {
@@ -18,6 +19,7 @@ export function cloudflareConfiguration(
 ) {
   const name = cloudflareWorkerName(project, app);
   const environment = (environment: string) => ({
+    ...(!frontend ? { placement: { mode: "smart" } } : {}),
     ...(!frontend ? { vars: { NODE_ENV: "production" } } : {}),
     name: `${name}-${environment}`,
     workers_dev: frontend,
@@ -44,6 +46,7 @@ export function cloudflareConfiguration(
       : {}),
   });
   return {
+    ...(!frontend ? { placement: { mode: "smart" } } : {}),
     name,
     main: frontend ? ".open-next/worker.js" : "src/index.ts",
     compatibility_date: "2026-10-01",
@@ -78,17 +81,32 @@ export function frontendCloudflareFiles(
   app: string,
   root: string,
   connections: readonly string[] = [],
+  storageBackends: readonly string[] = [],
 ): GeneratedFile[] {
+  const configuration = cloudflareConfiguration(project, app, true, connections);
+  if (storageBackends.length) configuration.main = "worker.ts";
   return [
     {
       path: posix.join(root, "wrangler.jsonc"),
-      content: `${JSON.stringify(cloudflareConfiguration(project, app, true, connections), null, 2)}\n`,
+      content: `${JSON.stringify(configuration, null, 2)}\n`,
     },
     {
       path: posix.join(root, "open-next.config.ts"),
       content:
         'import { defineCloudflareConfig } from "@opennextjs/cloudflare";\nexport default defineCloudflareConfig({});\n',
     },
+    ...(storageBackends.length
+      ? [
+          {
+            path: posix.join(root, "storage-proxy.ts"),
+            content: storageProxySource,
+          },
+          {
+            path: posix.join(root, "worker.ts"),
+            content: `// @ts-ignore OpenNext emits this module during the production build.\nimport next from "./.open-next/worker.js";\n// @ts-ignore Preserve any durable object exports supplied by OpenNext.\nexport * from "./.open-next/worker.js";\nimport {proxyStorageDownload} from "./storage-proxy";\nconst bindings:Readonly<Record<string,string>>=${JSON.stringify(Object.fromEntries(storageBackends.map((backend) => [backend, serviceBinding(backend)])))};\nexport default {async fetch(request:Request,env:Record<string,unknown>,context:unknown):Promise<Response>{\n return await proxyStorageDownload(request,env,bindings)??next.fetch(request,env,context);\n}};\n`,
+          },
+        ]
+      : []),
   ];
 }
 export function serviceBinding(backend: string) {

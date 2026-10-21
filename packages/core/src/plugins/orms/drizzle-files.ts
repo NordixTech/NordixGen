@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import type { ResolvedField } from "../../project/types.js";
 import { resolveArchitectureLayout } from "../architecture/layout.js";
@@ -168,7 +169,7 @@ export function generateDrizzleSchemaFiles(
       path: tablePath,
       content: [
         'import {sql} from "drizzle-orm";',
-        'import {pgTable,text,varchar,uuid,integer,numeric,doublePrecision,boolean,timestamp,jsonb} from "drizzle-orm/pg-core";',
+        `import {pgTable,text,varchar,uuid,integer,numeric,doublePrecision,boolean,timestamp,jsonb${entity.indexes.length ? ",index" : ""}} from "drizzle-orm/pg-core";`,
         ...[...new Set(owning.map((relation) => relation.target))]
           .sort()
           .map((target) => `import {${target}Table} from "./${target}.table.js";`),
@@ -179,7 +180,23 @@ export function generateDrizzleSchemaFiles(
           : []),
         `export const ${name}Table = pgTable(${JSON.stringify(entity.table)},{`,
         ...columns,
-        "});",
+        entity.indexes.length
+          ? `},table=>[${entity.indexes
+              .map((definition) => {
+                const hash = createHash("sha256")
+                  .update(
+                    JSON.stringify([
+                      entity.table,
+                      definition.fields.map((field) => entity.fields[field].column),
+                    ]),
+                  )
+                  .digest("hex")
+                  .slice(0, 16);
+                const name = `ng_${entity.table.slice(0, 24)}_${hash}_idx`;
+                return `index(${JSON.stringify(name)}).on(${definition.fields.map((field) => `table[${JSON.stringify(field)}]`).join(",")})`;
+              })
+              .join(",")}]);`
+          : "});",
         "",
       ].join("\n"),
     });
@@ -449,7 +466,7 @@ export function generateDrizzleAdapterFiles(
             : endpoint.pagination
               ? [
                   "    const pagination = input.pagination;",
-                  `    const itemsRaw = await (this.db.query as any).${endpoint.entity}Table.findMany({`,
+                  `    const itemsQuery = (this.db.query as any).${endpoint.entity}Table.findMany({`,
                   "      where: conditions.length > 0 ? and(...conditions) : undefined,",
                   "      offset: pagination.offset,",
                   "      limit: pagination.limit,",
@@ -458,7 +475,8 @@ export function generateDrizzleAdapterFiles(
                   ...joinsQueryConfig,
                   "      },",
                   "    });",
-                  `    const countResult = await this.db.select({ count: sql\`count(*)\` }).from(schema.${endpoint.entity}Table).where(conditions.length > 0 ? and(...conditions) : undefined);`,
+                  `    const countQuery = this.db.select({ count: sql\`count(*)\` }).from(schema.${endpoint.entity}Table).where(conditions.length > 0 ? and(...conditions) : undefined);`,
+                  "    const [itemsRaw,countResult] = await this.db.batch([itemsQuery,countQuery]);",
                   "    const total = Number(countResult[0]?.count ?? 0);",
                   "    const items = itemsRaw.map((row: any) => ({",
                   `      entity: ${mainEntityResult},`,
@@ -554,7 +572,13 @@ export function generateDrizzleMigrationFiles(
     'import { pathToFileURL,fileURLToPath } from "node:url";',
     'import { migrate } from "drizzle-orm/neon-http/migrator";',
     `import { createDrizzleDatabase } from "${importPath(migratePath, dbClientPath)}";`,
-    ...(identity ? ['import {seedAuthorization} from "../authorization/seed.js";'] : []),
+    ...(identity
+      ? [
+          'import {sql} from "drizzle-orm";',
+          'import {installAbuseFunctionSql} from "../auth/abuse-store.js";',
+          'import {seedAuthorization} from "../authorization/seed.js";',
+        ]
+      : []),
     "",
     "export async function runMigrations(options?:{directory?:string}): Promise<void> {",
     `  const connectionString = process.env.${persistence.connectionStringEnvironmentVariable};`,
@@ -564,6 +588,7 @@ export function generateDrizzleMigrationFiles(
     "  const db = createDrizzleDatabase(connectionString);",
     '  console.log("Applying pending Drizzle migrations...");',
     '  await migrate(db, { migrationsFolder: options?.directory ?? fileURLToPath(new URL("../../../drizzle/",import.meta.url)) });',
+    ...(identity ? ["  await db.execute(sql.raw(installAbuseFunctionSql));"] : []),
     ...(identity ? ["  await seedAuthorization(db);"] : []),
     '  console.log("Migrations applied successfully.");',
     "}",
@@ -825,7 +850,17 @@ export function generateDrizzleDatabaseFile(persistence: PersistenceContext): Ge
       "",
       "export type DrizzleDatabase = ReturnType<typeof createDrizzleDatabase>;",
       "",
+      "// Reuse stateless HTTP client/schema setup only. Results, sessions and grants stay request-scoped.",
+      "let cached: {connectionString:string;proxy:string|undefined;database:ReturnType<typeof buildDatabase>}|undefined;",
       "export function createDrizzleDatabase(connectionString: string) {",
+      '  const proxy = typeof process !== "undefined" ? process.env.NEON_HTTP_PROXY_URL : undefined;',
+      "  if (cached?.connectionString === connectionString && cached.proxy === proxy) return cached.database;",
+      "  const database = buildDatabase(connectionString);",
+      "  cached = {connectionString,proxy,database};",
+      "  return database;",
+      "}",
+      "",
+      "function buildDatabase(connectionString: string) {",
       "  const hostname = new URL(connectionString).hostname;",
       '  const localProxy = typeof process !== "undefined" ? process.env.NEON_HTTP_PROXY_URL : undefined;',
       "  if (localProxy) {",

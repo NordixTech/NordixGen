@@ -380,6 +380,22 @@ export function generateFeatureScreenFiles(
     const slug = slugify(entityName);
     const entity = context.api.entities[entityName];
     const screenContent = generateFeatureView(group, entity, operationNames, hasAuth);
+    const list = group.listEndpoint;
+    const prefetch =
+      list && !list.pathParams.length && !list.queryParams.some((parameter) => parameter.required);
+    const initialInput = list?.pagination
+      ? {
+          query: {
+            [list.pagination.pageParam]: 1,
+            [list.pagination.pageSizeParam]: list.pagination.defaultPageSize,
+          },
+        }
+      : list?.queryParams.length
+        ? { query: {} }
+        : {};
+    const privateData = Boolean(
+      list && (list.authRequired || list.roles.length || list.permissions.length),
+    );
     files.push({
       path: `${root}/components/features/${slug}-screen.tsx`,
       content: screenContent,
@@ -388,13 +404,25 @@ export function generateFeatureScreenFiles(
       path: `${root}/app/${slug}/page.tsx`,
       content: source([
         `import { ${entityName}FeatureScreen } from "@/components/features/${slug}-screen";`,
+        ...(prefetch
+          ? [
+              'import {HydrationBoundary} from "@tanstack/react-query";',
+              'import {initialData} from "@/lib/api/initial-data";',
+              "export const revalidate=0;",
+            ]
+          : []),
         "",
         `export const metadata = { title: "${entityName} Records | NordixGen" };`,
         "",
-        `export default function ${entityName}Page() {`,
+        `export default ${prefetch ? "async " : ""}function ${entityName}Page() {`,
+        ...(prefetch
+          ? [
+              `const state=await initialData(${JSON.stringify(list.backend)},${JSON.stringify(list.path)},${JSON.stringify(["nordixgen", list.backend, list.moduleId, list.id])},${JSON.stringify(initialInput)},${privateData});`,
+            ]
+          : []),
         "  return (",
         '    <main className="ng-shell">',
-        `      <${entityName}FeatureScreen />`,
+        `      ${prefetch ? "<HydrationBoundary state={state}>" : ""}<${entityName}FeatureScreen />${prefetch ? "</HydrationBoundary>" : ""}`,
         "    </main>",
         "  );",
         "}",
