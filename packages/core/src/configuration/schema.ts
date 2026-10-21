@@ -60,12 +60,21 @@ export const RelationSchema = z
   })
   .strict();
 export const SoftDeleteSchema = z.union([z.literal(false), z.enum(["boolean", "timestamp"])]);
+export const EntityIndexSchema = z
+  .object({
+    fields: unique(IdentifierSchema).refine(
+      (fields) => fields.length > 0 && fields.length <= 32,
+      "Declare between 1 and 32 distinct fields, in index order.",
+    ),
+  })
+  .strict();
 export const EntitySchema = z
   .object({
     backend: SlugSchema,
     description: z.string().optional(),
     fields: z.record(IdentifierSchema, FieldSchema).default({}),
     relations: z.record(IdentifierSchema, RelationSchema).default({}),
+    indexes: z.array(EntityIndexSchema).default([]),
     timestamps: z
       .object({ createdAt: z.boolean().default(false), updatedAt: z.boolean().default(false) })
       .strict()

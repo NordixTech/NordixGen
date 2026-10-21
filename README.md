@@ -8,11 +8,11 @@ A generated backend is a modular monolith: business modules run together in one 
 
 The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
 
-**Clean, Hexagonal and Onion module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Modules of all three families share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Architecture-specific ports and dependency checks preserve each module's inward boundaries. Focused persistence, identity, browser access, forms and cache-isolation checks pass. A maintained fresh full-stack acceptance check now exercises the connected product; the same check must pass again after repository cleanup.
+**Clean, Hexagonal and Onion module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Modules of all three families share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Architecture-specific ports and dependency checks preserve each module's inward boundaries. Focused persistence, identity, browser access, forms and cache-isolation checks pass. A maintained fresh full-stack acceptance check now exercises the connected product; CI runs this check on every pull request.
 
 ## Generate and explore the commerce example
 
-The [full-stack commerce example](examples/full-stack-commerce/README.md) shows a complete two-module application you can generate from its [YAML configuration](examples/full-stack-commerce/project.yaml). Follow its quick start to generate, verify and explore a running local demo with `pnpm example:commerce --keep`, or use the public CLI directly with that YAML. The same example runs in CI as a fresh-generation database/HTTP/browser check. Its README maps the demonstrated features, explains the example helpers, and provides the cleanup command.
+The [performance configuration](examples/performance/project.yaml) defines one backend, two connected frontends, eight business entities, role permissions, audit capture, R2 storage and database indexes. Generate it with `node packages/cli/dist/index.js generate -f examples/performance/project.yaml -o examples/performance/generated` after building the packages. Only example YAML sources are versioned; generated applications stay ignored.
 
 ## Target generated project
 
@@ -43,7 +43,7 @@ From the generated repository root, choose either:
 
 Pushes to `develop` deploy staging; pushes to `main` deploy production using native Cloudflare builds. Better Auth remains in the backend. The generated `docs/DISASTER_RECOVERY.md` explains Neon point-in-time recovery. See [the CLI workflow](docs/generation/CLI_WORKFLOW.md#native-cloudflare-cicd-and-neon) for scope and verification.
 
-Try the [Cloudflare CI/CD example](examples/cloudflare-cicd/README.md) for a small public list/create application you can connect to your own accounts.
+The generated project includes the guided `cicd:setup` assistant for configuring Cloudflare, Neon regions and automatic deployments.
 
 ## Use the CLI
 
@@ -80,3 +80,13 @@ pnpm build
 ## License
 
 NordixGen is licensed under the [MIT License](LICENSE).
+
+## Examples used by CI
+
+Only YAML inputs are versioned under `examples/`; generated projects, dependencies, credentials and measurements are never committed. These YAML files are also regression fixtures, so changing or removing them affects CI:
+
+- [Full-stack commerce](examples/full-stack-commerce/project.yaml): the public API test and `pnpm test:acceptance` generate a fresh backend and frontend, then verify compilation, database persistence, authorization and browser behavior.
+- Configuration variants: [single module](examples/configuration/single-module.yaml), [Clean modules](examples/configuration/clean-modules.yaml) and [mixed architectures](examples/configuration/mixed-modules.yaml) exercise parsing, architecture resolution and CLI generation.
+- [Performance workload](examples/performance/project.yaml): the retained production benchmark input with one backend and two frontends. Running CI does not deploy it or load-test production.
+
+Verification scripts and test-only adapters live under `packages/cli/tests/acceptance/`, outside the examples. Acceptance runs write disposable applications and reports under ignored `tmp/acceptance/commerce/`; manual examples should generate into their own ignored `generated/` directory. Docker and Chromium are required for the full acceptance check.

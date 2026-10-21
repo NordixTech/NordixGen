@@ -75,6 +75,7 @@ export interface ResolvedEntity {
   readonly description?: string;
   readonly fields: Readonly<Record<string, ResolvedField>>;
   readonly relations: Readonly<Record<string, ResolvedRelation>>;
+  readonly indexes: readonly { readonly fields: readonly string[] }[];
   readonly timestamps: Readonly<EntityDefinition["timestamps"]>;
   readonly softDelete: EntityDefinition["softDelete"];
   readonly generatedFields: readonly string[];

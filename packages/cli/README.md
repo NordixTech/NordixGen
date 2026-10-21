@@ -17,4 +17,4 @@ An installed package exposes the same commands as `nordixgen`. `validate` checks
 
 One or multiple Clean, Hexagonal and Onion modules are supported in the same backend. Many-to-many generation fails before effects. Endpoints explicitly declare business operations; entity declarations do not create implicit CRUD. Generated environment examples and README files explain runtime origins, database migrations and startup. Configure secrets outside YAML.
 
-See the [commerce example](../../examples/full-stack-commerce/README.md) for a complete YAML, direct generation commands and optional fresh PostgreSQL/HTTP/browser verification. Its local Node adapter and Docker services are verification helpers; generated backend production output targets Cloudflare Workers. See [CLI workflow](../../docs/generation/CLI_WORKFLOW.md) for details and limits.
+Use the [performance configuration](../../examples/performance/project.yaml) as a complete generation input. Internal acceptance checks run with `pnpm test:acceptance`. See [CLI workflow](../../docs/generation/CLI_WORKFLOW.md) for details and limits.

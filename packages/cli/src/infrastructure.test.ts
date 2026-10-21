@@ -103,6 +103,8 @@ describe("generated independent OpenTofu infrastructure", () => {
       'resource "cloudflare_r2_custom_domain" "assets"',
     );
     expect(files["infra/terraform/outputs.tf"]).toContain("cloudflare_r2_bucket.docs.name");
+    expect(files["infra/terraform/r2.tf"]).toContain('resource "cloudflare_r2_bucket_cors" "docs"');
+    expect(files["infra/terraform/r2.tf"]).toContain('headers = ["content-type", "if-none-match"]');
     const consumer = await infrastructureFiles(resolved.project, "other");
     expect(Object.keys(consumer)).toEqual(["scripts/infra.mjs"]);
   });
@@ -237,12 +239,21 @@ describe("generated independent OpenTofu infrastructure", () => {
     expect(result.env.staging.vars.R2_SECRET_ACCESS_KEY).toBeUndefined();
   });
   it("reuses the setup key for plans and applies instead of creating extra admin/review tokens", async () => {
+    if (!manifest.infrastructure) throw Error("fixture");
+    manifest.infrastructure.backends = { api: { worker: "demo-api", storage: ["docs"] } };
+    manifest.publicFrontends = {
+      web: { worker: "demo-web", connections: ["api"] },
+      other: { worker: "demo-other", connections: [] },
+    };
     const profile = {
       accountId: "account",
       repository: "owner/repo",
       buildTokenId: "build",
       neonProjects: {},
-      urls: { staging: {}, production: {} },
+      urls: {
+        staging: { web: "https://stage.example", other: "https://unrelated.example" },
+        production: { web: "https://app.example" },
+      },
     };
     const api = vi.fn(async (path: string) =>
       path.endsWith("/buckets")
@@ -262,6 +273,10 @@ describe("generated independent OpenTofu infrastructure", () => {
     expect(result?.build.CLOUDFLARE_API_TOKEN).toBe("existing-setup-key");
     expect(result?.review).toEqual(result?.build);
     expect(result?.eventsToken).toBe("existing-setup-key");
+    expect(JSON.parse(result?.build.R2_UPLOAD_ORIGINS ?? "{}")).toEqual({
+      staging: { docs: ["https://stage.example"] },
+      production: { docs: ["https://app.example"] },
+    });
     expect(api.mock.calls.some(([path]) => path.endsWith("/tokens"))).toBe(false);
     expect(
       await prepareInfrastructure(

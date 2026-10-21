@@ -140,6 +140,9 @@ Directory/symbol names above are illustrative. Normative boundaries: consumers i
 | `fields`, `relations` | `{}` each | Strict named definitions below |
 | `timestamps` | `{ createdAt: false, updatedAt: false }` | Only the two listed booleans; enabling either adds its field |
 | `softDelete` | `false` | `false`, `boolean`, `timestamp` |
+| `indexes` | `[]` | Optional nonunique B-tree indexes: each entry is `{ fields: [...] }`, with 1–32 distinct scalar field names in index order |
+
+For example, `indexes: [{ fields: [status] }, { fields: [customerId, createdAt] }]` declares one simple index and one compound index. Use the exact entity field names, including enabled generated fields and owning relation foreign keys. Relation names and fields on other entities are not index columns. Duplicate ordered lists and single-column indexes already supplied by `id` or `unique` are rejected. Reversed column orders are different indexes. Names are generated deterministically and kept within PostgreSQL's identifier length limit; changing declaration order does not rename indexes. No indexes are inferred for business fields or relations. Drizzle Kit includes the definitions in ordinary generated migrations. Existing YAML remains valid. The initial scope excludes custom names, uniqueness, partial/expression indexes, custom sort directions and specialized index methods. Indexes do not change the API or pagination strategy, and their effectiveness must be measured against actual queries. Creating indexes on an existing large production table requires the same migration planning as any authored schema change.
 
 Every entity receives generated `id: uuid`, unique and required. Creation supplies the ID server-side. Enabled timestamps add required date fields: `createdAt` is set on creation; `updatedAt` is set on creation and refreshed by successful updates and soft deletion, using the trusted clock. Boolean soft delete adds required `isDeleted` default `false`; timestamp soft delete adds nullable `deletedAt` default null. Generated field names cannot be redeclared. Generated fields can be referenced by parameters/projections but are server-owned and excluded from ordinary write inputs. Ordinary signup cannot write the platform-owned identity role.
 
@@ -450,15 +453,12 @@ Public validation reports syntax, structure, references and readiness in useful 
 | Ambiguous authority / invalid page rule | `FRONTEND_IDENTITY_AMBIGUOUS`, `FRONTEND_IDENTITY_MISMATCH`, `FRONTEND_ACCESS_ROUTE_INVALID`; frontend access | Select one connected authority / an actual supported page |
 | Unsafe/overlapping path or output owner | `PATH_UNSAFE`, `APP_PATH_OVERLAP`, `GENERATED_FILE_OWNER_CONFLICT`; configured/output path | Correct containment or internal file ownership |
 
-## 11. Complete examples and intentionally invalid edits
+## 11. Performance example and intentionally invalid edits
 
-All linked YAML files pass the configuration parser and semantic validator. Public CLI preflight also checks generation readiness and currently exits unsuccessfully for these valid examples:
+The [performance configuration](../../examples/performance/project.yaml) is the maintained complete example: one backend, two frontends, eight entities, indexes, roles, audit and R2 storage. Generate it into its ignored `generated/` subdirectory. Architecture-specific scenarios live as internal test fixtures rather than documentation YAML files.
 
-- [Single Clean module](samples/single-module.yaml): a manually converted backend-only persisted Note query with authentication intentionally disabled.
-- [Two Clean modules](samples/clean-modules.yaml): required v1.1.0 architecture scenario with explicit ownership, a public list, protected lookup/create/update/delete, intra-module relations, pagination and a mixed-access frontend. The UUID connecting modules is scalar.
-- [Mixed architectures](samples/mixed-modules.yaml): Clean Customers, Hexagonal Billing and Onion Reporting. Executable ownership, dependencies and per-module architecture selection. Billing's import grants a dependency, not automatic invoice workflow.
 
-The following edits to those files are syntactically valid YAML but semantically invalid. They are fragments to replace/insert at the named location, not standalone project files. Later schema/model tests must assert their diagnostics; this design PR checks syntax, links and the executable contract sketch without implementing a competing v2 validator.
+The following internal architecture scenarios illustrate syntactically valid but semantically invalid edits. They are fragments, not standalone project files; validator and renderer tests cover these scenarios.
 
 | Starting example and edit | Expected failure |
 | --- | --- |
@@ -533,7 +533,7 @@ Previous schemas and technology selectors are rejected rather than converted. Cl
 
 `packages/core/tests/configuration-documentation.test.ts` parses complete examples and invalid-edit snippets for YAML syntax/duplicate keys, checks local links, and typechecks the public-contract/composition sketch. `packages/core/tests/module-communication-example.test.ts` executes that authored sketch: permitted direct calls, missing/fabricated/expired sessions, independent caller/callee permission denial, forged principal rejection, application-input validation, explicit not-found mapping and safe error propagation. These are documentation/example checks; they are not an implementation of v2 semantic validation or generated module acceptance.
 
-Runtime validation, editor-schema synchronization, the shared resolved model, direct generation, module guards/boundaries and database/browser verification are implemented. See [validation behavior and evidence](VALIDATION.md) and the [commerce example](../../examples/full-stack-commerce/README.md) for current commands, scope and limitations.
+Runtime validation, editor-schema synchronization, the shared resolved model, direct generation, module guards/boundaries and database/browser verification are implemented. See [validation behavior and evidence](VALIDATION.md) for current commands, scope and limitations.
 
 ## Optional Cloudflare infrastructure
 

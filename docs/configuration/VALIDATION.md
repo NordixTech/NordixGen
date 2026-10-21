@@ -1,6 +1,6 @@
 # Configuration validation and evidence
 
-The approved [YAML v2 contract](YAML_V2.md) is implemented by the core Zod schema and semantic validators. The three [sample configurations](samples/) pass configuration validation, including the mixed-family example. Acceptance of a configuration does not imply that its project can currently be generated.
+The approved [YAML v2 contract](YAML_V2.md) is implemented by the core Zod schema and semantic validators. Internal test fixtures cover single and mixed architecture scenarios. Acceptance of a configuration does not imply that its project can currently be generated.
 
 ## Current generation boundary
 
@@ -64,4 +64,4 @@ Coverage includes all core source files, including the resolver, without new exc
 
 TypeScript rejects unused locals and parameters in core/CLI production code. The documentation suite checks local links across maintained guides and READMEs; the public API suite generates both commerce applications through supported package entry points and rejects leaked renderer extension exports.
 
-The required CI checks run package lint/typecheck/build/tests (including explicitly isolated PostgreSQL persistence tests) and fresh generated-application verification. Run `pnpm example:commerce` with Docker and Chromium available for the latter; see the [commerce guide](../../examples/full-stack-commerce/README.md). Each run records its source revision, working-tree status, environment, stages and behavior results in a new ignored output directory. The cleanup PR records evidence for the final revision, rather than reusing an earlier acceptance run. Optional local persistence-suite skips are not counted as database evidence; the commerce check itself must complete without database/browser skips.
+CI runs lint, typecheck, build, unit tests, isolated PostgreSQL persistence tests, generated application acceptance and Docker verification. Run `pnpm test:acceptance` with Docker and Chromium available for fresh application verification; artifacts include revision, stages and behavior results. Omitted local persistence tests are not counted as database evidence.

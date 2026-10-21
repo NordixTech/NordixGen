@@ -221,7 +221,7 @@ describe("modular generation execution", () => {
     const file = join(directory, "modular.yaml");
     const output = join(directory, "output");
     const source = await readFile(
-      new URL("../../../docs/configuration/samples/clean-modules.yaml", import.meta.url),
+      new URL("../../../examples/configuration/clean-modules.yaml", import.meta.url),
       "utf8",
     );
     const parsed = parseNordixYaml(source);

@@ -115,6 +115,13 @@ export class InfrastructureRunner {
             AWS_SECRET_ACCESS_KEY: required("R2_STATE_SECRET_ACCESS_KEY"),
             AWS_REGION: "auto",
             TF_VAR_account_id: required("CLOUDFLARE_ACCOUNT_ID"),
+            ...(process.env.R2_UPLOAD_ORIGINS
+              ? {
+                  TF_VAR_storage_upload_origins: JSON.stringify(
+                    JSON.parse(process.env.R2_UPLOAD_ORIGINS)[this.environment] ?? {},
+                  ),
+                }
+              : {}),
           },
           stdout: "pipe",
           stderr: "pipe",
@@ -217,7 +224,7 @@ export class InfrastructureRunner {
         body: body ? JSON.stringify(body) : undefined,
       });
       if (!response.ok)
-        throw Error(`Could not synchronize scoped R2 download credentials (${response.status})`);
+        throw Error(`Could not synchronize scoped R2 transfer credentials (${response.status})`);
       return ((await response.json()) as { result: Record<string, unknown> }).result;
     };
     const key = `${stateKey(this.manifest, this.environment)}/signing.json`;
@@ -258,18 +265,24 @@ export class InfrastructureRunner {
         ]),
       );
       if (!Object.keys(resources).length) continue;
-      const hash = createHash("sha256").update(JSON.stringify(resources)).digest("hex");
+      // Version the policy hash so existing download-only credentials are upgraded on apply.
+      const hash = createHash("sha256")
+        .update(`direct-upload-v1:${JSON.stringify(resources)}`)
+        .digest("hex");
       const policies = [
         {
           effect: "allow",
-          permission_groups: [{ id: "6a018a9f2fc74eb6b293b0c548f38b39" }],
+          permission_groups: [
+            { id: "6a018a9f2fc74eb6b293b0c548f38b39" },
+            { id: "2efd5506f9c8494dacb1fa10a3e7d5b6" },
+          ],
           resources,
         },
       ];
       if (saved[backend]) {
         if (saved[backend].hash !== hash)
           await api(`${saved[backend].path}/${saved[backend].id}`, "PUT", {
-            name: `${this.manifest.project} ${backend} ${this.environment} downloads`,
+            name: `${this.manifest.project} ${backend} ${this.environment} storage transfers`,
             policies,
           });
         saved[backend].hash = hash;
@@ -303,11 +316,11 @@ export class InfrastructureRunner {
         previews_enabled: false,
       });
       const credential = (await api(tokenPath, "POST", {
-        name: `${this.manifest.project} ${backend} ${this.environment} downloads`,
+        name: `${this.manifest.project} ${backend} ${this.environment} storage transfers`,
         policies,
       })) as { id: string; value: string };
       if (!credential.id || !credential.value)
-        throw Error("Scoped download credential was not returned");
+        throw Error("Scoped transfer credential was not returned");
       for (const [name, value] of Object.entries({
         R2_ACCESS_KEY_ID: credential.id,
         R2_SECRET_ACCESS_KEY: createHash("sha256").update(credential.value).digest("hex"),
@@ -320,7 +333,7 @@ export class InfrastructureRunner {
       saved[backend] = { id: credential.id, path: tokenPath, hash };
     }
     const result = await this.object(key, { method: "PUT", body: JSON.stringify(saved) });
-    if (!result.ok) throw Error("Could not save download credential identifiers");
+    if (!result.ok) throw Error("Could not save transfer credential identifiers");
   }
   async syncBindings(outputs: StorageOutput) {
     for (const app of this.manifest.applications.filter((app) => app.kind === "backend")) {

@@ -6,6 +6,12 @@ import { confirm, intro, isCancel, log, note, outro, password, select, text } fr
 import { execa } from "execa";
 import pc from "picocolors";
 import type { DeploymentManifest, DeploymentProfile, Environment } from "./deployment-model.js";
+import {
+  applyWorkerPlacement,
+  cloudflareRegion,
+  placementVariable,
+  workerPlacement,
+} from "./deployment-placement.js";
 import { configureInfrastructureReview } from "./infrastructure-review.js";
 import { infrastructureStage } from "./infrastructure-runner.js";
 import { prepareInfrastructure } from "./infrastructure-setup.js";
@@ -246,10 +252,17 @@ export async function executeStage(
   name: string,
   environment: Environment,
 ) {
+  if (stage !== "build" && stage !== "deploy") throw Error("Unknown deployment stage.");
   if (!environments.includes(environment)) throw Error("Choose staging or production.");
   const app = manifest.applications.find((a) => a.name === name);
   if (!app) throw Error(`Unknown application ${name}.`);
   checkDeploymentBranch(environment);
+  if (app.kind === "backend")
+    await applyWorkerPlacement(
+      resolve(app.path, "wrangler.jsonc"),
+      environment,
+      process.env[placementVariable],
+    );
   const env = { CLOUDFLARE_ENV: environment };
   if (stage === "build") {
     await infrastructureStage(manifest, environment);
@@ -425,6 +438,9 @@ export async function configure(
     for (const environment of environments) {
       console.log(`Configuring ${app.name}: ${environment} (${branchFor[environment]})`);
       const worker = `${app.worker}-${environment}`;
+      const placement = app.kind === "backend" ? profile.backendPlacements?.[app.name] : undefined;
+      if (placement !== undefined)
+        await applyWorkerPlacement(resolve(app.path, "wrangler.jsonc"), environment, placement);
       const values: Record<string, string> = {};
       if (app.database) values.DATABASE_URL = dbConnections[app.name][environment];
       if (app.kind === "backend") {
@@ -577,6 +593,7 @@ export async function configure(
               ),
             ),
             ...(infrastructure ? infrastructure.build : {}),
+            ...(placement !== undefined ? { [placementVariable]: placement } : {}),
             CLOUDFLARE_ENV: environment,
             NODE_VERSION: "24",
             PNPM_VERSION: "10.5.2",
@@ -586,7 +603,9 @@ export async function configure(
               value,
               is_secret:
                 !key.startsWith("NEXT_PUBLIC_") &&
-                !["CLOUDFLARE_ENV", "NODE_VERSION", "PNPM_VERSION"].includes(key),
+                !["CLOUDFLARE_ENV", "NODE_VERSION", "PNPM_VERSION", placementVariable].includes(
+                  key,
+                ),
             },
           ]),
         ),
@@ -740,11 +759,77 @@ export async function chooseNeonProject(
   );
   return `new:${org}:${region}`;
 }
+export async function chooseDeploymentRegions(
+  name: string,
+  projectId: string,
+  token: string,
+  previous?: string,
+): Promise<{ databaseRegion: string; backendPlacement: string }> {
+  let databaseRegion: string;
+  if (projectId.startsWith("new:")) {
+    const parts = projectId.split(":");
+    if (parts.length !== 3 || !parts[1] || !parts[2])
+      throw Error("Invalid new Neon project selection.");
+    databaseRegion = parts[2];
+  } else {
+    const project = object(
+      (await requestApi(neonBase, `/projects/${encodeURIComponent(projectId)}`, token)).project,
+    );
+    if (field(project.id) !== projectId) throw Error("Neon returned an unexpected project.");
+    databaseRegion = field(project.region_id);
+  }
+  const regions = items((await requestApi(neonBase, "/regions", token)).regions);
+  const choices = new Map<string, { value: string; label: string; hint: string }>();
+  const matching = cloudflareRegion(databaseRegion);
+  for (const region of regions) {
+    const id = field(region.region_id ?? region.id);
+    const value = cloudflareRegion(id);
+    if (value)
+      choices.set(value, {
+        value,
+        label: `Near ${field(region.name ?? id)} (${value})`,
+        hint: id === databaseRegion ? "same region as Neon" : "different reference region",
+      });
+  }
+  if (matching && !choices.has(matching))
+    choices.set(matching, {
+      value: matching,
+      label: `Near ${databaseRegion} (${matching})`,
+      hint: "same region as Neon",
+    });
+  const options = [...choices.values()].sort((a, b) =>
+    a.value === matching ? -1 : b.value === matching ? 1 : a.label.localeCompare(b.label),
+  );
+  options.push({
+    value: "smart",
+    label: "Automatic location (Smart Placement)",
+    hint: "Cloudflare chooses based on observed traffic",
+  });
+  visibleNote(
+    `Neon region: ${databaseRegion}\nChoose the backend location independently. Matching the database usually reduces query round trips.\nCloudflare runs in its own nearby data center; the cloud region is a location reference.\nThis choice applies to staging and production. Existing database regions are not changed.`,
+    `${name}: database and backend locations`,
+  );
+  const backendPlacement = String(
+    answer(
+      await select({
+        message: `${name}: Cloudflare backend location`,
+        initialValue: options.some((option) => option.value === previous)
+          ? previous
+          : (matching ?? "smart"),
+        options,
+      }),
+    ),
+  );
+  if (!options.some((option) => option.value === backendPlacement))
+    throw Error("Choose one of the offered backend locations.");
+  workerPlacement(backendPlacement);
+  return { databaseRegion, backendPlacement };
+}
 export function cloudflareSetupInstructions(infrastructure = false) {
   return (
     accessInstructions.cloudflare +
     (infrastructure
-      ? "\n\nThis project declares R2 infrastructure. Enable R2 Object Storage in the Cloudflare dashboard. Also add Account > Workers R2 Storage > Edit and User > API Tokens > Edit/Read, or Account > Account API Tokens > Edit/Read for account-owned download credentials. The assistant reuses this setup token for infrastructure and PR plans; it creates only bucket-scoped backend download-signing credentials. Administrative keys never enter frontend or backend application code. Public bucket custom domains also require Zone > Zone > Read and the relevant domain permissions. GitHub access also needs repository webhook administration for PR plan events."
+      ? "\n\nThis project declares R2 infrastructure. Enable R2 Object Storage in the Cloudflare dashboard. Also add Account > Workers R2 Storage > Edit and User > API Tokens > Edit/Read, or Account > Account API Tokens > Edit/Read for account-owned download credentials. The assistant reuses this setup token for infrastructure and PR plans; it creates only bucket-scoped backend transfer-signing credentials. Administrative keys never enter frontend or backend application code. Public bucket custom domains also require Zone > Zone > Read and the relevant domain permissions. GitHub access also needs repository webhook administration for PR plan events."
       : "")
   );
 }
@@ -851,11 +936,15 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
       ),
     );
   }
+  const neonRegions: Record<string, string> = {};
+  const backendPlacements: Record<string, string> = {};
   const profile: DeploymentProfile = {
     accountId,
     repository,
     buildTokenId,
     neonProjects: previous.neonProjects ?? {},
+    neonRegions,
+    backendPlacements,
     urls:
       previous.accountId === accountId && previous.urls
         ? previous.urls
@@ -921,12 +1010,21 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
         )
       ).token
     : "";
-  for (const app of manifest.applications.filter((a) => a.database))
+  for (const app of manifest.applications.filter((a) => a.database)) {
     profile.neonProjects[app.name] = await chooseNeonProject(
       app.name,
       neonToken,
       profile.neonProjects[app.name],
     );
+    const regions = await chooseDeploymentRegions(
+      app.name,
+      profile.neonProjects[app.name],
+      neonToken,
+      previous.backendPlacements?.[app.name],
+    );
+    neonRegions[app.name] = regions.databaseRegion;
+    backendPlacements[app.name] = regions.backendPlacement;
+  }
   validateTopology(manifest, profile);
   visibleNote(
     [
@@ -939,6 +1037,10 @@ export async function setupDeployment(manifest: DeploymentManifest, profileName:
         id.startsWith("new:")
           ? `Neon ${app}: create project ${manifest.project}-${app}`
           : `Neon ${app}: existing project ID ${id}`,
+      ),
+      ...Object.entries(profile.backendPlacements ?? {}).map(
+        ([app, placement]) =>
+          `${app}: Neon ${profile.neonRegions?.[app]} → Cloudflare ${placement}${placement === "smart" ? " (automatic)" : placement === cloudflareRegion(profile.neonRegions?.[app] ?? "") ? " (near database)" : " (different region)"}`,
       ),
       deploymentAccess === "reuse"
         ? "Cloudflare will retain your API token for automatic deployments."

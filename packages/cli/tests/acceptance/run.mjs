@@ -6,9 +6,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { cleanup, command, freePort, images, names, ready, start } from "./resources.mjs";
 import { verifyApplication } from "./verify.mjs";
 
-const exampleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const root = resolve(exampleRoot, "../..");
-const parent = join(root, "tmp", "examples", "full-stack-commerce");
+const exampleRoot = dirname(fileURLToPath(import.meta.url));
+const root = resolve(exampleRoot, "../../../..");
+const parent = join(root, "tmp", "acceptance", "commerce");
 const cleanupId = process.argv[2] === "--cleanup" ? process.argv[3] : undefined;
 if (cleanupId) {
   assert.match(cleanupId, /^[a-f0-9]{16}$/);
@@ -20,7 +20,7 @@ if (cleanupId) {
 } else {
   assert.ok(
     process.argv.slice(2).every((arg) => arg === "--keep"),
-    "Use pnpm example:commerce [--keep] or --cleanup <run-id>.",
+    "Use pnpm test:acceptance [--keep] or --cleanup <run-id>.",
   );
   assert.ok(Number(process.versions.node.split(".")[0]) >= 24, "Node.js 24+ is required.");
   assert.ok(
@@ -30,7 +30,7 @@ if (cleanupId) {
   const pnpm = process.env.npm_execpath;
   assert.ok(
     pnpm && /pnpm\.(c?js)$/.test(pnpm),
-    "Run through pnpm 10.5.2: pnpm example:commerce [--keep].",
+    "Run through pnpm 10.5.2: pnpm test:acceptance [--keep].",
   );
   const id = randomBytes(8).toString("hex");
   const directory = join(parent, id);
@@ -215,7 +215,7 @@ if (cleanupId) {
         join(exampleRoot, "extensions/preview-customer.ts"),
         join(api, "src/modules/billing/application/preview-customer.ts"),
       );
-      await copyFile(join(exampleRoot, "scripts/runtime.ts"), join(api, "acceptance-runtime.ts"));
+      await copyFile(join(exampleRoot, "runtime.ts"), join(api, "acceptance-runtime.ts"));
       const check = () => pnpmCommand(["run", "check:boundaries"], api);
       await check();
       const probe = join(api, "src/modules/billing/application/forbidden-acceptance-probe.ts");
@@ -397,6 +397,6 @@ if (cleanupId) {
     await writeFile(join(directory, "report.json"), JSON.stringify(report, null, 2));
     console.log(`Commerce example ${report.result}: ${join(directory, "report.json")}`);
     if (report.resources === "kept-for-local-review")
-      console.log(`Review ${report.frontend} — stop with pnpm example:commerce --cleanup ${id}`);
+      console.log(`Review ${report.frontend} — stop with pnpm test:acceptance --cleanup ${id}`);
   }
 }

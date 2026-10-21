@@ -33,7 +33,7 @@ export function generateQueryFiles(context: FrontendRenderContext): readonly Gen
       : "const allowed=true;";
     if (operation.method === "GET")
       return `export function ${hook}(input:${name}Input${inputRequired(operation) ? "" : "={}"}) {${access}
-return useQuery({queryKey:[...${JSON.stringify(scopedKey(operation))},${privateData ? '["private",session.user?.id??null,session.user?.role??null]' : '["public"]'},input] as const,enabled:allowed,queryFn:({signal})=>${name}(input,{signal})});}`;
+return useQuery({queryKey:[...${JSON.stringify(scopedKey(operation))},${privateData ? '["private",session.user?.id??null,session.user?.role??null]' : '["public"]'},input] as const,enabled:allowed,staleTime:10000,queryFn:({signal})=>${name}(input,{signal})});}`;
     const affected = operation.invalidates.map((id) =>
       scopedKey(operations.find((candidate) => candidate.id === id) as typeof operation),
     );
@@ -41,6 +41,27 @@ return useQuery({queryKey:[...${JSON.stringify(scopedKey(operation))},${privateD
   });
   const root = context.framework.codeRoot;
   return [
+    {
+      path: `${root}/lib/api/initial-data.ts`,
+      content: `import "server-only";
+import {headers} from "next/headers";
+import {QueryClient,dehydrate} from "@tanstack/react-query";
+import {backendFetch} from "@/lib/backend/transport";
+${context.api.authentication ? 'import {getInitialIdentity} from "@/lib/auth/server";' : ""}
+/** A new cache for each render; the backend rechecks authorization for the actual read. */
+export async function initialData(backend:string,path:string,key:readonly string[],input:{query?:Record<string,unknown>},privateData:boolean){
+ const client=new QueryClient();
+ const user=${context.api.authentication ? "await getInitialIdentity()" : "null"};
+ if(privateData&&!user)return dehydrate(client);
+ const cookie=(await headers()).get("cookie")??"";
+ const search=new URLSearchParams();for(const [name,value] of Object.entries(input.query??{}))if(value!==undefined)search.set(name,String(value));
+ try{const response=await backendFetch(backend,path+(search.size?"?"+search:""),{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});
+ if(response.ok)client.setQueryData([...key,${context.api.authentication ? 'privateData?["private",user!.id,user!.role??null]:["public"]' : '["public"]'},input],await response.json());
+ }catch{/* Leave the query empty so the normal client error/retry UI handles a failed read. */}
+ return dehydrate(client);
+}
+`,
+    },
     {
       path: `${root}/lib/api/hooks.ts`,
       content: `"use client";\n${imports.join("\n")}\nimport {useQuery,useMutation,useQueryClient} from "@tanstack/react-query";\n${context.api.authentication ? 'import {useSessionView} from "@/lib/auth/use-session-view";' : ""}\n${hooks.join("\n")}\n`,

@@ -458,18 +458,15 @@ export async function verifyApplication(state, directory, expireAccountant) {
     page.on("request", trackPrivate);
     await page.route(`${web}/api/auth/get-session**`, delayedSession);
     try {
-      await Promise.all([
-        page.goto(`${web}/api-explorer`),
-        page.waitForRequest(
-          (outgoing) => outgoing.url().startsWith(`${web}/api/auth/get-session`),
-          { timeout: 15_000 },
-        ),
-      ]);
+      await page.goto(`${web}/api-explorer`);
       const operation = page.getByRole("combobox", { name: "Select API operation" });
       const send = page.getByRole("button", { name: "Send request", exact: true });
       await operation.selectOption("listInvoices");
       await expect(
-        page.getByText("Checking your session before enabling this request.", { exact: true }),
+        page.getByText(
+          "Your account does not have the roles or permissions required to send this request.",
+          { exact: true },
+        ),
       ).toBeVisible();
       await expect(send).toBeDisabled();
       releaseSession();
@@ -512,11 +509,11 @@ export async function verifyApplication(state, directory, expireAccountant) {
       expect(privateRequests).toHaveLength(0);
     } finally {
       releaseSession();
-      await page.unroute(`${web}/api/auth/get-session**`, delayedSession);
+      await page.unrouteAll({ behavior: "wait" });
       page.off("request", trackPrivate);
     }
     await passed(
-      "Explorer explains pending/denied requests without sending them, while a public operation remains executable",
+      "Verified SSR identity denies private Explorer requests while session refresh is delayed; a public operation remains executable",
     );
 
     const confirmedChange = async (context, path, data) => {

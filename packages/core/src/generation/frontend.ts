@@ -71,6 +71,7 @@ export function generateFrontend(project: ResolvedProject, name: string) {
         name,
         context.framework.applicationRoot,
         context.frontend.connections,
+        context.frontend.storageBackends,
       ),
     },
     { owner: "private-transport", files: frontendTransportFiles(context) },

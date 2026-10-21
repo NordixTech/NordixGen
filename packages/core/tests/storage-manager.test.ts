@@ -46,18 +46,31 @@ function runtime() {
         return {};
       },
     ),
-    get: vi.fn(async (key: string) => {
+    get: vi.fn(async (key: string, options?: { range?: { offset: number; length: number } }) => {
       const item = values.get(key);
       return item
         ? {
-            body: new Response(item.body).body,
+            body: new Response(
+              options?.range
+                ? item.body.slice(options.range.offset, options.range.offset + options.range.length)
+                : item.body,
+            ).body,
             size: item.body.length,
             httpMetadata: { contentType: item.type },
             httpEtag: '"test"',
           }
         : null;
     }),
-    head: vi.fn(async (key: string) => (values.has(key) ? {} : null)),
+    head: vi.fn(async (key: string) =>
+      values.has(key)
+        ? {
+            size: values.get(key)?.body.length ?? 0,
+            etag: "test",
+            httpEtag: '"test"',
+            uploaded: new Date("2026-10-21T00:00:00Z"),
+          }
+        : null,
+    ),
     delete: vi.fn(),
   };
   const load = generatedRuntime(files, { hono: { Hono }, "hono/http-exception": httpException });
@@ -97,6 +110,120 @@ function runtime() {
   };
 }
 describe("generated R2 document manager", () => {
+  it("prepares initial storage metadata per verified identity without sharing listings or hydrating failed reads", async () => {
+    const files = generateFrontend(fixture(), "store-web").virtualFileSystem.snapshot();
+    const root = "apps/store-web/src";
+    let user: { id: string; role: string; permissions: string[] } | null = {
+      id: "a",
+      role: "admin",
+      permissions: ["*"],
+    };
+    const backendFetch = vi.fn(async (_backend: string, path: string) =>
+      Response.json(
+        path.endsWith("/instances")
+          ? { instances: [{ key: "documents", canRead: true }] }
+          : { objects: [{ key: "only-a.txt" }] },
+      ),
+    );
+    const load = generatedRuntime(
+      { ...files, "@/lib/api/cache": files[`${root}/lib/api/cache.ts`] },
+      {
+        "server-only": {},
+        "@tanstack/react-query": {},
+        "next/headers": { headers: async () => new Headers({ cookie: `cookie-${user?.id}` }) },
+        "@/lib/backend/transport": { backendFetch },
+        "@/lib/auth/server": { getInitialIdentity: async () => user },
+      },
+    );
+    const initial = load(`${root}/lib/storage/initial-data.ts`).initialStorage as () => Promise<
+      { scope: string; listing?: { objects: { key: string }[] } } | undefined
+    >;
+    const a = await initial();
+    expect(a?.listing?.objects[0].key).toBe("only-a.txt");
+    expect(a?.scope).toContain('"a"');
+    expect(backendFetch.mock.calls[1]).toEqual([
+      "core-api",
+      "/api/storage/documents/objects?prefix=",
+      expect.objectContaining({ headers: { cookie: "cookie-a" }, cache: "no-store" }),
+    ]);
+    user = { id: "b", role: "guest", permissions: [] };
+    backendFetch.mockResolvedValueOnce(Response.json({ instances: [] }));
+    const b = await initial();
+    expect(b?.scope).toContain('"b"');
+    expect(b?.listing).toBeUndefined();
+    expect(JSON.stringify(b)).not.toContain("only-a.txt");
+    backendFetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
+    expect(await initial()).toBeUndefined();
+    user = null;
+    backendFetch.mockClear();
+    expect(await initial()).toBeUndefined();
+    expect(backendFetch).not.toHaveBeenCalled();
+  });
+  it("serves bounded ranges with validators and checks permission before accessing R2", async () => {
+    const app = runtime();
+    app.values.set("range.txt", {
+      body: new TextEncoder().encode("0123456789"),
+      type: "text/plain",
+    });
+    const get = (range: string, ifRange?: string) =>
+      app.request("/documents/download?key=range.txt", {
+        headers: { range, ...(ifRange ? { "if-range": ifRange } : {}) },
+      });
+    for (const [range, text, contentRange] of [
+      ["bytes=2-5", "2345", "bytes 2-5/10"],
+      ["bytes=-3", "789", "bytes 7-9/10"],
+      ["bytes=8-", "89", "bytes 8-9/10"],
+      ["bytes=8-99", "89", "bytes 8-9/10"],
+    ]) {
+      const response = await get(range);
+      expect(response.status).toBe(206);
+      expect(response.headers.get("content-range")).toBe(contentRange);
+      expect(response.headers.get("content-length")).toBe(String(text.length));
+      expect(await response.text()).toBe(text);
+      expect(response.headers.get("cache-control")).toContain("no-store");
+    }
+    expect((await get("bytes=0-1", '"test"')).status).toBe(206);
+    for (const validator of ['"old"', 'W/"test"', "Wed, 20 Oct 2021 00:00:00 GMT"]) {
+      const response = await get("bytes=0-1", validator);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("0123456789");
+    }
+    for (const range of [
+      "bytes=10-",
+      "bytes=-0",
+      "bytes=5-2",
+      "bytes=999999999999999999999-",
+      "garbage",
+    ]) {
+      const response = await get(range);
+      expect(response.status).toBe(416);
+      expect(response.headers.get("content-range")).toBe("bytes */10");
+    }
+    expect((await get("bytes=0-1,4-5")).status).toBe(200);
+    app.bucket.head.mockClear();
+    app.bucket.get.mockClear();
+    app.setPrincipal(null);
+    expect((await get("bytes=0-1")).status).toBe(401);
+    app.setPrincipal({ id: "revoked", permissions: [] });
+    expect((await get("bytes=0-1")).status).toBe(403);
+    expect(app.bucket.head).not.toHaveBeenCalled();
+    expect(app.bucket.get).not.toHaveBeenCalled();
+  });
+  it("restarts with the full current object when a file changes during a ranged read", async () => {
+    const app = runtime();
+    app.values.set("range.txt", {
+      body: new TextEncoder().encode("new version"),
+      type: "text/plain",
+    });
+    app.bucket.get.mockResolvedValueOnce({ size: 11, httpEtag: '"new"' } as never);
+    const response = await app.request("/documents/download?key=range.txt", {
+      headers: { range: "bytes=0-1" },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-range")).toBeNull();
+    expect(await response.text()).toBe("new version");
+    expect(app.bucket.get).toHaveBeenCalledTimes(2);
+  });
   it("generates conditional navigation and reserves the platform surface", () => {
     const project = fixture();
     const files = generateFrontend(project, "store-web").virtualFileSystem.snapshot();
@@ -151,19 +278,8 @@ describe("generated R2 document manager", () => {
   it("uploads exact bytes, pages objects, streams downloads and creates bounded signed links", async () => {
     const app = runtime();
     const text = "Nordix document: café, 日本語";
-    expect(
-      (
-        await app.request(`/documents/objects?key=${encodeURIComponent("docs/café.txt")}`, {
-          method: "PUT",
-          body: text,
-          headers: { "content-type": "text/plain" },
-        })
-      ).status,
-    ).toBe(201);
-    expect(
-      (await app.request("/documents/objects?key=second.txt", { method: "PUT", body: "second" }))
-        .status,
-    ).toBe(201);
+    app.values.set("docs/café.txt", { body: new TextEncoder().encode(text), type: "text/plain" });
+    app.values.set("second.txt", { body: new TextEncoder().encode("second"), type: "text/plain" });
     const listing = await (await app.request("/documents/objects")).json();
     expect(listing.objects[0].key).toBe("docs/café.txt");
     expect(listing.cursor).toBe("next");
@@ -186,52 +302,61 @@ describe("generated R2 document manager", () => {
     expect(new URL(signed.url).searchParams.get("X-Amz-Expires")).toBe("300");
     expect(JSON.stringify(signed)).not.toContain("secret");
   });
-  it("rejects cross-origin writes, invalid keys, oversized uploads and overwrites", async () => {
+  it("authorizes direct uploads with bounded signed metadata and current write grants", async () => {
     const app = runtime();
-    expect(
-      (
-        await app.request("/documents/objects?key=x", {
-          method: "PUT",
-          body: "x",
-          headers: { origin: "https://evil.example" },
-        })
-      ).status,
-    ).toBe(403);
-    for (const key of ["../secret", "/absolute", "folder\\file", "bad\u0000"]) {
-      expect((await app.request(`/documents/download?key=${encodeURIComponent(key)}`)).status).toBe(
-        400,
-      );
-    }
-    expect(
-      (
-        await app.request("/documents/objects?key=large", {
-          method: "PUT",
-          body: "tiny",
-          headers: { "content-length": "20000000" },
-        })
-      ).status,
-    ).toBe(413);
-    expect(
-      (
-        await app.request("/documents/objects?key=large", {
-          method: "PUT",
-          body: new Uint8Array(10 * 1024 * 1024 + 1),
-        })
-      ).status,
-    ).toBe(413);
+    const authorize = (body: unknown, headers: Record<string, string> = {}) =>
+      app.request("/documents/upload-url", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+    const metadata = { key: "folder/café.txt", size: 50 * 1024 * 1024, contentType: "text/plain" };
+    const response = await authorize(metadata);
+    expect(response.status).toBe(200);
+    const grant = await response.json();
+    expect(grant).toMatchObject({
+      key: metadata.key,
+      size: metadata.size,
+      method: "PUT",
+      expiresIn: 300,
+      headers: { "content-type": "text/plain", "if-none-match": "*" },
+    });
+    expect(new URL(grant.url).searchParams.get("X-Amz-SignedHeaders")).toBe(
+      "content-length;content-type;host;if-none-match",
+    );
+    expect(new URL(grant.url).pathname).toBe("/private-docs/folder/caf%C3%A9.txt");
+    expect(JSON.stringify(grant)).not.toContain("secret");
     expect(app.bucket.put).not.toHaveBeenCalled();
+    expect(app.values.size).toBe(0);
+    expect((await authorize(metadata, { origin: "https://evil.example" })).status).toBe(403);
+    app.setPrincipal(null);
+    expect((await authorize(metadata)).status).toBe(401);
+    app.setPrincipal({ id: "u", permissions: ["storage:documents:read"] });
+    expect((await authorize(metadata)).status).toBe(403);
+    app.setPrincipal({ id: "u", permissions: ["storage:documents:write"] });
+    expect((await authorize(metadata)).status).toBe(200);
+    for (const change of [
+      { size: -1 },
+      { size: 1.5 },
+      { size: "1" },
+      { key: "../bad" },
+      { contentType: "bad\r\nvalue" },
+    ])
+      expect((await authorize({ ...metadata, ...change })).status).toBe(400);
+    expect((await authorize({ ...metadata, size: 100 * 1024 * 1024 + 1 })).status).toBe(413);
+    expect((await authorize({ ...metadata, key: "a".repeat(5000) })).status).toBe(413);
+    app.values.set(metadata.key, { body: new Uint8Array(1), type: "text/plain" });
+    expect((await authorize(metadata)).status).toBe(409);
     expect(
-      (await app.request("/documents/objects?key=x", { method: "PUT", body: "first" })).status,
-    ).toBe(201);
-    expect(
-      (await app.request("/documents/objects?key=x", { method: "PUT", body: "second" })).status,
-    ).toBe(409);
-    expect(new TextDecoder().decode(app.values.get("x")?.body)).toBe("first");
-    // The R2 conditional write is authoritative even if another writer races the preliminary head.
-    app.bucket.head.mockResolvedValue(null);
-    expect(
-      (await app.request("/documents/objects?key=x", { method: "PUT", body: "third" })).status,
-    ).toBe(409);
+      (await app.request("/documents/objects?key=x", { method: "PUT", body: "file" })).status,
+    ).toBe(410);
+    expect(app.bucket.put).not.toHaveBeenCalled();
+    const unavailable = await app.request(
+      "/documents/upload-url",
+      { method: "POST", body: JSON.stringify(metadata) },
+      { ...app.env, R2_SECRET_ACCESS_KEY: "" },
+    );
+    expect(unavailable.status).toBe(503);
   });
   it("reports absent signing configuration and missing objects without exposing secrets", async () => {
     const app = runtime();
@@ -267,6 +392,9 @@ describe("generated R2 document manager", () => {
       "apps/store-web/src/components/storage/storage-browser.tsx"
     ];
     sources["storage-browser.tsx"] = browser;
+    sources["frontend-boundaries.d.ts"] =
+      `declare module "@/lib/auth/use-session-view" {export function useSessionView():{isPending:boolean;user:{id:string;role?:string|null;permissions?:readonly string[]}|null};}
+declare module "@/lib/api/cache" {export function sessionCacheIdentity(session:{isPending:boolean;user:{id:string;role?:string|null;permissions?:readonly string[]}|null}):string;}`;
     expect(
       await generatedTypeErrors(sources, {
         module: ts.ModuleKind.ESNext,

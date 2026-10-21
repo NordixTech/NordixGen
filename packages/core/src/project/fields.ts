@@ -177,6 +177,7 @@ export function resolveEntities(
           ...(entity.description === undefined ? {} : { description: entity.description }),
           fields,
           relations,
+          indexes: entity.indexes.map((index) => ({ fields: [...index.fields] })),
           timestamps: entity.timestamps,
           softDelete: entity.softDelete,
           generatedFields: Object.keys(fields).filter((key) => fields[key].generated),

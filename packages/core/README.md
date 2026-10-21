@@ -39,7 +39,7 @@ pnpm test
 pnpm generate:schema
 ```
 
-The editor schema comes from the authoritative Zod definitions; a test checks exact equality. Concrete renderer tests execute generated Hono handlers and compile generated application/client contracts. The maintained [commerce example](../../examples/full-stack-commerce/README.md) additionally runs fresh CLI generation, PostgreSQL and browser verification with `pnpm example:commerce`. Backend and frontend generation use direct typed functions over resolved views. See [backend](../../docs/generation/DIRECT_BACKEND.md) and [frontend](../../docs/generation/DIRECT_FRONTEND.md) scope, ownership and verification; [public application wiring](../../docs/generation/PUBLIC_MODULES.md) is integrated.
+The editor schema comes from the authoritative Zod definitions; a test checks exact equality. Concrete renderer tests execute generated Hono handlers and compile generated application/client contracts. Internal acceptance checks run fresh CLI generation, PostgreSQL and browser verification with `pnpm test:acceptance`. Backend and frontend generation use direct typed functions over resolved views. See [backend](../../docs/generation/DIRECT_BACKEND.md) and [frontend](../../docs/generation/DIRECT_FRONTEND.md) scope, ownership and verification; [public application wiring](../../docs/generation/PUBLIC_MODULES.md) is integrated.
 
 See the [contract](../../docs/configuration/YAML_V2.md) and [validation/evidence guide](../../docs/configuration/VALIDATION.md). Keep credentials in environment configuration, never YAML.
 

@@ -118,10 +118,10 @@ export function IamAdministration(){
  const activeTab=manageRoles&&(!manageUsers||tab==="roles")?"roles":"users";
  useEffect(()=>{let active=true;setError("");setLoading(true);
   const load=async()=>{
-   if(manageRoles){const [catalog,registry]=await Promise.all([iamRequest<IamRole[]>("/roles"),iamRequest<string[]>("/permissions")]);if(active){setRoles(catalog);setPermissions(registry);}}
-   if(manageUsers){const [catalog,result]=await Promise.all([iamRequest<{id:string;name:string}[]>("/role-options"),iamRequest<{items:IamUser[];total:number}>("/users?page="+page+"&pageSize=25")]);if(active){setOptions(catalog);setUsers(result.items);setTotal(result.total);}}
+   if(manageRoles&&activeTab==="roles"){const [catalog,registry]=await Promise.all([iamRequest<IamRole[]>("/roles"),iamRequest<string[]>("/permissions")]);if(active){setRoles(catalog);setPermissions(registry);}}
+   if(manageUsers&&activeTab==="users"){const [catalog,result]=await Promise.all([iamRequest<{id:string;name:string}[]>("/role-options"),iamRequest<{items:IamUser[];total:number}>("/users?page="+page+"&pageSize=25")]);if(active){setOptions(catalog);setUsers(result.items);setTotal(result.total);}}
   };void load().catch(reason=>{if(active)setError(reason instanceof Error?reason.message:"Could not load administration.");}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};
- },[manageRoles,manageUsers,page,revision,userId]);
+ },[manageRoles,manageUsers,activeTab,page,revision,userId]);
  async function mutate(path:string,method:string,message:string,value?:unknown){setBusy(true);setError("");setSuccess("");try{
   await iamRequest(path,{method,...(value===undefined?{}:{body:JSON.stringify(value)})});setConfirmation(null);setDraft(null);setDeleting(null);setSuccess(message);setRevision(value=>value+1);window.dispatchEvent(new Event("iam-changed"));
   const current=await iamRequest<{permissions:string[]}>("/me");if(!current.permissions.some(permission=>["*","iam:roles:manage","iam:users:manage-roles"].includes(permission)))window.location.assign("/");
