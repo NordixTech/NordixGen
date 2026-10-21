@@ -23,6 +23,7 @@ export function generateTailwindFiles(context: FrontendRenderContext): readonly 
       content: `@import "tailwindcss";
 @import "../styles/theme.css";
 @import "../styles/ui.css";
+@import "../styles/dashboard.css";
 
 @theme inline {
 ${aliases}

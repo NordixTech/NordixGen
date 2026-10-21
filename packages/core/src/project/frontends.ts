@@ -219,7 +219,7 @@ export function resolveFrontend(
       inventory.add("/forgot-password");
       inventory.add("/reset-password");
     }
-    if (identity.methods.includes("phone-number")) inventory.add("/profile");
+    inventory.add("/profile");
   }
   const publicPage = (path: string) =>
     frontend.access.mode === "public" ||

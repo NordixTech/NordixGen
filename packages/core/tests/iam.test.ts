@@ -213,8 +213,8 @@ describe("generated dynamic IAM", () => {
     expect(web["apps/web/src/lib/auth/permissions.ts"]).not.toContain("rolePermissions");
     expect(web["apps/web/src/components/iam/administration.tsx"]).toContain("manageRoles&&");
     expect(web["apps/web/src/app/page.tsx"]).not.toContain('href="/admin/roles"');
-    expect(web["apps/web/src/components/auth/auth-controls.tsx"]).toContain(
-      'hasPermission("iam:roles:manage")||hasPermission("iam:users:manage-roles")',
+    expect(web["apps/web/src/components/layout/app-shell.tsx"]).toContain(
+      'session.hasPermission("iam:roles:manage")||session.hasPermission("iam:users:manage-roles")',
     );
   });
   it("uses the configured administrator role throughout seed, CLI, and IAM protections", () => {

@@ -223,7 +223,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
       operations.set(name, `${endpoint.backend}.${endpoint.operationId}`);
     }
     if (visible.length) inventory.add("/api-explorer");
-    if (selected?.authentication?.methods.includes("phone-number")) inventory.add("/profile");
+    if (selected?.authentication) inventory.add("/profile");
     const slugs = new Map<string, string>();
     for (const endpoint of visible) {
       const slug = entitySlug(endpoint.entity);
@@ -235,7 +235,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
             : []),
           "sign-in",
           "sign-up",
-          ...(selected.authentication?.methods.includes("phone-number") ? ["profile"] : []),
+          ...(selected.authentication ? ["profile"] : []),
         ].includes(slug)
       )
         add(

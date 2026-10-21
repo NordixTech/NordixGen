@@ -4,6 +4,11 @@ import { expect as baseExpect } from "@playwright/test";
 const expect = baseExpect.configure({ timeout: 15_000 });
 export async function verifyTheme(browser, page, web, directory, adminState) {
   const button = (theme) => page.getByRole("button", { name: `${theme} theme`, exact: true });
+  const openMenu = async (target = page) => {
+    const menu = target.locator(".ng-account-menu");
+    if ((await menu.getAttribute("open")) === null) await menu.locator("summary").click();
+  };
+  await openMenu();
   const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme-ready", "true");
@@ -14,6 +19,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
   await expect(button("Dark")).toHaveAttribute("aria-pressed", "true");
   await expect.poll(background).toBe("rgb(11, 15, 25)");
   await page.reload();
+  await openMenu();
   await expect(page.locator("html")).toHaveAttribute("data-theme-ready", "true");
   await expect(button("Dark")).toHaveAttribute("aria-pressed", "true");
   await expect.poll(background).toBe("rgb(11, 15, 25)");
@@ -30,6 +36,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
   try {
     await other.goto(web);
     await expect(other.locator("html")).toHaveAttribute("data-theme-ready", "true");
+    await openMenu();
     await button("Dark").click();
     await expect(other.getByRole("button", { name: "Dark theme", exact: true })).toHaveAttribute(
       "aria-pressed",
@@ -68,6 +75,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
     fallback.on("pageerror", (error) => errors.push(error.message));
     await fallback.goto(web);
     await expect(fallback.locator("html")).toHaveAttribute("data-theme-ready", "true");
+    await openMenu(fallback);
     await fallback.getByRole("button", { name: "Dark theme", exact: true }).click();
     await expect(fallback.locator("html")).toHaveAttribute("data-theme", "dark");
     expect(errors).toEqual([]);
@@ -85,6 +93,7 @@ export async function verifyTheme(browser, page, web, directory, adminState) {
     });
     await screen.goto(`${web}/sign-in`);
     await expect(screen.locator("html")).toHaveAttribute("data-theme-ready", "true");
+    await openMenu(screen);
     await screen.getByRole("button", { name: "Dark theme", exact: true }).click();
     await expect(screen.locator("html")).toHaveAttribute("data-theme", "dark");
     await screen.screenshot({

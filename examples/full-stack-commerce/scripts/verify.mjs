@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect as baseExpect, chromium, request } from "@playwright/test";
+import { verifyDashboard } from "./dashboard.mjs";
 import { verifyTheme } from "./theme.mjs";
 
 const expect = baseExpect.configure({ timeout: 15_000 });
@@ -193,6 +194,10 @@ export async function verifyApplication(state, directory, expireAccountant) {
       ).toBe(true);
     await page.goto(web);
     await verifyTheme(browser, page, web, directory, await admin.storageState());
+    await verifyDashboard(browser, web, directory, await admin.storageState());
+    await passed(
+      "Dashboard, profile, font and keyboard navigation work from 280px to 1440px without overflow",
+    );
     await passed(
       "Light/dark/system themes, keyboard selection, persistence, live system changes, cross-tab sync, blocked storage and pre-hydration dark initialization",
     );
@@ -407,6 +412,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
       await page.goto(`${web}${route}`);
       await expect(page).toHaveURL(`${web}/`);
     }
+    await page.getByLabel("Account menu", { exact: true }).click();
     await page.getByRole("button", { name: "Sign out", exact: true }).click();
     await expect(page).toHaveURL(`${web}/sign-in`);
     await signIn("outsider");

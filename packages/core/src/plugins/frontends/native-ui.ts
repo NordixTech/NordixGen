@@ -1,85 +1,10 @@
 import { authStyles } from "../../generation/auth-interface.js";
 import type { GeneratedFile } from "../contracts.js";
 import type { FrontendRenderContext } from "../frontend-contracts.js";
-
-function escapeText(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
+import { dashboardPage } from "./dashboard.js";
 
 function source(lines: readonly string[]): string {
   return lines.join("\n");
-}
-
-function pageSource(context: FrontendRenderContext): string {
-  const title = JSON.stringify(`${context.projectName} | NordixGen`);
-  const projectName = escapeText(context.projectName);
-  const pages = context.frontend.pages.filter(
-    (page) =>
-      ![
-        "/",
-        "/api-explorer",
-        "/sign-in",
-        "/sign-up",
-        ...(context.api.authentication?.methods.includes("email-password")
-          ? ["/forgot-password", "/reset-password"]
-          : []),
-        ...(context.api.authentication?.methods.includes("phone-number") ? ["/profile"] : []),
-        "/admin/roles",
-      ].includes(page.path),
-  );
-  const apiExplorerLink = context.api.endpoints.length > 0;
-  return source([
-    'import Link from "next/link";',
-    "",
-    "export const metadata = {",
-    `  title: ${title},`,
-    '  description: "A thoughtfully structured frontend foundation generated with NordixGen.",',
-    "};",
-    "",
-    "export default function Home() {",
-    "  return (",
-    '    <main className="ng-shell">',
-    '      <section aria-labelledby="welcome-title" className="ng-hero" id="home">',
-    '        <div className="ng-hero-copy">',
-    '          <p className="ng-eyebrow">Your workspace</p>',
-    `          <h1 id="welcome-title">${projectName}</h1>`,
-    '          <p className="ng-lede">Open a page to explore your records, or use the API Explorer to try individual operations.</p>',
-    '          <div className="ng-actions">',
-    ...(apiExplorerLink
-      ? ['            <Link className="ng-text-link" href="/api-explorer">Open API Explorer</Link>']
-      : []),
-    "          </div>",
-    "        </div>",
-    '        <nav aria-label="Application pages" className="ng-panel ng-page-directory">',
-    '          <div className="ng-panel-heading">',
-    "            <div>",
-    '              <p className="ng-eyebrow">Explore</p>',
-    "              <h2>Application pages</h2>",
-    "            </div>",
-    '            <span aria-hidden="true" className="ng-sparkle">✦</span>',
-    "          </div>",
-    ...pages.map((page) => {
-      const label = escapeText(
-        page.path
-          .slice(1)
-          .split(/[/-]/)
-          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(" "),
-      );
-      return `          <Link className="ng-page-link" href=${JSON.stringify(page.path)}><span><strong>${label}</strong><small>${escapeText(page.path)}</small></span><span className="ng-page-access">${page.authenticated ? "Sign-in required" : "Public page"}<span aria-hidden="true"> →</span></span></Link>`;
-    }),
-    ...(pages.length
-      ? []
-      : ['          <p className="ng-panel-note">No entity pages are available yet.</p>']),
-    '          <p className="ng-panel-note">Available actions depend on your account permissions.</p>',
-    "        </nav>",
-    "      </section>",
-    '      <footer className="ng-footer"><span>Generated with NordixGen</span><span>Make it yours.</span></footer>',
-    "    </main>",
-    "  );",
-    "}",
-    "",
-  ]);
 }
 
 function componentFiles(context: FrontendRenderContext) {
@@ -261,19 +186,9 @@ const uiStyles = [
   ".ng-topbar, .ng-brand, .ng-actions, .ng-panel-heading, .ng-footer { display: flex; align-items: center; }",
   ".ng-topbar { min-height: 84px; justify-content: space-between; margin: 0 auto; max-width: 1200px; }",
   ".ng-brand { gap: 12px; font-size: 17px; font-weight: 700; letter-spacing: -.03em; }",
-  ".ng-brand-mark { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--color-border); border-radius: 13px; background: var(--color-primary-surface); color: var(--color-primary); }",
-  ".ng-brand-accent { color: var(--color-primary); }",
-  ".ng-hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr); align-items: center; gap: clamp(36px, 8vw, 112px); max-width: 1200px; min-height: calc(100vh - 150px); margin: 0 auto; padding: 72px 0; }",
-  ".ng-hero-copy { max-width: 680px; }",
   ".ng-eyebrow { margin: 0 0 18px; color: var(--color-primary); font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }",
-  ".ng-hero h1 { max-width: 700px; margin: 0; font-size: clamp(42px, 6vw, 76px); letter-spacing: -.065em; line-height: 1.02; }",
-  ".ng-lede { max-width: 590px; margin: 24px 0 0; color: var(--color-muted); font-size: 18px; line-height: 1.75; }",
   ".ng-actions { flex-wrap: wrap; gap: 20px; margin-top: 34px; }",
   ".ng-text-link { color: var(--color-primary); font-size: 14px; font-weight: 650; }",
-  ".ng-account-state { display: inline-flex; min-height: 42px; align-items: center; gap: 9px; padding: 6px 12px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); box-shadow: 0 8px 24px var(--color-shadow); color: var(--color-foreground); font-size: 13px; font-weight: 600; }",
-  ".ng-account-icon { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: var(--color-surface-subtle); color: var(--color-secondary); font-size: 16px; }",
-  ".ng-account-icon--signed-in { background: var(--color-success-surface); color: var(--color-success); }",
-  ".ng-account-state .ng-button { min-height: 30px; padding: 0 10px; font-size: 12px; }",
   ".ng-panel { padding: 30px; border: 1px solid var(--color-surface); border-radius: var(--ng-radius); background: var(--color-surface); box-shadow: 0 24px 80px var(--color-shadow); }",
   ".ng-panel-heading { justify-content: space-between; padding-bottom: 24px; border-bottom: 1px solid var(--color-border); }",
   ".ng-panel-heading .ng-eyebrow { margin-bottom: 8px; }",
@@ -320,7 +235,6 @@ const uiStyles = [
   ".ng-notice--warning { background: var(--color-warning-surface); color: var(--color-warning-foreground); }",
   ".ng-notice--info { background: var(--color-info-surface); color: var(--color-info-foreground); }",
   ".ng-hero > *, .ng-explorer-grid > * { min-width: 0; }",
-  ".ng-hero h1 { overflow-wrap: anywhere; }",
   ".ng-page-link { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--color-border); text-decoration: none; }",
   ".ng-page-link strong { display: block; color: var(--color-foreground); font-size: 17px; }",
   ".ng-page-link small { display: block; margin-top: 5px; color: var(--color-muted); font-family: ui-monospace, monospace; }",
@@ -368,8 +282,6 @@ const uiStyles = [
   "@media (max-width: 760px) { .ng-shell { padding: 0 22px; } .ng-hero { grid-template-columns: 1fr; gap: 36px; padding: 48px 0; } .ng-panel { padding: 22px; } .ng-footer { gap: 12px; } }",
   "@media (max-width: 960px) { .ng-explorer-grid { grid-template-columns: minmax(0, 1fr); } }",
   "@media (max-width: 760px) { .ng-explorer { padding-top: 90px; padding-bottom: 32px; } .ng-explorer-grid { gap: 16px; } .ng-topbar { padding-top: 64px; min-height: 148px; } .ng-account-state { max-width: calc(100vw - 32px); font-size: 11px; } .ng-explorer-grid .ng-panel { padding: 18px; } .ng-contract-table th, .ng-contract-table td { padding: 9px; } .ng-access-details div { grid-template-columns: minmax(0, 1fr); gap: 4px; } }",
-  ".ng-app-topbar { max-width: none; padding: 16px 5vw; min-height: 84px; gap: 24px; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }",
-  ".ng-topbar-actions { display: flex; justify-content: flex-end; align-items: center; gap: 16px; flex-wrap: wrap; }",
   ".ng-theme-switcher { display: inline-flex; padding: 4px; gap: 3px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-background); }",
   ".ng-theme-switcher button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 9px; border: 0; border-radius: 8px; color: var(--color-muted); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }",
   ".ng-theme-switcher button[aria-pressed=true] { background: var(--color-surface); color: var(--color-primary); box-shadow: 0 1px 4px var(--color-shadow); }",
@@ -381,7 +293,7 @@ const uiStyles = [
 export function generateUiFiles(context: FrontendRenderContext): readonly GeneratedFile[] {
   const root = context.framework.codeRoot;
   return [
-    { path: `${root}/app/page.tsx`, content: pageSource(context) },
+    { path: `${root}/app/page.tsx`, content: dashboardPage(context) },
     ...componentFiles(context),
     { path: `${root}/styles/ui.css`, content: `${uiStyles}\n${authStyles}\n` },
   ];
