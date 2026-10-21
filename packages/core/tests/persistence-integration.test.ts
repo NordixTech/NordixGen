@@ -1154,6 +1154,9 @@ describe
       expect(constraints.map((row) => row.nullable_label)).toEqual([null, null]);
       expect(new Set(constraints.map((row) => row.code)).size).toBe(2);
     }, 60_000);
+    // This end-to-end case includes fresh migrations, real password hashing, chat
+    // persistence and MCP token HTTP calls. Allow a bounded two minutes under CI
+    // coverage; the one-minute budget expired on shared runners after a green PR.
     it("migrates AI token tables and executes scoped MCP tools through real Better Auth and PostgreSQL", async () => {
       if (directory) await rm(directory, { recursive: true, force: true });
       directory = "";
@@ -1367,7 +1370,7 @@ describe
         },
       );
       expect(unauthorized.status).toBe(401);
-    }, 60000);
+    }, 120_000);
     it.each(["hexagonal", "onion"] as const)(
       "migrates %s alongside Clean and executes persisted HTTP writes, validation, pagination and soft delete",
       async (architecture) => {
