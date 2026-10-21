@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type ResolvedProject, WORKSPACE_TOOLING } from "@nordixgen/core";
 import { type ParseError, parse } from "jsonc-parser";
+import { authenticationReadme } from "./authentication-readme.js";
 import { deploymentFiles, deploymentReadme, deploymentScripts } from "./deployment.js";
 import { dockerDocumentation, dockerFiles, dockerScripts } from "./docker.js";
 import { exists } from "./filesystem.js";
@@ -175,6 +176,7 @@ export async function finishWorkspace(
       "",
       ...dockerDocumentation(project, repository),
       ...deploymentReadme,
+      ...authenticationReadme(project, repository),
       "## Local setup without Docker",
       "- Backends: copy `.dev.vars.example` to `.dev.vars` inside the application and set the indicated runtime values. These files are ignored; never commit real credentials.",
       "- Database tooling runs in Node: also provide `DATABASE_URL` in your shell before `pnpm db:migrate` or `pnpm db:seed`. Generate SQL with `pnpm db:generate`, review it, then migrate before serving business/auth requests. Seeds create synthetic business data, not login identities.",
