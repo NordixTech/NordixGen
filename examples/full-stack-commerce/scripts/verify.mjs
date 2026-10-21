@@ -269,6 +269,9 @@ export async function verifyApplication(state, directory, expireAccountant) {
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect(page).toHaveURL(`${web}/`);
       await expect(page.locator(".ng-account-label small")).toHaveText(role);
+      // The role label is available before IAM finishes reconciling the session cache.
+      // Wait for the ready account before interacting with stateful application views.
+      await expect(page.locator(".ng-account-label strong")).not.toHaveText("Checking session…");
     };
     await signIn("admin");
     await page.getByRole("link", { name: "Explore the API", exact: true }).click();
