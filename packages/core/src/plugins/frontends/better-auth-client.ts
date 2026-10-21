@@ -11,6 +11,7 @@ import type {
   FrontendAuthenticationContract,
   FrontendRenderContext,
 } from "../frontend-contracts.js";
+import { accountMenuSource, profileFiles } from "./account-menu.js";
 function source(lines: readonly string[]): string {
   return `${lines.join("\n")}\n`;
 }
@@ -200,29 +201,6 @@ function signOutButtonContent(): string {
     "}",
   ]);
 }
-function authControlsContent(config: FrontendAuthenticationContract): string {
-  return source([
-    '"use client";',
-    "",
-    'import { useSessionView } from "@/lib/auth/use-session-view";',
-    'import { SignOutButton } from "@/components/auth/sign-out-button";',
-    "",
-    "export function AuthControls() {",
-    "  const { user, isPending, hasPermission } = useSessionView();",
-    '  if (isPending) return <span aria-label="Checking login status" className="ng-account-state" role="status"><span aria-hidden="true" className="ng-account-icon">◌</span><span>Checking session…</span></span>;',
-    '  if (!user) return <a aria-label="Signed out. Sign in" className="ng-account-state" href="/sign-in"><span aria-hidden="true" className="ng-account-icon">♙</span><span>Signed out · Sign in</span></a>;',
-    "  return (",
-    '    <div aria-label={`Signed in as ${user.name ?? user.email}${user.role ? `, role ${user.role}` : ""}`} className="ng-account-state" role="status">',
-    '      <span aria-hidden="true" className="ng-account-icon ng-account-icon--signed-in">♙</span>',
-    '      <span>{user.name ?? user.email} · {user.role ?? "no role"}</span>',
-    "      <SignOutButton />",
-    ...(config.methods.includes("phone-number") ? ['      <a href="/profile">Profile</a>'] : []),
-    '      {(hasPermission("iam:roles:manage")||hasPermission("iam:users:manage-roles"))&&<a href="/admin/roles">Administration</a>}',
-    "    </div>",
-    "  );",
-    "}",
-  ]);
-}
 function authReadme(config: FrontendAuthenticationContract): string {
   return source([
     "# Frontend authentication",
@@ -246,6 +224,7 @@ export function generateFrontendAuthFiles(
   const root = context.framework.codeRoot;
   const files = [
     ...authJourneyFiles(root, config),
+    ...profileFiles(root, config),
     ...authInterfaceFiles(root),
     {
       path: `${root}/lib/auth/password-policy.ts`,
@@ -259,7 +238,7 @@ export function generateFrontendAuthFiles(
   ];
   if (context.api.authentication) {
     files.push(
-      { path: `${root}/components/auth/auth-controls.tsx`, content: authControlsContent(config) },
+      { path: `${root}/components/auth/auth-controls.tsx`, content: accountMenuSource },
       {
         path: `${root}/components/auth/sign-in-form.tsx`,
         content: accountFormSource(config, false),

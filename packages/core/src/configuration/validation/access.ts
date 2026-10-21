@@ -104,7 +104,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
             add(
               "PERMISSION_UNKNOWN",
               `${path}.authorization.rolePermissions.${role}`,
-              `Permission "${permission}" is not an application capability. Declare it on a backend operation or use a built-in IAM permission.`,
+              `Permission "${permission}" is not an application capability. Declare it on a backend operation or use a built-in IAM/storage permission.`,
             );
       if (!policy.roles.includes(policy.defaultRole))
         add(
@@ -196,13 +196,13 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
     if (
       selected &&
       frontend.access.publicRoutes?.some(
-        (pattern) => pattern === "/admin/roles" || pattern === "/admin/**",
+        (pattern) => pattern === "/admin/roles" || pattern === "/admin/**" || pattern === "/audit",
       )
     )
       add(
         "FRONTEND_ACCESS_ROUTE_INVALID",
         `${path}.access.publicRoutes`,
-        "IAM administration is always protected and cannot be a public route.",
+        "IAM administration and audit history are always protected and cannot be public routes.",
       );
     const inventory = new Set(["/"]);
     const visible = config.endpoints.filter((e) => frontend.connectsTo.includes(e.backend));
@@ -223,25 +223,29 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
       operations.set(name, `${endpoint.backend}.${endpoint.operationId}`);
     }
     if (visible.length) inventory.add("/api-explorer");
-    if (selected?.authentication?.methods.includes("phone-number")) inventory.add("/profile");
+    const hasStorage = connected.some((backend) => backend.iac?.r2_storage.length);
+    if (hasStorage) inventory.add("/r2");
+    if (selected?.authentication) inventory.add("/profile");
+    if (selected?.authentication) inventory.add("/audit");
     const slugs = new Map<string, string>();
     for (const endpoint of visible) {
       const slug = entitySlug(endpoint.entity);
       if (
-        selected &&
-        [
-          ...(selected.authentication?.methods.includes("email-password")
-            ? ["forgot-password", "reset-password"]
-            : []),
-          "sign-in",
-          "sign-up",
-          ...(selected.authentication?.methods.includes("phone-number") ? ["profile"] : []),
-        ].includes(slug)
+        (hasStorage && slug === "r2") ||
+        (selected &&
+          [
+            ...(selected.authentication?.methods.includes("email-password")
+              ? ["forgot-password", "reset-password"]
+              : []),
+            "sign-in",
+            "sign-up",
+            ...(selected.authentication ? ["profile", "audit"] : []),
+          ].includes(slug))
       )
         add(
           "GENERATED_NAME_COLLISION",
           `${path}.connectsTo`,
-          `Entity "${endpoint.entity}" conflicts with a generated authentication page. Rename the entity.`,
+          `Entity "${endpoint.entity}" conflicts with a generated platform page. Rename the entity.`,
         );
       const previous = slugs.get(slug);
       if (previous && previous !== endpoint.entity)

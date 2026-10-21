@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect as baseExpect, chromium, request } from "@playwright/test";
+import { verifyDashboard } from "./dashboard.mjs";
 import { verifyTheme } from "./theme.mjs";
 
 const expect = baseExpect.configure({ timeout: 15_000 });
@@ -193,10 +194,17 @@ export async function verifyApplication(state, directory, expireAccountant) {
       ).toBe(true);
     await page.goto(web);
     await verifyTheme(browser, page, web, directory, await admin.storageState());
+    await verifyDashboard(browser, web, directory, await admin.storageState());
+    await passed(
+      "Dashboard, profile, font and keyboard navigation work from 280px to 1440px without overflow",
+    );
     await passed(
       "Light/dark/system themes, keyboard selection, persistence, live system changes, cross-tab sync, blocked storage and pre-hydration dark initialization",
     );
-    const directoryLinks = page.getByRole("navigation", { name: "Application pages" });
+    const directoryLinks = page
+      .getByRole("navigation", { name: "Main navigation", exact: true })
+      .locator(".ng-nav-group")
+      .filter({ has: page.getByText("Application", { exact: true }) });
     await expect(directoryLinks.getByRole("link")).toHaveCount(2);
     await expect(directoryLinks.getByRole("link", { name: /Customer/ })).toHaveAttribute(
       "href",
@@ -219,12 +227,17 @@ export async function verifyApplication(state, directory, expireAccountant) {
       path: join(directory, "verified-workspace-mobile.png"),
       fullPage: true,
     });
-    await directoryLinks.getByRole("link", { name: /Customer/ }).click();
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await page
+      .getByRole("dialog", { name: "Navigation", exact: true })
+      .getByRole("link", { name: "Customer", exact: true })
+      .click();
     await expect(page).toHaveURL(`${web}/customer`);
     await page.goto(web);
+    await page.getByRole("button", { name: "Open navigation" }).click();
     await page
-      .getByRole("navigation", { name: "Application pages" })
-      .getByRole("link", { name: /Invoice/ })
+      .getByRole("dialog", { name: "Navigation", exact: true })
+      .getByRole("link", { name: "Invoice", exact: true })
       .click();
     await expect(page).toHaveURL(`${web}/sign-in`);
     await page.setViewportSize({ width: 1400, height: 1000 });
@@ -255,10 +268,13 @@ export async function verifyApplication(state, directory, expireAccountant) {
       await page.getByLabel("Password", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect(page).toHaveURL(`${web}/`);
-      await expect(page.getByRole("status", { name: new RegExp(`role ${role}`) })).toBeVisible();
+      await expect(page.locator(".ng-account-label small")).toHaveText(role);
+      // The role label is available before IAM finishes reconciling the session cache.
+      // Wait for the ready account before interacting with stateful application views.
+      await expect(page.locator(".ng-account-label strong")).not.toHaveText("Checking session…");
     };
     await signIn("admin");
-    await page.getByRole("link", { name: "Open API Explorer", exact: true }).click();
+    await page.getByRole("link", { name: "Explore the API", exact: true }).click();
     const adminOperation = page.getByRole("combobox", { name: "Select API operation" });
     await adminOperation.selectOption("updateCustomer");
     const bodyContract = page.getByRole("table", { name: "Request body", exact: true });
@@ -407,6 +423,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
       await page.goto(`${web}${route}`);
       await expect(page).toHaveURL(`${web}/`);
     }
+    await page.getByLabel("Account menu", { exact: true }).click();
     await page.getByRole("button", { name: "Sign out", exact: true }).click();
     await expect(page).toHaveURL(`${web}/sign-in`);
     await signIn("outsider");
@@ -456,7 +473,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
       ).toBeVisible();
       await expect(send).toBeDisabled();
       releaseSession();
-      await expect(page.getByRole("status", { name: /role outsider/ })).toBeVisible();
+      await expect(page.locator(".ng-account-label small")).toHaveText("outsider");
       await operation.selectOption("listInvoices");
       const deniedMessage = page.getByText(
         "Your account does not have the roles or permissions required to send this request.",
@@ -723,17 +740,17 @@ export async function verifyApplication(state, directory, expireAccountant) {
     const firstAudit = await (await admin.get("/api/auth/iam/audit?pageSize=1")).json();
     const secondAudit = await (await admin.get("/api/auth/iam/audit?pageSize=1&page=2")).json();
     expect(firstAudit.items[0].id).not.toBe(secondAudit.items[0].id);
-    await iamPage.getByRole("tab", { name: "Activity", exact: true }).click();
+    await iamPage.goto(`${web}/audit`);
     await expect(iamPage.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
     await iamPage.getByLabel("Action", { exact: true }).fill("iam.role.updated");
-    await iamPage.getByLabel("Actor ID", { exact: true }).fill(persistence.identities.admin);
+    await iamPage.getByLabel("User ID", { exact: true }).fill(persistence.identities.admin);
     await iamPage.getByLabel("From", { exact: true }).fill("2000-01-01T00:00");
     await iamPage.getByLabel("To", { exact: true }).fill("2099-01-01T00:00");
     await iamPage.getByRole("button", { name: "Apply filters", exact: true }).click();
     const activity = iamPage.locator(".ng-audit-events>li").first();
     await expect(activity).toBeVisible();
     await expect(activity).toContainText("iam.role.updated");
-    await activity.getByText("Inspect changes", { exact: true }).click();
+    await activity.getByText("View details", { exact: true }).click();
     await expect(
       activity.getByRole("heading", { name: "Before", exact: true }).first(),
     ).toBeVisible();

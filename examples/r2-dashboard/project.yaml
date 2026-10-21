@@ -1,0 +1,79 @@
+schemaVersion: 2
+name: nordix-r2-dashboard
+version: 1.0.0
+repositories:
+  - name: app
+    path: .
+    initializeGit: true
+    createRemote: false
+databases:
+  primary: {}
+iac:
+  cloudflare:
+    r2_storage:
+      documents: { visibility: private }
+      assets: { visibility: public }
+backends:
+  - name: api
+    repository: app
+    path: apps/api
+    persistence: { database: primary }
+    iac:
+      r2_storage: [documents, assets]
+    modules:
+      notes:
+        architecture: clean
+        entities: [Note]
+    authentication:
+      methods: [email-password]
+    authorization:
+      roles: [admin, reader, uploader, guest]
+      adminRole: admin
+      defaultRole: guest
+      rolePermissions:
+        reader: [notes:read, storage:documents:read, storage:assets:read]
+        uploader: [storage:documents:write]
+        guest: []
+frontends:
+  - name: web
+    repository: app
+    path: apps/web
+    connectsTo: [api]
+    access:
+      mode: mixed
+      backend: api
+      publicRoutes: [/]
+entities:
+  Note:
+    backend: api
+    fields:
+      title: { type: string, maxLength: 120 }
+pagination:
+  standard: { defaultPageSize: 20, maxPageSize: 100 }
+endpoints:
+  - backend: api
+    entity: Note
+    operationId: listNotes
+    audit: true
+    method: GET
+    path: /api/notes
+    permissions: [notes:read]
+    pagination: standard
+  - backend: api
+    entity: Note
+    operationId: createNote
+    audit: true
+    method: POST
+    path: /api/notes
+    permissions: [notes:write]
+    requestBody: { useCase: { entity: Note, operation: create } }
+  - backend: api
+    entity: Note
+    operationId: deleteNote
+    audit: true
+    method: DELETE
+    path: /api/notes/{noteId}
+    permissions: [notes:write]
+    pathParams:
+      - name: noteId
+        field: { entity: Note, field: id }

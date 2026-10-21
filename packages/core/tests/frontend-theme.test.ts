@@ -182,7 +182,8 @@ describe("generated semantic theme", () => {
     const layout = output["apps/web/src/app/layout.tsx"];
     expect(layout.indexOf("<script")).toBeLessThan(layout.indexOf("<body>"));
     expect(layout).toContain("suppressHydrationWarning");
-    expect(layout).toContain("<ThemeSwitcher/>");
+    expect(layout).toContain("<AppShell>");
+    expect(output["apps/web/src/components/auth/auth-controls.tsx"]).toContain("<ThemeSwitcher/>");
     expect(output["apps/web/src/app/providers.tsx"]).toContain("useEffect(initializeTheme,[])");
     expect(output["apps/web/src/styles/ui.css"]).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
     expect(output["apps/web/src/styles/iam.css"]).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);

@@ -290,6 +290,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       ...(hasStorage
         ? [
             'import {createStorage,type StorageEnvironment} from "./platform/storage/create-storage.js";',
+            'import {createStorageRoutes} from "./platform/storage/routes.js";',
           ]
         : []),
       ...(hasAudit
@@ -362,6 +363,13 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
               ? 'app.all("/api/auth/*", (c) => createAuth(c.req.header("x-nordix-mcp-gateway")==="1"?{...c.env,BETTER_AUTH_URL:new URL(c.env.MCP_PUBLIC_URL!).origin}:c.env,c.executionCtx).handler(c.req.raw));'
               : 'app.all("/api/auth/*", (c) => createAuth(c.env,c.executionCtx).handler(c.req.raw));',
             "",
+          ]
+        : []),
+      ...(hasStorage
+        ? [
+            hasAuthentication
+              ? 'app.route("/",createStorageRoutes<AuthEnvironment & StorageEnvironment>(async c=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers:c.req.raw.headers});return session?(await createIamRepository(createDrizzleDatabase(c.env.DATABASE_URL)).principal(session.user.id)??null):null;},isTrustedAuthOrigin));'
+              : 'app.route("/",createStorageRoutes<StorageEnvironment>(async()=>null,()=>false));',
           ]
         : []),
       ...(hasDrizzle

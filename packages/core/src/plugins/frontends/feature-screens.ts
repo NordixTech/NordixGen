@@ -393,7 +393,7 @@ export function generateFeatureScreenFiles(
         "",
         `export default function ${entityName}Page() {`,
         "  return (",
-        '    <main className="ng-shell" style={{ padding: "40px 5vw" }}>',
+        '    <main className="ng-shell">',
         `      <${entityName}FeatureScreen />`,
         "    </main>",
         "  );",

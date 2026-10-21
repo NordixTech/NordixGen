@@ -134,20 +134,6 @@ export function PhoneForm({link=false}:{link?:boolean}){
 }
 `,
       },
-      {
-        path: `${root}/components/auth/profile-card.tsx`,
-        content: `"use client";
-import {authClient} from "@/lib/auth/client";
-import {PhoneForm} from "./phone-form";
-export function ProfileCard(){const {data}=authClient.useSession();const user=data?.user;return <div className="ng-profile-grid"><section className="ng-panel ng-profile-summary"><span className="ng-profile-avatar" aria-hidden="true">{user?.name?.trim().slice(0,1).toUpperCase()||"U"}</span><h2>{user?.name||"Your account"}</h2><dl><div><dt>Email</dt><dd>{user?.email?.endsWith("@phone.invalid")?"Phone account":user?.email||"—"}</dd></div><div><dt>Email verification</dt><dd>{user?.emailVerified?"Verified":"Not verified"}</dd></div><div><dt>Phone number</dt><dd>{user?.phoneNumber||"No phone linked yet"}</dd></div></dl></section><section className="ng-panel ng-profile-phone"><PhoneForm link/></section></div>;}
-`,
-      },
-      {
-        path: `${root}/app/profile/page.tsx`,
-        content: `import {ProfileCard} from "@/components/auth/profile-card";
-export default function ProfilePage(){return <main className="ng-shell"><div className="ng-profile-page"><header className="ng-profile-header"><p className="ng-eyebrow">Account settings</p><h1>Your profile</h1><p>Review your account details and manage your phone number.</p></header><ProfileCard/></div></main>;}
-`,
-      },
     );
   }
   return files;

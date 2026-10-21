@@ -308,6 +308,7 @@ export interface TransportOperation {
   };
 }
 export interface ResolvedFrontend {
+  readonly storageBackends: readonly string[];
   readonly ai?: Readonly<NonNullable<FrontendDefinition["ai"]>> & {
     readonly authMethods: readonly ("oauth" | "api-key")[];
   };

@@ -4,7 +4,22 @@ export function generateAuditFiles(context: BackendRenderContext): readonly Gene
   return [
     { path: `${root}/database/schema/audit-schema.ts`, content: auditSchema },
     { path: `${root}/audit/runtime.ts`, content: auditRuntime },
-    { path: `${root}/audit/store.ts`, content: auditStore },
+    {
+      path: `${root}/audit/store.ts`,
+      content: auditStore
+        .replace(
+          "__ACTOR_IMPORT__",
+          context.identity
+            ? 'import {getTableColumns} from "drizzle-orm";import {authUser} from "../database/schema/auth-schema.js";'
+            : "",
+        )
+        .replace(
+          "__ACTOR_SELECT__",
+          context.identity
+            ? "db.select({...getTableColumns(auditLogs),actorName:authUser.name,actorEmail:authUser.email}).from(auditLogs).leftJoin(authUser,eq(auditLogs.actorId,authUser.id))"
+            : "db.select().from(auditLogs)",
+        ),
+    },
   ];
 }
 export const authAuditPlugin = `import type {BetterAuthPlugin} from "better-auth";
@@ -99,6 +114,7 @@ export function authAuditAction(path:string,hasNewSession:boolean,returned:unkno
 }
 `;
 const auditStore = `import {and,desc,eq,gte,lte,sql} from "drizzle-orm";
+__ACTOR_IMPORT__
 import {createDrizzleDatabase} from "../database/drizzle-database.js";
 import {auditLogs} from "../database/schema/audit-schema.js";
 import type {AuditWriter} from "./runtime.js";
@@ -110,7 +126,7 @@ export async function readAudit(connection:string,filters:AuditFilters) {
  const db=createDrizzleDatabase(connection);
  const where=and(filters.actor?eq(auditLogs.actorId,filters.actor):undefined,filters.action?eq(auditLogs.action,filters.action):undefined,filters.from?gte(auditLogs.createdAt,new Date(filters.from)):undefined,filters.to?lte(auditLogs.createdAt,new Date(filters.to)):undefined);
  const [items,count]=await db.batch([
-  db.select().from(auditLogs).where(where).orderBy(desc(auditLogs.createdAt),desc(auditLogs.id)).limit(filters.pageSize).offset((filters.page-1)*filters.pageSize),
+  __ACTOR_SELECT__.where(where).orderBy(desc(auditLogs.createdAt),desc(auditLogs.id)).limit(filters.pageSize).offset((filters.page-1)*filters.pageSize),
   db.select({total:sql<number>\`count(*)::int\`}).from(auditLogs).where(where),
  ]);
  return {items,total:Number(count[0]?.total??0),page:filters.page,pageSize:filters.pageSize};

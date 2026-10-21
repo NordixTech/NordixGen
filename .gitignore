@@ -45,6 +45,7 @@ examples/*
 !examples/full-stack-commerce/
 !examples/cloudflare-cicd/
 !examples/ai-playground/
+!examples/r2-dashboard/
 
 # Local tooling cache
 .nordixgen/
