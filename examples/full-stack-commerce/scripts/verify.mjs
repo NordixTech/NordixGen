@@ -201,7 +201,10 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await passed(
       "Light/dark/system themes, keyboard selection, persistence, live system changes, cross-tab sync, blocked storage and pre-hydration dark initialization",
     );
-    const directoryLinks = page.getByRole("navigation", { name: "Application pages" });
+    const directoryLinks = page
+      .getByRole("navigation", { name: "Main navigation", exact: true })
+      .locator(".ng-nav-group")
+      .filter({ has: page.getByText("Application", { exact: true }) });
     await expect(directoryLinks.getByRole("link")).toHaveCount(2);
     await expect(directoryLinks.getByRole("link", { name: /Customer/ })).toHaveAttribute(
       "href",
@@ -224,12 +227,17 @@ export async function verifyApplication(state, directory, expireAccountant) {
       path: join(directory, "verified-workspace-mobile.png"),
       fullPage: true,
     });
-    await directoryLinks.getByRole("link", { name: /Customer/ }).click();
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await page
+      .getByRole("dialog", { name: "Navigation", exact: true })
+      .getByRole("link", { name: "Customer", exact: true })
+      .click();
     await expect(page).toHaveURL(`${web}/customer`);
     await page.goto(web);
+    await page.getByRole("button", { name: "Open navigation" }).click();
     await page
-      .getByRole("navigation", { name: "Application pages" })
-      .getByRole("link", { name: /Invoice/ })
+      .getByRole("dialog", { name: "Navigation", exact: true })
+      .getByRole("link", { name: "Invoice", exact: true })
       .click();
     await expect(page).toHaveURL(`${web}/sign-in`);
     await page.setViewportSize({ width: 1400, height: 1000 });
@@ -260,10 +268,10 @@ export async function verifyApplication(state, directory, expireAccountant) {
       await page.getByLabel("Password", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect(page).toHaveURL(`${web}/`);
-      await expect(page.getByRole("status", { name: new RegExp(`role ${role}`) })).toBeVisible();
+      await expect(page.locator(".ng-account-label small")).toHaveText(role);
     };
     await signIn("admin");
-    await page.getByRole("link", { name: "Open API Explorer", exact: true }).click();
+    await page.getByRole("link", { name: "Explore the API", exact: true }).click();
     const adminOperation = page.getByRole("combobox", { name: "Select API operation" });
     await adminOperation.selectOption("updateCustomer");
     const bodyContract = page.getByRole("table", { name: "Request body", exact: true });
@@ -462,7 +470,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
       ).toBeVisible();
       await expect(send).toBeDisabled();
       releaseSession();
-      await expect(page.getByRole("status", { name: /role outsider/ })).toBeVisible();
+      await expect(page.locator(".ng-account-label small")).toHaveText("outsider");
       await operation.selectOption("listInvoices");
       const deniedMessage = page.getByText(
         "Your account does not have the roles or permissions required to send this request.",
