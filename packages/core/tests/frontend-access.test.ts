@@ -1,3 +1,4 @@
+import { QueryClient, dehydrate } from "@tanstack/query-core";
 import { describe, expect, it, vi } from "vitest";
 import { identityBaseUrl, protectFrontendPage } from "../src/generation/frontend-access.js";
 import { frontendRenderContext, generateFrontend } from "../src/generation/frontend.js";
@@ -37,6 +38,7 @@ function guard(
     files,
     {
       "server-only": {},
+      react: { cache: (fn: unknown) => fn },
       "@/lib/backend/transport": {
         backendFetch: (_backend: string, path: string, init: RequestInit) =>
           fetchSession(`https://internal.invalid${path}`, init),
@@ -53,11 +55,79 @@ function guard(
     require: load(`${root}/lib/auth/server.ts`).requirePageSession as (
       path: string,
     ) => Promise<unknown>,
-    requireIam: load(`${root}/lib/auth/server.ts`).requireIamAccess as () => Promise<void>,
+    requireIam: load(`${root}/lib/auth/server.ts`).requireIamAccess as (
+      requiredPermission?: "iam:roles:manage",
+    ) => Promise<void>,
     requireGuest: load(`${root}/lib/auth/server.ts`).requireGuestSession as () => Promise<void>,
   };
 }
 describe("verified server page access", () => {
+  it("isolates server-prefetched data per identity and never hydrates failed or unauthorized reads", async () => {
+    const files = fixture().output.virtualFileSystem.snapshot();
+    let user: { id: string; role: string } | null = { id: "a", role: "viewer" };
+    const backendFetch = vi.fn(async () => Response.json({ privateRecord: "only-a" }));
+    const load = generatedRuntime(files, {
+      "server-only": {},
+      "@tanstack/react-query": { QueryClient, dehydrate },
+      "next/headers": { headers: async () => new Headers({ cookie: `cookie-${user?.id}` }) },
+      "@/lib/auth/server": { getInitialIdentity: async () => user },
+      "@/lib/backend/transport": { backendFetch },
+    });
+    const prefetch = load(`${root}/lib/api/initial-data.ts`).initialData as (
+      backend: string,
+      path: string,
+      key: string[],
+      input: object,
+      privateData: boolean,
+    ) => Promise<ReturnType<typeof dehydrate>>;
+    const first = await prefetch(
+      "api",
+      "/api/customers",
+      ["nordixgen", "api", "customers", "list"],
+      { query: { page: 1 } },
+      true,
+    );
+    expect(first.queries[0].queryKey).toEqual([
+      "nordixgen",
+      "api",
+      "customers",
+      "list",
+      ["private", "a", "viewer"],
+      { query: { page: 1 } },
+    ]);
+    expect(backendFetch.mock.calls[0]).toEqual([
+      "api",
+      "/api/customers?page=1",
+      expect.objectContaining({
+        headers: { cookie: "cookie-a" },
+        cache: "no-store",
+        redirect: "error",
+      }),
+    ]);
+    user = { id: "b", role: "viewer" };
+    backendFetch.mockResolvedValueOnce(new Response(null, { status: 403 }));
+    expect((await prefetch("api", "/api/customers", ["list"], {}, true)).queries).toEqual([]);
+    user = null;
+    backendFetch.mockClear();
+    expect((await prefetch("api", "/api/customers", ["list"], {}, true)).queries).toEqual([]);
+    expect(backendFetch).not.toHaveBeenCalled();
+    expect(JSON.stringify(first)).toContain("only-a");
+  });
+  it("protects audit history from user-assignment operators and rechecks current grants", async () => {
+    for (const permission of ["*", "iam:roles:manage", "iam:users:manage-roles", "notes:read"]) {
+      const f = guard("public");
+      f.fetchSession
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ session: { id: "s" }, user: { id: "u", role: "admin" } })),
+        )
+        .mockResolvedValueOnce(new Response(JSON.stringify({ permissions: [permission] })));
+      if (permission === "*" || permission === "iam:roles:manage")
+        await expect(f.requireIam("iam:roles:manage")).resolves.toBeUndefined();
+      else await expect(f.requireIam("iam:roles:manage")).rejects.toThrow("redirect:/");
+    }
+    const guest = guard("public", null);
+    await expect(guest.requireIam("iam:roles:manage")).rejects.toThrow("redirect:/sign-in");
+  });
   it("redirects verified members away from account entry pages but admits guests and expired sessions", async () => {
     const member = guard();
     await expect(member.requireGuest()).rejects.toThrow("redirect:/");
@@ -90,7 +160,7 @@ describe("verified server page access", () => {
         .mockResolvedValueOnce(new Response(JSON.stringify({ permissions: ["*"] })));
       await f.requireIam();
       expect(f.fetchSession.mock.calls.map((call) => String(call[0]))).toEqual([
-        "https://internal.invalid/api/auth/get-session",
+        "https://internal.invalid/api/auth/iam/bootstrap",
         "https://internal.invalid/api/auth/iam/me",
       ]);
       expect(process.env.NEXT_PUBLIC_AUTH_BASE_URL).toBe("http://localhost:8787");
@@ -149,7 +219,14 @@ describe("verified server page access", () => {
     };
     const load = generatedRuntime(files, {
       "@/lib/auth/client": { authClient: { useSession: () => state } },
-      react: { useState: () => [null, () => {}], useEffect: () => {} },
+      react: {
+        createContext: () => ({}),
+        createElement: () => null,
+        useContext: () => undefined,
+        useRef: () => ({ current: false }),
+        useState: () => [null, () => {}],
+        useEffect: () => {},
+      },
       "@/lib/iam/client": { iamRequest: async () => null },
     });
     const view = load(`${root}/lib/auth/use-session-view.ts`).useSessionView as () => {
@@ -176,6 +253,10 @@ describe("verified server page access", () => {
     const load = generatedRuntime(files, {
       "@/lib/auth/client": { authClient: { useSession: () => session } },
       react: {
+        createContext: () => ({}),
+        createElement: () => null,
+        useContext: () => undefined,
+        useRef: () => ({ current: false }),
         useState: (init: unknown) => [
           typeof init === "function" ? (init as () => unknown)() : init,
           () => {},
@@ -205,6 +286,108 @@ describe("verified server page access", () => {
     expect(c2.isPending).toBe(true);
     finish({ id: "u-1", role: "admin", permissions: ["*"] });
     await iamPromise;
+  });
+  it("discards access responses from a previous user and reports unavailable identity without inventing denied permissions", async () => {
+    const files = fixture().output.virtualFileSystem.snapshot();
+    let state: {
+      isPending: boolean;
+      data: { user: { id: string; role: string } } | null;
+      error?: Error;
+    } = { isPending: false, data: { user: { id: "a", role: "member" } } };
+    const pending: Array<(value: unknown) => void> = [];
+    const load = generatedRuntime(files, {
+      "@/lib/auth/client": {
+        authClient: { useSession: () => ({ ...state, refetch: async () => {} }) },
+      },
+      react: {
+        createContext: () => ({}),
+        createElement: () => null,
+        useContext: () => undefined,
+        useRef: () => ({ current: false }),
+        useState: () => [0, () => {}],
+        useEffect: (fn: () => void) => fn(),
+      },
+      "@/lib/iam/client": { iamRequest: () => new Promise((resolve) => pending.push(resolve)) },
+    });
+    const view = load(`${root}/lib/auth/use-session-view.ts`).useSessionView as () => {
+      user: { id: string } | null;
+      error: string | null;
+      isPending: boolean;
+      hasPermission: (permission: string) => boolean;
+    };
+    view();
+    state = { isPending: false, data: { user: { id: "b", role: "member" } } };
+    view();
+    pending[0]({ id: "a", role: "member", permissions: ["*"] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(view().hasPermission("iam:roles:manage")).toBe(false);
+    pending[1]({ id: "b", role: "member", permissions: ["iam:users:manage-roles"] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(view().hasPermission("iam:users:manage-roles")).toBe(true);
+    expect(view().hasPermission("iam:roles:manage")).toBe(false);
+    state = { isPending: false, data: null, error: Error("503") };
+    expect(view()).toMatchObject({
+      user: null,
+      isPending: false,
+      error: "We could not verify your session. Please try again.",
+    });
+    expect(view().hasPermission("iam:users:manage-roles")).toBe(false);
+  });
+  it("never restores the initial server identity after sign-out or a failed session verification", () => {
+    const files = fixture().output.virtualFileSystem.snapshot();
+    const settled = { current: false };
+    let state: { isPending: boolean; data: null; error?: Error } = { isPending: true, data: null };
+    const initial = { id: "verified", role: "admin", permissions: ["*"] };
+    const load = generatedRuntime(files, {
+      "@/lib/auth/client": { authClient: { useSession: () => state } },
+      react: {
+        createContext: () => ({}),
+        createElement: () => null,
+        useContext: () => initial,
+        useRef: () => settled,
+        useState: () => [0, () => {}],
+        useEffect: () => {},
+      },
+      "@/lib/iam/client": { iamRequest: async () => null },
+    });
+    const view = load(`${root}/lib/auth/use-session-view.ts`).useSessionView as () => {
+      user: unknown;
+      isPending: boolean;
+      hasPermission: (permission: string) => boolean;
+    };
+    expect(view().hasPermission("iam:roles:manage")).toBe(true);
+    state = { isPending: false, data: null };
+    expect(view()).toMatchObject({ user: null, isPending: false });
+    state = { isPending: true, data: null };
+    expect(view().user).toBeNull();
+    expect(view().hasPermission("iam:roles:manage")).toBe(false);
+    state = { isPending: false, data: null, error: Error("unavailable") };
+    expect(view().user).toBeNull();
+  });
+  it("retires the initial identity for newly mounted children after the provider has verified sign-out", () => {
+    const files = fixture().output.virtualFileSystem.snapshot();
+    const usable = { current: true };
+    let pending = true;
+    const element = vi.fn((_type: unknown, props: unknown) => props);
+    const load = generatedRuntime(files, {
+      "@/lib/auth/client": {
+        authClient: { useSession: () => ({ isPending: pending, data: null }) },
+      },
+      react: {
+        createContext: () => ({ Provider: {} }),
+        createElement: element,
+        useRef: () => usable,
+      },
+      "@/lib/iam/client": {},
+    });
+    const provider = load(`${root}/lib/auth/use-session-view.ts`)
+      .InitialIdentityProvider as (props: { user: object; children: null }) => { value: unknown };
+    const initial = { id: "old-user", role: "admin", permissions: ["*"] };
+    expect(provider({ user: initial, children: null }).value).toBe(initial);
+    pending = false;
+    expect(provider({ user: initial, children: null }).value).toBeUndefined();
+    pending = true;
+    expect(provider({ user: initial, children: null }).value).toBeUndefined();
   });
   it("protects every resolved business page before rendering while retaining public auth entry pages", () => {
     const { output } = fixture();
@@ -243,7 +426,7 @@ describe("verified server page access", () => {
       const f = guard();
       await expect(f.require("/invoice")).resolves.toMatchObject({ user: { id: "user" } });
       expect(String(f.fetchSession.mock.calls[0][0])).toBe(
-        "https://internal.invalid/api/auth/get-session",
+        "https://internal.invalid/api/auth/iam/bootstrap",
       );
       expect(f.fetchSession.mock.calls[0][1]).toMatchObject({
         headers: { cookie: "test-cookie" },
@@ -297,7 +480,7 @@ describe("verified server page access", () => {
       const f = guard();
       await f.require("/invoice");
       expect(String(f.fetchSession.mock.calls[0][0])).toBe(
-        "https://internal.invalid/api/auth/get-session",
+        "https://internal.invalid/api/auth/iam/bootstrap",
       );
       const context = frontendRenderContext(fixture().project, "web");
       expect(identityBaseUrl(context)).not.toContain("process.env");

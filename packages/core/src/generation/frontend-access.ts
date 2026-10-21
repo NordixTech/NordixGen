@@ -15,19 +15,20 @@ export function generateFrontendAccess(context: FrontendRenderContext): readonly
     {
       path: `${context.framework.codeRoot}/lib/auth/server.ts`,
       content: `import "server-only";
+import {cache} from "react";
 import {headers} from "next/headers";
 import {backendFetch} from "@/lib/backend/transport";
 import {redirect} from "next/navigation";
 const protectedPages:Readonly<Record<string,boolean>>=${JSON.stringify(pages)};
-export interface VerifiedPageSession {user:{id:string;role?:string|null};session:Record<string,unknown>;}
+export interface VerifiedPageSession {user:{id:string;name?:string;email?:string;role?:string|null;permissions?:string[]};session:Record<string,unknown>;}
 export class IdentityUnavailable extends Error {constructor(){super("The identity service is unavailable. Please try again.");this.name="IdentityUnavailable";}}
 /** Called at each protected page boundary, including server navigation. No cookie-presence authorization. */
-async function readPageSession():Promise<VerifiedPageSession|null> {
+const readPageSession=cache(async():Promise<VerifiedPageSession|null>=>{
  const cookie=(await headers()).get("cookie");
  if(!cookie)return null;
  let session:VerifiedPageSession|null;
  try {
-  const response=await backendFetch(${JSON.stringify(context.frontend.identity?.backend)},"/api/auth/get-session",{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});
+  const response=await backendFetch(${JSON.stringify(context.frontend.identity?.backend)},"/api/auth/iam/bootstrap",{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});
   if(response.status===401)session=null;
   else {
    if(!response.ok)throw new IdentityUnavailable();
@@ -38,7 +39,9 @@ async function readPageSession():Promise<VerifiedPageSession|null> {
   }
  }catch{throw new IdentityUnavailable();}
  return session;
-}
+});
+/** Per-render verification only; never a shared cache of private identities. */
+export async function getInitialIdentity(){try{return (await readPageSession())?.user??null;}catch{return undefined;}}
 export async function requireGuestSession():Promise<void>{
  if(await readPageSession())redirect("/");
 }
@@ -48,7 +51,7 @@ export async function requirePageSession(path:string):Promise<VerifiedPageSessio
  if(!session)redirect("/sign-in");
  return session;
 }
-export async function requireIamAccess():Promise<void>{
+export async function requireIamAccess(requiredPermission?:"iam:roles:manage"):Promise<void>{
  await requirePageSession("/admin/roles");
  const cookie=(await headers()).get("cookie")??"";
  let response:Response;
@@ -57,7 +60,7 @@ export async function requireIamAccess():Promise<void>{
  if(response.status===403)redirect("/");
  if(!response.ok)throw new IdentityUnavailable();
  const principal:unknown=await response.json().catch(()=>null);
- if(!principal||typeof principal!=="object"||!("permissions" in principal)||!Array.isArray(principal.permissions)||!principal.permissions.some(value=>value==="*"||value==="iam:roles:manage"||value==="iam:users:manage-roles"))redirect("/");
+ if(!principal||typeof principal!=="object"||!("permissions" in principal)||!Array.isArray(principal.permissions)||!principal.permissions.some(value=>value==="*"||(requiredPermission?value===requiredPermission:value==="iam:roles:manage"||value==="iam:users:manage-roles")))redirect("/");
 }
 `,
     },
@@ -69,7 +72,7 @@ export function protectFrontendPage(
   context: FrontendRenderContext,
   file: GeneratedFile,
 ): GeneratedFile {
-  if (file.path.endsWith("/app/admin/roles/page.tsx"))
+  if (file.path.endsWith("/app/admin/roles/page.tsx") || file.path.endsWith("/app/audit/page.tsx"))
     return { ...file, content: `export const dynamic="force-dynamic";\n${file.content}` };
   const page = context.frontend.pages.find(
     (page) =>
@@ -78,7 +81,7 @@ export function protectFrontendPage(
   );
   if (!page?.authenticated) return file;
   const content = file.content.replace(
-    /export default function (\w+)\(\)\s*\{/,
+    /export default (?:async )?function (\w+)\(\)\s*\{/,
     `export default async function $1() {\n await requirePageSession(${JSON.stringify(page.path)});`,
   );
   if (content === file.content)

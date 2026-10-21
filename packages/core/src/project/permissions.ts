@@ -7,6 +7,9 @@ export function backendPermissions(config: NordixConfig, backend: string): strin
   return [
     ...new Set([
       ...IAM_PERMISSIONS,
+      ...(config.backends.find((app) => app.name === backend)?.iac?.r2_storage ?? []).flatMap(
+        (key) => [`storage:${key}:read`, `storage:${key}:write`],
+      ),
       ...config.endpoints
         .filter((endpoint) => endpoint.backend === backend)
         .flatMap((endpoint) => endpoint.permissions)

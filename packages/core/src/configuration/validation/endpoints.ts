@@ -83,6 +83,8 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
     symbols.set(symbol, endpoint.operationId);
     if (
       endpoint.path === "/health" ||
+      (backend?.iac?.r2_storage.length &&
+        (endpoint.path === "/api/storage" || endpoint.path.startsWith("/api/storage/"))) ||
       (backend?.authentication &&
         (endpoint.path === "/api/auth" ||
           endpoint.path.startsWith("/api/auth/") ||
@@ -92,7 +94,7 @@ export function validateEndpoints(config: NordixConfig): ConfigDiagnostic[] {
       add(
         "PLATFORM_ROUTE_RESERVED",
         `${path}.path`,
-        "This path belongs to a platform health/authentication/IAM handler. Choose a separate business path.",
+        "This path belongs to a platform health/authentication/IAM/storage handler. Choose a separate business path.",
       );
     const placeholders = [...endpoint.path.matchAll(/\{([^{}]+)\}/g)].map((m) => m[1]);
     if (

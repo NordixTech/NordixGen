@@ -210,16 +210,21 @@ export function resolveFrontend(
     if (frontend.ai.connectPortal.enabled) inventory.add("/connect-ai");
   }
   if (visible.length) inventory.add("/api-explorer");
+  const storageBackends = frontend.connectsTo
+    .filter((name) => backends[name].storage.length)
+    .sort();
+  if (storageBackends.length) inventory.add("/r2");
   for (const operation of visible) inventory.add(entities[operation.entity].page);
   if (identity) {
     inventory.add("/admin/roles");
+    inventory.add("/audit");
     inventory.add("/sign-in");
     inventory.add("/sign-up");
     if (identity.methods.includes("email-password")) {
       inventory.add("/forgot-password");
       inventory.add("/reset-password");
     }
-    if (identity.methods.includes("phone-number")) inventory.add("/profile");
+    inventory.add("/profile");
   }
   const publicPage = (path: string) =>
     frontend.access.mode === "public" ||
@@ -235,6 +240,7 @@ export function resolveFrontend(
       ));
   return {
     name: frontend.name,
+    storageBackends,
     ...(frontend.ai?.enabled
       ? {
           ai: {
@@ -256,7 +262,9 @@ export function resolveFrontend(
       authenticated:
         (frontend.ai?.enabled && (path === "/chat" || path === "/connect-ai")) ||
         path === "/admin/roles" ||
+        path === "/audit" ||
         path === "/profile" ||
+        (path === "/r2" && Boolean(identity)) ||
         !publicPage(path),
     })),
     operations: visible.map((operation) => operation.id),

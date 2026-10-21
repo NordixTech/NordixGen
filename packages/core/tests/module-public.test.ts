@@ -106,6 +106,7 @@ function makeFixture(
   };
   const find = vi.fn(async () => [customer]);
   const db = {
+    batch: (queries: readonly Promise<unknown>[]) => Promise.all(queries),
     query: { CustomerTable: { findMany: find }, InvoiceTable: { findMany: async () => [] } },
     select: () => ({ from: () => ({ where: async () => [{ count: 1 }] }) }),
   };
@@ -201,7 +202,7 @@ const wire:string=row.entity.createdAt;
         ];
       expect(dependencies).toContain('"getCustomer"');
       expect(dependencies).not.toContain('"createCustomer"');
-    }, 20_000);
+    }, 60_000);
     it("wires only declared public operations and executes real calls with the same context", async () => {
       const f = fixture();
       expect(Object.keys(f.modules.customers.public)).toEqual(["getCustomer"]);

@@ -184,10 +184,7 @@ export const comprehensiveYaml = stringify(createValidConfig());
 
 export function targetConfig(name = "clean-modules") {
   const result = parseNordixYaml(
-    readFileSync(
-      new URL(`../../../docs/configuration/samples/${name}.yaml`, import.meta.url),
-      "utf8",
-    ),
+    readFileSync(new URL(`../../../examples/configuration/${name}.yaml`, import.meta.url), "utf8"),
   );
   if (!result.success) throw new Error(JSON.stringify(result.diagnostics));
   return result.config;

@@ -72,6 +72,41 @@ export function validateEntities(config: NordixConfig): ConfigDiagnostic[] {
     }
 
     const fieldNames = new Set(Object.keys(entity.fields));
+    const availableFields = fieldDefinitions(config, entityName);
+    const indexSignatures = new Set<string>();
+    for (const [index, definition] of entity.indexes.entries()) {
+      const path = `entities.${entityName}.indexes.${index}.fields`;
+      for (const field of definition.fields)
+        if (!Object.hasOwn(availableFields, field))
+          generatedFieldDiagnostics.push(
+            createDiagnostic(
+              "UNKNOWN_INDEX_FIELD",
+              path,
+              `Field "${field}" does not exist on this entity. Use scalar field names, including generated fields or owning foreign keys.`,
+            ),
+          );
+      const signature = JSON.stringify(definition.fields);
+      if (indexSignatures.has(signature))
+        generatedFieldDiagnostics.push(
+          createDiagnostic(
+            "DUPLICATE_ENTITY_INDEX",
+            path,
+            "This ordered field list already has an index. Remove the duplicate.",
+          ),
+        );
+      indexSignatures.add(signature);
+      if (
+        definition.fields.length === 1 &&
+        (definition.fields[0] === "id" || availableFields[definition.fields[0]]?.unique)
+      )
+        generatedFieldDiagnostics.push(
+          createDiagnostic(
+            "REDUNDANT_ENTITY_INDEX",
+            path,
+            "This field already has a primary-key or unique index. Remove this redundant index.",
+          ),
+        );
+    }
     const sqlNames = new Map<string, string>();
     for (const fieldName of Object.keys(fieldDefinitions(config, entityName))) {
       const sqlName = snakeCase(fieldName);

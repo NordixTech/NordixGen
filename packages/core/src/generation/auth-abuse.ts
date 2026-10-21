@@ -1,5 +1,7 @@
+import { abuseFunctionSql } from "./abuse-function.js";
 /** Shared persistent counters. Rows are locked in key order, independently of IP/Worker. */
-export const authAbuseStore = String.raw`import {Client} from "@neondatabase/serverless";
+export const authAbuseStore = String.raw`import {neon,neonConfig} from "@neondatabase/serverless";
+export const installAbuseFunctionSql=__ABUSE_SQL__;
 export interface LimitRule {key:string;max:number;window:number;initialDelay?:number;multiplier?:number;maxDelay?:number;}
 export interface LimitState {count:number;windowStart:number;lastRequest:number;}
 export function decideLimit(rule:LimitRule,state:LimitState,now:number){
@@ -11,32 +13,18 @@ export function decideLimit(rule:LimitRule,state:LimitState,now:number){
 }
 export async function consumeLimits(connectionString:string,rules:readonly LimitRule[]):Promise<{retryAfter:number;nextDelay:number}>{
  if(!rules.length)return {retryAfter:0,nextDelay:0};
- const client=new Client({connectionString,connectionTimeoutMillis:10000});
- const localProxy=process.env.NEON_HTTP_PROXY_URL,hostname=new URL(connectionString).hostname;
- if(localProxy||hostname.endsWith(".localtest.me")){
-  const endpoint=new URL(localProxy??"http://127.0.0.1:4444/sql");
-  if(endpoint.protocol!=="http:"||endpoint.username||endpoint.password)throw Error("Invalid local database proxy");
-  client.neonConfig.wsProxy=()=>endpoint.host+"/v2";client.neonConfig.useSecureWebSocket=false;client.neonConfig.pipelineConnect=false;
+ const proxy=typeof process!=="undefined"?process.env.NEON_HTTP_PROXY_URL:undefined;
+ if(proxy||new URL(connectionString).hostname.endsWith(".localtest.me")){
+  const endpoint=new URL(proxy??"http://127.0.0.1:4444/sql");
+  if(endpoint.protocol!=="http:"||endpoint.username||endpoint.password)throw Error("Invalid local Neon endpoint");
+  neonConfig.fetchEndpoint=endpoint.href;
  }
- try{
-  await client.connect();await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-  await client.query("SET LOCAL lock_timeout='5s'");await client.query("SET LOCAL statement_timeout='10s'");
-  const ordered=[...rules].sort((a,b)=>a.key.localeCompare(b.key));
-  const states:LimitState[]=[];
-  for(const rule of ordered){
-   await client.query('INSERT INTO auth_abuse_limit (key,count,window_start,last_request) VALUES ($1,0,0,0) ON CONFLICT (key) DO NOTHING',[rule.key]);
-   const result=await client.query('SELECT count,window_start,last_request FROM auth_abuse_limit WHERE key=$1 FOR UPDATE',[rule.key]);
-   const row=result.rows[0];states.push({count:Number(row.count),windowStart:Number(row.window_start),lastRequest:Number(row.last_request)});
-  }
-  const clock=await client.query('SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS now');
-  const now=Number(clock.rows[0].now),decisions=ordered.map((rule,i)=>decideLimit(rule,states[i],now));
-  const retryAfter=Math.max(...decisions.map(d=>d.retryAfter));
-  if(retryAfter){await client.query("ROLLBACK");return {retryAfter,nextDelay:0};}
-  for(let i=0;i<ordered.length;i++){const d=decisions[i];await client.query('UPDATE auth_abuse_limit SET count=$2,window_start=$3,last_request=$4 WHERE key=$1',[ordered[i].key,d.count,d.windowStart,now]);}
-  await client.query("COMMIT");return {retryAfter:0,nextDelay:Math.max(...decisions.map(d=>d.nextDelay))};
- }catch(error){await client.query("ROLLBACK").catch(()=>{});throw error;}finally{await client.end();}
+ const query=neon(connectionString,{fetchOptions:{signal:AbortSignal.timeout(15000)}});
+ const rows=await query('SELECT * FROM public.nordix_consume_limits($1::jsonb)',[JSON.stringify(rules)]);
+ const result=rows[0];if(!result)throw Error("Authentication limits unavailable");
+ return {retryAfter:Number(result.retryAfter),nextDelay:Number(result.nextDelay)};
 }
-`;
+`.replace("__ABUSE_SQL__", JSON.stringify(abuseFunctionSql));
 
 export const authAbusePlugin = String.raw`import type {BetterAuthPlugin} from "better-auth";
 import {APIError,createAuthMiddleware,getSessionFromCtx} from "better-auth/api";

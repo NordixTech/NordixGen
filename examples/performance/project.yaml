@@ -1,0 +1,799 @@
+# Performance fixture: synthetic workload, one backend and two frontends.
+# Generate into ./generated; generated code, credentials and measurements are not versioned.
+schemaVersion: 2
+name: ng-perf117-1021
+version: 1.0.0
+repositories:
+  - name: app
+    path: .
+    initializeGit: true
+    createRemote: false
+databases:
+  primary: {}
+iac:
+  cloudflare:
+    r2_storage:
+      documents:
+        visibility: private
+      assets:
+        visibility: public
+backends:
+  - name: api
+    repository: app
+    path: apps/api
+    persistence:
+      database: primary
+    iac:
+      r2_storage:
+        - documents
+        - assets
+    modules:
+      commerce:
+        architecture: clean
+        entities:
+          - Customer
+          - Address
+          - Category
+          - Product
+          - Order
+          - OrderItem
+          - Payment
+          - Shipment
+    authentication:
+      methods:
+        - email-password
+        - phone-number
+      identityProviders: []
+      passwordPolicy:
+        minLength: 12
+        requireUppercase: true
+        requireLowercase: true
+        requireNumber: true
+        requireSpecialChar: true
+      rateLimit:
+        enabled: true
+        window: 60s
+        max: 1000
+        ip:
+          window: 60s
+          max: 1000
+        account:
+          window: 15m
+          max: 100
+    authorization:
+      roles:
+        - admin
+        - manager
+        - operator
+        - customer
+        - guest
+      adminRole: admin
+      defaultRole: guest
+      rolePermissions:
+        manager:
+          - customer:read
+          - customer:write
+          - address:read
+          - address:write
+          - category:read
+          - category:write
+          - product:read
+          - product:write
+          - order:read
+          - order:write
+          - orderitem:read
+          - orderitem:write
+          - payment:read
+          - payment:write
+          - shipment:read
+          - shipment:write
+          - storage:documents:read
+          - storage:assets:read
+          - storage:documents:write
+          - storage:assets:write
+        operator:
+          - customer:read
+          - address:read
+          - category:read
+          - product:read
+          - order:read
+          - orderitem:read
+          - payment:read
+          - shipment:read
+          - storage:documents:read
+          - storage:assets:read
+        customer:
+          - customer:read
+          - address:read
+          - category:read
+          - product:read
+          - order:read
+          - orderitem:read
+          - payment:read
+          - shipment:read
+        guest: []
+frontends:
+  - name: web
+    repository: app
+    path: apps/web
+    connectsTo:
+      - api
+    access:
+      mode: mixed
+      backend: api
+      publicRoutes:
+        - /
+        - /product
+  - name: portal
+    repository: app
+    path: apps/portal
+    connectsTo:
+      - api
+    access:
+      mode: mixed
+      backend: api
+      publicRoutes:
+        - /
+        - /product
+entities:
+  Customer:
+    backend: api
+    fields:
+      name:
+        type: string
+        maxLength: 160
+      email:
+        type: string
+        unique: true
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
+    relations:
+      addresses:
+        type: one-to-many
+        target: Address
+        foreignKey: customerId
+      orders:
+        type: one-to-many
+        target: Order
+        foreignKey: customerId
+  Address:
+    backend: api
+    fields:
+      street:
+        type: string
+        maxLength: 160
+      city:
+        type: string
+        maxLength: 160
+    relations:
+      customer:
+        type: many-to-one
+        target: Customer
+        foreignKey: customerId
+        required: true
+        onDelete: cascade
+  Category:
+    backend: api
+    fields:
+      name:
+        type: string
+        maxLength: 160
+    relations:
+      products:
+        type: one-to-many
+        target: Product
+        foreignKey: categoryId
+  Product:
+    backend: api
+    fields:
+      name:
+        type: string
+        maxLength: 160
+      sku:
+        type: string
+        unique: true
+      price:
+        type: number
+        format: decimal
+        precision: 10
+        scale: 2
+      stock:
+        type: number
+        format: integer
+    relations:
+      category:
+        type: many-to-one
+        target: Category
+        foreignKey: categoryId
+        required: true
+        onDelete: cascade
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
+  Order:
+    backend: api
+    fields:
+      reference:
+        type: string
+        unique: true
+      status:
+        type: string
+        maxLength: 160
+      total:
+        type: number
+        format: decimal
+        precision: 10
+        scale: 2
+    relations:
+      customer:
+        type: many-to-one
+        target: Customer
+        foreignKey: customerId
+        required: true
+        onDelete: cascade
+      items:
+        type: one-to-many
+        target: OrderItem
+        foreignKey: orderId
+      payments:
+        type: one-to-many
+        target: Payment
+        foreignKey: orderId
+      shipments:
+        type: one-to-many
+        target: Shipment
+        foreignKey: orderId
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    softDelete: timestamp
+    indexes:
+      - fields:
+          - customerId
+          - createdAt
+  OrderItem:
+    backend: api
+    fields:
+      quantity:
+        type: number
+        format: integer
+      unitPrice:
+        type: number
+        format: decimal
+        precision: 10
+        scale: 2
+    relations:
+      order:
+        type: many-to-one
+        target: Order
+        foreignKey: orderId
+        required: true
+        onDelete: cascade
+      product:
+        type: many-to-one
+        target: Product
+        foreignKey: productId
+        required: true
+        onDelete: cascade
+    indexes:
+      - fields:
+          - orderId
+          - id
+  Payment:
+    backend: api
+    fields:
+      amount:
+        type: number
+        format: decimal
+        precision: 10
+        scale: 2
+      status:
+        type: string
+        maxLength: 160
+    relations:
+      order:
+        type: many-to-one
+        target: Order
+        foreignKey: orderId
+        required: true
+        onDelete: cascade
+    timestamps:
+      createdAt: true
+      updatedAt: true
+    indexes:
+      - fields:
+          - orderId
+          - id
+  Shipment:
+    backend: api
+    fields:
+      trackingCode:
+        type: string
+        maxLength: 160
+      status:
+        type: string
+        maxLength: 160
+    relations:
+      order:
+        type: many-to-one
+        target: Order
+        foreignKey: orderId
+        required: true
+        onDelete: cascade
+    timestamps:
+      createdAt: true
+      updatedAt: true
+pagination:
+  standard:
+    defaultPageSize: 50
+    maxPageSize: 100
+endpoints:
+  - backend: api
+    entity: Customer
+    operationId: listCustomers
+    method: GET
+    path: /api/customers
+    permissions:
+      - customer:read
+    pagination: standard
+    queryParams:
+      - name: search
+        field:
+          entity: Customer
+          field: name
+        required: false
+        operator: contains
+  - backend: api
+    entity: Customer
+    operationId: getCustomer
+    method: GET
+    path: /api/customers/{id}
+    permissions:
+      - customer:read
+    pathParams:
+      - name: id
+        field:
+          entity: Customer
+          field: id
+  - backend: api
+    entity: Customer
+    operationId: createCustomer
+    method: POST
+    path: /api/customers
+    permissions:
+      - customer:write
+    audit: true
+    requestBody:
+      useCase:
+        entity: Customer
+        operation: create
+  - backend: api
+    entity: Customer
+    operationId: updateCustomer
+    method: PATCH
+    path: /api/customers/{id}
+    permissions:
+      - customer:write
+    audit: true
+    pathParams:
+      - name: id
+        field:
+          entity: Customer
+          field: id
+    requestBody:
+      useCase:
+        entity: Customer
+        operation: update
+  - backend: api
+    entity: Address
+    operationId: listAddresss
+    method: GET
+    path: /api/addresss
+    permissions:
+      - address:read
+    pagination: standard
+    queryParams:
+      - name: search
+        field:
+          entity: Address
+          field: street
+        required: false
+        operator: contains
+  - backend: api
+    entity: Address
+    operationId: getAddress
+    method: GET
+    path: /api/addresss/{id}
+    permissions:
+      - address:read
+    pathParams:
+      - name: id
+        field:
+          entity: Address
+          field: id
+  - backend: api
+    entity: Address
+    operationId: createAddress
+    method: POST
+    path: /api/addresss
+    permissions:
+      - address:write
+    audit: true
+    requestBody:
+      useCase:
+        entity: Address
+        operation: create
+  - backend: api
+    entity: Address
+    operationId: updateAddress
+    method: PATCH
+    path: /api/addresss/{id}
+    permissions:
+      - address:write
+    audit: true
+    pathParams:
+      - name: id
+        field:
+          entity: Address
+          field: id
+    requestBody:
+      useCase:
+        entity: Address
+        operation: update
+  - backend: api
+    entity: Category
+    operationId: listCategorys
+    method: GET
+    path: /api/categorys
+    permissions:
+      - category:read
+    pagination: standard
+    queryParams:
+      - name: search
+        field:
+          entity: Category
+          field: name
+        required: false
+        operator: contains
+  - backend: api
+    entity: Category
+    operationId: getCategory
+    method: GET
+    path: /api/categorys/{id}
+    permissions:
+      - category:read
+    pathParams:
+      - name: id
+        field:
+          entity: Category
+          field: id
+  - backend: api
+    entity: Category
+    operationId: createCategory
+    method: POST
+    path: /api/categorys
+    permissions:
+      - category:write
+    audit: true
+    requestBody:
+      useCase:
+        entity: Category
+        operation: create
+  - backend: api
+    entity: Category
+    operationId: updateCategory
+    method: PATCH
+    path: /api/categorys/{id}
+    permissions:
+      - category:write
+    audit: true
+    pathParams:
+      - name: id
+        field:
+          entity: Category
+          field: id
+    requestBody:
+      useCase:
+        entity: Category
+        operation: update
+  - backend: api
+    entity: Product
+    operationId: listProducts
+    method: GET
+    path: /api/products
+    authRequired: false
+    pagination: standard
+    queryParams:
+      - name: search
+        field:
+          entity: Product
+          field: name
+        required: false
+        operator: contains
+  - backend: api
+    entity: Product
+    operationId: getProduct
+    method: GET
+    path: /api/products/{id}
+    permissions:
+      - product:read
+    pathParams:
+      - name: id
+        field:
+          entity: Product
+          field: id
+  - backend: api
+    entity: Product
+    operationId: createProduct
+    method: POST
+    path: /api/products
+    permissions:
+      - product:write
+    audit: true
+    requestBody:
+      useCase:
+        entity: Product
+        operation: create
+  - backend: api
+    entity: Product
+    operationId: updateProduct
+    method: PATCH
+    path: /api/products/{id}
+    permissions:
+      - product:write
+    audit: true
+    pathParams:
+      - name: id
+        field:
+          entity: Product
+          field: id
+    requestBody:
+      useCase:
+        entity: Product
+        operation: update
+  - backend: api
+    entity: Order
+    operationId: listOrders
+    method: GET
+    path: /api/orders
+    permissions:
+      - order:read
+    pagination: standard
+    joins:
+      - entity: Customer
+        type: left
+        fields:
+          - id
+          - name
+          - email
+      - entity: OrderItem
+        type: left
+        fields:
+          - id
+          - quantity
+          - unitPrice
+      - entity: Payment
+        type: left
+        fields:
+          - id
+          - amount
+          - status
+    queryParams:
+      - name: search
+        field:
+          entity: Order
+          field: reference
+        required: false
+        operator: contains
+  - backend: api
+    entity: Order
+    operationId: getOrder
+    method: GET
+    path: /api/orders/{id}
+    permissions:
+      - order:read
+    pathParams:
+      - name: id
+        field:
+          entity: Order
+          field: id
+  - backend: api
+    entity: Order
+    operationId: createOrder
+    method: POST
+    path: /api/orders
+    permissions:
+      - order:write
+    audit: true
+    requestBody:
+      useCase:
+        entity: Order
+        operation: create
+  - backend: api
+    entity: Order
+    operationId: updateOrder
+    method: PATCH
+    path: /api/orders/{id}
+    permissions:
+      - order:write
+    audit: true
+    pathParams:
+      - name: id
+        field:
+          entity: Order
+          field: id
+    requestBody:
+      useCase:
+        entity: Order
+        operation: update
+  - backend: api
+    entity: OrderItem
+    operationId: listOrderItems
+    method: GET
+    path: /api/orderitems
+    permissions:
+      - orderitem:read
+    pagination: standard
+    queryParams:
+      - name: search
+        field:
+          entity: OrderItem
+          field: quantity
+        required: false
+        operator: eq
+  - backend: api
+    entity: OrderItem
+    operationId: getOrderItem
+    method: GET
+    path: /api/orderitems/{id}
+    permissions:
+      - orderitem:read
+    pathParams:
+      - name: id
+        field:
+          entity: OrderItem
+          field: id
+  - backend: api
+    entity: OrderItem
+    operationId: createOrderItem
+    method: POST
+    path: /api/orderitems
+    permissions:
+      - orderitem:write
+    audit: true
+    requestBody:
+      useCase:
+        entity: OrderItem
+        operation: create
+  - backend: api
+    entity: OrderItem
+    operationId: updateOrderItem
+    method: PATCH
+    path: /api/orderitems/{id}
+    permissions:
+      - orderitem:write
+    audit: true
+    pathParams:
+      - name: id
+        field:
+          entity: OrderItem
+          field: id
+    requestBody:
+      useCase:
+        entity: OrderItem
+        operation: update
+  - backend: api
+    entity: Payment
+    operationId: listPayments
+    method: GET
+    path: /api/payments
+    permissions:
+      - payment:read
+    pagination: standard
+    queryParams:
+      - name: search
+        field:
+          entity: Payment
+          field: amount
+        required: false
+        operator: eq
+  - backend: api
+    entity: Payment
+    operationId: getPayment
+    method: GET
+    path: /api/payments/{id}
+    permissions:
+      - payment:read
+    pathParams:
+      - name: id
+        field:
+          entity: Payment
+          field: id
+  - backend: api
+    entity: Payment
+    operationId: createPayment
+    method: POST
+    path: /api/payments
+    permissions:
+      - payment:write
+    audit: true
+    requestBody:
+      useCase:
+        entity: Payment
+        operation: create
+  - backend: api
+    entity: Payment
+    operationId: updatePayment
+    method: PATCH
+    path: /api/payments/{id}
+    permissions:
+      - payment:write
+    audit: true
+    pathParams:
+      - name: id
+        field:
+          entity: Payment
+          field: id
+    requestBody:
+      useCase:
+        entity: Payment
+        operation: update
+  - backend: api
+    entity: Shipment
+    operationId: listShipments
+    method: GET
+    path: /api/shipments
+    permissions:
+      - shipment:read
+    pagination: standard
+    queryParams:
+      - name: search
+        field:
+          entity: Shipment
+          field: trackingCode
+        required: false
+        operator: contains
+  - backend: api
+    entity: Shipment
+    operationId: getShipment
+    method: GET
+    path: /api/shipments/{id}
+    permissions:
+      - shipment:read
+    pathParams:
+      - name: id
+        field:
+          entity: Shipment
+          field: id
+  - backend: api
+    entity: Shipment
+    operationId: createShipment
+    method: POST
+    path: /api/shipments
+    permissions:
+      - shipment:write
+    audit: true
+    requestBody:
+      useCase:
+        entity: Shipment
+        operation: create
+  - backend: api
+    entity: Shipment
+    operationId: updateShipment
+    method: PATCH
+    path: /api/shipments/{id}
+    permissions:
+      - shipment:write
+    audit: true
+    pathParams:
+      - name: id
+        field:
+          entity: Shipment
+          field: id
+    requestBody:
+      useCase:
+        entity: Shipment
+        operation: update

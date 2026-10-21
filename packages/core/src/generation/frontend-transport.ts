@@ -37,7 +37,7 @@ export async function backendFetch(backend:string,path:string,init:RequestInit={
  // Read only the active Worker context. Async discovery would start Wrangler inside next start.
  if(process.env.NORDIX_LOCAL_RUNTIME!=="1")try{env=(await getCloudflareContext()).env as unknown as Record<string,unknown>;}catch{}
  const service=env?.[binding] as Service|undefined;
- const headers=new Headers(init.headers);headers.delete("host");headers.delete("connection");headers.delete("content-length");
+ const headers=new Headers(init.headers);headers.delete("host");headers.delete("connection");headers.delete("content-length");headers.set("accept-encoding","identity");
  const request=new Request(new URL(path,origin),{...init,headers,redirect:"manual"});
  if(service)return service.fetch(request);
  // HTTP fallback is opt-in for local Next standalone/Docker, or next dev only.
@@ -45,7 +45,12 @@ export async function backendFetch(backend:string,path:string,init:RequestInit={
  const key="BACKEND_"+backend.toUpperCase().replaceAll("-","_")+"_INTERNAL_URL";
  const base=new URL(process.env[key]??defaults[backend]);
  if(!["http:","https:"].includes(base.protocol)||base.username||base.password||base.pathname!=="/"||base.search||base.hash)throw Error("Invalid local backend origin");
- return fetch(new Request(new URL(path,base),request));
+ const response=await fetch(new Request(new URL(path,base),request));
+ // Node fetch decodes compressed HTTP bodies but retains their wire headers.
+ if(!response.headers.has("content-encoding"))return response;
+ const forwarded=new Headers(response.headers);forwarded.delete("content-encoding");forwarded.delete("content-length");
+ if(typeof response.headers.getSetCookie==="function"){forwarded.delete("set-cookie");for(const cookie of response.headers.getSetCookie())forwarded.append("set-cookie",cookie);}
+ return new Response(response.body,{status:response.status,statusText:response.statusText,headers:forwarded});
 }
 export async function proxyBackend(backend:string,request:Request,path:string):Promise<Response>{
  try{

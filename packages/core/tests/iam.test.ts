@@ -93,7 +93,12 @@ function fixture() {
           throw new authApi.APIError("UNAUTHORIZED", {
             message: "A verified session is required.",
           });
-        return { session: { user: { id: "operator" } } };
+        return {
+          session: {
+            user: { id: "operator", name: "Operator", email: "operator@example.test" },
+            session: { id: "session", token: "never-expose-this" },
+          },
+        };
       }),
     },
     zod,
@@ -160,6 +165,27 @@ function fixture() {
   };
 }
 describe("generated dynamic IAM", () => {
+  it("bootstraps only a verified identity with current grants and never returns its session token", async () => {
+    const f = fixture();
+    const response = await f.request("/bootstrap");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      user: {
+        id: "operator",
+        name: "Operator",
+        email: "operator@example.test",
+        role: "admin",
+        permissions: ["*"],
+      },
+      session: { id: "session" },
+    });
+    f.setPrincipal({ id: "operator", role: "viewer", permissions: [] });
+    expect(await (await f.request("/bootstrap")).json()).toMatchObject({
+      user: { role: "viewer", permissions: [] },
+    });
+    f.signOut();
+    expect((await f.request("/bootstrap")).status).toBe(401);
+  });
   it("deletes a role through real HTTP using the generated frontend client", async () => {
     const f = fixture();
     const server = serve({ fetch: f.handler, hostname: "127.0.0.1", port: 0 });
@@ -213,8 +239,8 @@ describe("generated dynamic IAM", () => {
     expect(web["apps/web/src/lib/auth/permissions.ts"]).not.toContain("rolePermissions");
     expect(web["apps/web/src/components/iam/administration.tsx"]).toContain("manageRoles&&");
     expect(web["apps/web/src/app/page.tsx"]).not.toContain('href="/admin/roles"');
-    expect(web["apps/web/src/components/auth/auth-controls.tsx"]).toContain(
-      'hasPermission("iam:roles:manage")||hasPermission("iam:users:manage-roles")',
+    expect(web["apps/web/src/components/layout/app-shell.tsx"]).toContain(
+      'session.hasPermission("iam:roles:manage")||session.hasPermission("iam:users:manage-roles")',
     );
   });
   it("uses the configured administrator role throughout seed, CLI, and IAM protections", () => {

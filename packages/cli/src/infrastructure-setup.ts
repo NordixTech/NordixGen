@@ -47,6 +47,19 @@ export async function prepareInfrastructure(
       "GitHub token for repository reads and PR comments (Contents Read, Pull requests Write)",
     );
   registerSecret(github);
+  const uploadOrigins: Record<string, Record<string, string[]>> = {};
+  for (const environment of ["staging", "production"] as const) {
+    const buckets: Record<string, string[]> = {};
+    for (const [backend, app] of Object.entries(infrastructure.backends)) {
+      const origins = Object.entries(manifest.publicFrontends ?? {})
+        .filter(([, frontend]) => frontend.connections.includes(backend))
+        .map(([name]) => profile.urls[environment][name])
+        .filter((url): url is string => Boolean(url));
+      for (const key of app.storage)
+        buckets[key] = [...new Set([...(buckets[key] ?? []), ...origins])];
+    }
+    uploadOrigins[environment] = buckets;
+  }
   const build = {
     CLOUDFLARE_ACCOUNT_ID: account,
     R2_STATE_BUCKET: bucket,
@@ -55,6 +68,7 @@ export async function prepareInfrastructure(
     CLOUDFLARE_API_TOKEN: token,
     INFRA_GITHUB_TOKEN: github,
     INFRA_GITHUB_REPOSITORY: profile.repository,
+    R2_UPLOAD_ORIGINS: JSON.stringify(uploadOrigins),
   };
   const old = new Map<string, string | undefined>();
   for (const [name, value] of Object.entries(build)) {

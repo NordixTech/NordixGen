@@ -153,8 +153,9 @@ describe("AI configuration and generated application contracts", () => {
       ),
     ).toEqual([]);
   }, 60000);
-  it("generates independently switched chat, portal and MCP authentication methods", async () => {
-    for (const methods of [[], ["oauth"], ["api-key"]]) {
+  it.each([{ methods: [] }, { methods: ["oauth"] }, { methods: ["api-key"] }])(
+    "generates independently switched chat, portal and MCP authentication methods: $methods",
+    async ({ methods }) => {
       const config = aiFixture();
       Object.assign(config.backends[0], {
         ai: {
@@ -185,8 +186,9 @@ describe("AI configuration and generated application contracts", () => {
       expect(Object.keys(backend).some((path) => path.includes("/mcp-gateway/"))).toBe(
         methods.length > 0,
       );
-    }
-  }, 60000);
+    },
+    60000,
+  );
   it("selects providers from runtime keys in priority order and applies model overrides", () => {
     const create = (provider: string) => (options: { apiKey: string }) => (model: string) => ({
       provider,

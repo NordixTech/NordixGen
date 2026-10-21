@@ -31,6 +31,8 @@ export interface DeploymentManifest {
   applications: DeploymentApplication[];
 }
 export interface DeploymentProfile {
+  neonRegions?: Record<string, string>;
+  backendPlacements?: Record<string, string>;
   stateBucket?: string;
   accountId: string;
   repository: string;
