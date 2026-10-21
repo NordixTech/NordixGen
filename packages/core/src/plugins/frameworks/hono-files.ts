@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { resolveArchitectureLayout } from "../architecture/layout.js";
 import type { BackendRenderContext, DomainModelContext, GeneratedFile } from "../contracts.js";
 
 function relativeImport(fromFile: string, toFile: string): string {
@@ -106,25 +107,34 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
   for (const endpoint of model.endpoints) {
     const operationName = endpointTypeName(endpoint);
     const moduleRoot = context.moduleRoots[endpoint.moduleId];
+    const module = model.modules.filter((module) => module.id === endpoint.moduleId)[0];
+    const moduleLayout = resolveArchitectureLayout(module.architecture);
     const controllerPath = posix.join(
       moduleRoot,
-      "presentation/controllers",
+      moduleLayout.directories.controller,
       `${lowerFirst(operationName)}.controller.ts`,
     );
     const endpointDtoPath = posix.join(
       moduleRoot,
-      "application/use-cases/dtos/endpoints",
+      moduleLayout.directories.useCase,
+      "dtos/endpoints",
       `${operationName}.dto.ts`,
     );
     const endpointUseCasePath = posix.join(
       moduleRoot,
-      "application/use-cases",
+      moduleLayout.directories.useCase,
       `${operationName}.use-case.ts`,
     );
 
     const problemImport = relativeImport(controllerPath, problemDetailsPath);
     const dtoImport = relativeImport(controllerPath, endpointDtoPath);
-    const useCaseImport = relativeImport(controllerPath, endpointUseCasePath);
+    const explicitPort = module.architecture !== "clean";
+    const useCaseImport = relativeImport(
+      controllerPath,
+      explicitPort
+        ? posix.join(moduleRoot, moduleLayout.inboundPort, `${operationName}.port.ts`)
+        : endpointUseCasePath,
+    );
 
     const hasPathParams = endpoint.pathParams.length > 0;
     // Even an empty declared query contract rejects undeclared query names.
@@ -189,10 +199,12 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       ...(dtoImportsList.length > 0
         ? [`import { ${dtoImportsList.join(", ")} } from "${dtoImport}";`]
         : []),
-      `import { ${operationName}UseCase } from "${useCaseImport}";`,
+      explicitPort
+        ? `import type {${operationName}Port} from "${useCaseImport}";`
+        : `import { ${operationName}UseCase } from "${useCaseImport}";`,
       "",
       `export interface ${operationName}ControllerDependencies {`,
-      `  useCase?: Pick<${operationName}UseCase,"execute">;`,
+      `  useCase?: ${explicitPort ? `${operationName}Port` : `Pick<${operationName}UseCase,"execute">`};`,
       "  authorize?:()=>Promise<void>;",
       "}",
       "",

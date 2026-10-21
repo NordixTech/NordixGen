@@ -1,6 +1,6 @@
 # YAML v2: fixed-stack modular project contract
 
-Status: approved contract from [#64](https://github.com/NordixTech/NordixGen/issues/64), implemented for configuration parsing and validation in [#67](https://github.com/NordixTech/NordixGen/issues/67). The runtime and generated editor schema accept YAML v2 only. **Clean modular generation and public application calls are implemented.** Unimplemented architecture families remain explicit readiness failures; live database/browser verification runs through the maintained commerce example. The [shared resolved model](RESOLVED_MODEL.md) is implemented by the core resolution API. See [validation behavior and evidence](VALIDATION.md).
+Status: approved contract from [#64](https://github.com/NordixTech/NordixGen/issues/64), implemented for configuration parsing and validation in [#67](https://github.com/NordixTech/NordixGen/issues/67). The runtime and generated editor schema accept YAML v2 only. **Clean, Hexagonal and Onion modular generation and public application calls are implemented.** Mixed-family compiler, HTTP and persistence tests verify the architecture contracts; the maintained Clean commerce example verifies the connected browser product. The [shared resolved model](RESOLVED_MODEL.md) is implemented by the core resolution API. See [validation behavior and evidence](VALIDATION.md).
 
 The product requirements remain in [the specification](../SPECIFICATION.md). This contract makes configuration decisions concrete. MUST, MUST NOT and REQUIRED describe normative behavior after implementation. Paths, TypeScript symbol names and directory names explicitly marked illustrative may change without changing that behavior.
 
@@ -17,7 +17,7 @@ The product requirements remain in [the specification](../SPECIFICATION.md). Thi
 9. Frontend access defaults to `public`, independently of API policies. Protected pages validate the selected backend's session server-side; Better Auth is the one reactive session source.
 10. Modules call application contracts directly in one process. Domain/application code cannot import Hono or Drizzle. Shared platform integration has one owner per backend.
 
-Clean is the executable architecture target for v1.1.0. Hexagonal/Onion are specified names and boundary contracts for later implementations, not prerequisites to complete that milestone. A structurally/semantically valid mixed-family example is **not generation-ready** until its renderers exist. Public `validate` and `generate` MUST share readiness diagnostics and reject an unimplemented family before side effects.
+Clean, Hexagonal and Onion are executable per-module choices. The mixed-family example is generation-ready and uses the same fixed stack, public contracts and composition root. Public `validate` and `generate` share readiness checks and reject unsupported mappings before side effects.
 
 No v1 converter, second generation engine, in-place regeneration, arbitrary non-Cloudflare IaC, AI, event bus, distributed transaction or arbitrary plugin system is specified. Local Docker and native Cloudflare CI/CD are generated operational capabilities; see the CLI workflow.
 
@@ -117,14 +117,14 @@ src/
       application/{use-cases,ports}/
       infrastructure/
       presentation/
-    billing/                           # hexagonal, future renderer
+    billing/                           # hexagonal
       public/{contracts,index}.ts
-      core/{domain,application,ports}/
-      adapters/{driving,driven}/
-    reporting/                         # onion, future renderer
+      core/{domain,application/{operations,ports/{inbound,outbound}}}/
+      adapters/{inbound/http,outbound/database}/
+    reporting/                         # onion
       public/{contracts,index}.ts
-      domain/{models,services}/
-      application/{services,interfaces}/
+      domain/entities/
+      application/{services,contracts,ports}/
       infrastructure/
       presentation/
 ```
@@ -245,7 +245,7 @@ An exported signature conceptually has `(input: OperationInput, context: Operati
 
 Unexpected exceptions are contained at the operation boundary. Their private cause may be logged safely, never returned as SQL/connection details. A normal generated query with no matches returns successful `[]`, not an invented `not_found`. A module propagates another module's application result or explicitly maps it; it must not convert failures to successful empty data by default. No HTTP status code/Response is part of the module API.
 
-The [executable communication sketch](module-communication.ts) demonstrates a Clean Customers public query injected into an authored Hexagonal Billing application method. Its Customer input `{ customerId }` comes from the mixed example's path binding; the returned rows contain public value DTOs. `previewForCustomer` is explicitly authored example code, not generated from `imports` and not an extra YAML-exported operation. The sample uses an injected in-memory port, not the real parser, authentication library or database. Its tests verify the design sketch, not future generated functionality.
+The [executable communication sketch](module-communication.ts) demonstrates a Clean Customers public query injected into an authored Hexagonal Billing application method. Its Customer input `{ customerId }` comes from the mixed example's path binding; the returned rows contain public value DTOs. `previewForCustomer` is explicitly authored example code, not generated from `imports` and not an extra YAML-exported operation. The sample uses an injected in-memory port, not the real parser, authentication library or database. Its tests verify the design sketch; the generator has separate executable cross-family contract tests.
 
 Composition order for that example is Customers -> Billing -> Reporting. The root creates one database/identity/policy platform, constructs Customers with its private repository, supplies only `customers.getCustomer` to Billing, and mounts each declared HTTP adapter once. Calling the customer contract does not use Hono or HTTP loopback. The reporting module need not call Billing merely because it exists.
 
@@ -439,7 +439,7 @@ Public validation reports syntax, structure, references and readiness in useful 
 | --- | --- | --- |
 | Missing/unknown version, removed selector, unknown key | `CONFIG_VERSION_UNSUPPORTED`, `CONFIG_FIELD_REMOVED`, `CONFIG_FIELD_UNKNOWN`; `schemaVersion`, `backends[0].framework` | Supply v2/remove obsolete or misspelled key |
 | Unknown backend/entity, missing/duplicate module owner | `REFERENCE_UNKNOWN`, `ENTITY_OWNER_MISSING`, `ENTITY_OWNER_DUPLICATE`; `backends[0].modules.billing.entities[0]` | Name both conflicting owners and assign exactly one |
-| Invalid or unimplemented family | `MODULE_ARCHITECTURE_INVALID`, `MODULE_ARCHITECTURE_UNIMPLEMENTED`; `backends[0].modules.billing.architecture` | Correct spelling or choose an implemented family; no fallback |
+| Invalid family | `MODULE_ARCHITECTURE_INVALID`; `backends[0].modules.billing.architecture` | Select `clean`, `hexagonal` or `onion`; no fallback |
 | Unknown producer, private/unknown/foreign operation | `MODULE_IMPORT_UNKNOWN`, `MODULE_IMPORT_NOT_EXPORTED`, `MODULE_EXPORT_UNKNOWN`, `MODULE_EXPORT_OWNER_MISMATCH`; module import/export item | Fix declared public ownership/reference |
 | Self dependency or module cycle | `MODULE_IMPORT_SELF`, `MODULE_DEPENDENCY_CYCLE`; module imports | Remove the edge; include actual cycle path |
 | Cross-module relation/join/field binding | `CROSS_MODULE_RELATION`, `CROSS_MODULE_JOIN`, `CROSS_MODULE_FIELD_REFERENCE`; offending target/reference | Use a scalar ID and an explicit public application call |
@@ -456,7 +456,7 @@ All linked YAML files pass the configuration parser and semantic validator. Publ
 
 - [Single Clean module](samples/single-module.yaml): a manually converted backend-only persisted Note query with authentication intentionally disabled.
 - [Two Clean modules](samples/clean-modules.yaml): required v1.1.0 architecture scenario with explicit ownership, a public list, protected lookup/create/update/delete, intra-module relations, pagination and a mixed-access frontend. The UUID connecting modules is scalar.
-- [Mixed architectures](samples/mixed-modules.yaml): Clean Customers, Hexagonal Billing and Onion Reporting. Valid target ownership/dependencies; not generation-ready until the future renderers exist. Billing's import grants a dependency, not automatic invoice workflow.
+- [Mixed architectures](samples/mixed-modules.yaml): Clean Customers, Hexagonal Billing and Onion Reporting. Executable ownership, dependencies and per-module architecture selection. Billing's import grants a dependency, not automatic invoice workflow.
 
 The following edits to those files are syntactically valid YAML but semantically invalid. They are fragments to replace/insert at the named location, not standalone project files. Later schema/model tests must assert their diagnostics; this design PR checks syntax, links and the executable contract sketch without implementing a competing v2 validator.
 
@@ -527,7 +527,7 @@ For a current single-backend Clean input with `Note`, keep the existing fields, 
 
 Checks follow implemented behavior: strict configuration/readiness, resolved ownership, declared operation output, boundaries, persistence, policies, clients, forms and cache isolation. Test and CI names describe functionality rather than issue numbers. Documentation sketches explain contracts; generated-project integration provides separate executable evidence.
 
-Previous schemas and technology selectors are rejected rather than converted. Clean modules use one direct generation pipeline with module-owned persistence, typed public calls and enforced source boundaries. Hexagonal/Onion and many-to-many remain recognized but unimplemented generation cases; no fallback is emitted. The CLI initializes new/empty projects only; it does not update or migrate an edited generated project.
+Previous schemas and technology selectors are rejected rather than converted. Clean, Hexagonal and Onion modules use one direct generation pipeline with module-owned persistence, typed public calls and enforced source boundaries. Many-to-many remains a recognized but unimplemented generation case; no fallback is emitted. The CLI initializes new/empty projects only; it does not update or migrate an edited generated project.
 
 ## 13. Verification and implementation status
 

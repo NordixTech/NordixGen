@@ -13,17 +13,11 @@ import { resolvedFixture, targetConfig } from "./fixtures.js";
 const diagnostics = (input: unknown) => validateNordixConfig(input).diagnostics;
 describe("YAML structure, references and descriptive diagnostics", () => {
   it.each(["single-module", "clean-modules", "mixed-modules"])(
-    "validates the approved %s example without pretending generation is ready",
+    "validates and accepts generation of the approved %s example",
     (name) => {
       const config = targetConfig(name);
       expect(validateNordixConfig(config)).toMatchObject({ success: true, diagnostics: [] });
-      expect(generationReadiness(resolvedFixture(config)).length === 0).toBe(
-        name !== "mixed-modules",
-      );
-      if (name === "mixed-modules")
-        expect(generationReadiness(resolvedFixture(config)).map((d) => d.code)).toContain(
-          "MODULE_ARCHITECTURE_UNIMPLEMENTED",
-        );
+      expect(generationReadiness(resolvedFixture(config))).toEqual([]);
     },
   );
 

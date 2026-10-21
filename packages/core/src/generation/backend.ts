@@ -3,6 +3,7 @@ import type { ConfigDiagnostic } from "../diagnostics.js";
 import { generateApplicationFiles } from "../plugins/architecture/application-files.js";
 import { resolveCleanArchitectureLayout } from "../plugins/architecture/clean.js";
 import { generateDomainFiles } from "../plugins/architecture/domain-files.js";
+import { resolveArchitectureLayout } from "../plugins/architecture/layout.js";
 import { generateBetterAuthFiles } from "../plugins/authentication/better-auth.js";
 import { generateAuthorizationFiles } from "../plugins/authorization/roles-permissions.js";
 import type { BackendRenderContext } from "../plugins/contracts.js";
@@ -85,7 +86,7 @@ export function generateBackend(project: ResolvedProject, name: string) {
   const contributions = [
     ...view.modules.flatMap((module) => {
       const scoped = moduleRenderContext(project, name, module.id);
-      // Shared readiness has established Clean; future families never reach emission.
+      // Each module selects its built-in dependency layout; shared assembly stays single-owned.
       return [
         { owner: `${module.id}:domain`, files: generateDomainFiles(scoped) },
         { owner: `${module.id}:application`, files: generateApplicationFiles(scoped) },
@@ -173,7 +174,7 @@ export function moduleRenderContext(
     throw new Error("UNKNOWN_MODULE_TARGET: Select a module owned by this backend.");
   const codeRoot = parent.moduleRoots[moduleId];
   const framework = { ...parent.framework, codeRoot };
-  const architecture = resolveCleanArchitectureLayout();
+  const architecture = resolveArchitectureLayout(module.architecture);
   const entities = Object.fromEntries(
     module.entities.map((name) => [name, project.entities[name]]),
   );
@@ -189,7 +190,7 @@ export function moduleRenderContext(
     moduleId,
     framework,
     architecture,
-    sharedDatabaseFile: posix.join(codeRoot, "infrastructure/database/client.ts"),
+    sharedDatabaseFile: posix.join(codeRoot, architecture.databaseClient),
     domainModel: {
       ...parent.domainModel,
       entities,
@@ -206,8 +207,8 @@ export function moduleRenderContext(
             ...parent.persistence,
             directories: {
               infrastructure: parent.platformRoot,
-              adapter: posix.join(codeRoot, "infrastructure/adapters"),
-              schema: posix.join(codeRoot, "infrastructure/database/schema"),
+              adapter: posix.join(codeRoot, architecture.directories.adapter),
+              schema: posix.join(codeRoot, architecture.schema),
             },
           },
         }

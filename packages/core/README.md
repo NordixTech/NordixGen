@@ -23,7 +23,7 @@ if (!result.success) {
 }
 ```
 
-`resolveProject(input, options?)` accepts object input without invented source coordinates. `resolveProjectYaml(source, filename?, options?)` attaches YAML source locations. Pass `{ requireGeneration: true }` as resolution options to require readiness as well. Both CLI commands use this same resolution/preflight. The direct backend flow supports multiple Clean modules and typed public contracts; Hexagonal/Onion have no renderer. Many-to-many generation also has an explicit readiness diagnostic.
+`resolveProject(input, options?)` accepts object input without invented source coordinates. `resolveProjectYaml(source, filename?, options?)` attaches YAML source locations. Pass `{ requireGeneration: true }` as resolution options to require readiness as well. Both CLI commands use this same resolution/preflight. The direct backend flow supports Clean, Hexagonal and Onion modules with unchanged typed public contracts. Many-to-many generation also has an explicit readiness diagnostic.
 
 `parseNordixYaml(source, filename?)` and `validateNordixConfig(input)` remain configuration-only APIs. They return canonical configuration, not a normalized renderer model; the parser no longer accepts generation options. The old IR builder, normalized-configuration API and renderer field/name inference have been removed. Use the [resolved model guide](../../docs/configuration/RESOLVED_MODEL.md) for value mapping, views and public contract boundaries.
 
@@ -47,4 +47,4 @@ See the [contract](../../docs/configuration/YAML_V2.md) and [validation/evidence
 
 Public exports cover configuration parsing/validation and JSON Schema, immutable project resolution/views/types, `generationReadiness`, `generateBackend`/`generateFrontend`, diagnostics, VFS collection/emission and the scaffold/tooling records used by the CLI. Generation returns files and dependencies in memory; the CLI owns external commands and publication. Concrete architecture, HTTP, ORM, authentication, styling and UI renderers and their contexts are internal implementation details, not supported extension points. No registry/composer or alternate-stack API is exported.
 
-This is an initializer for new/empty projects. It does not regenerate edited applications, convert previous schemas, provision cloud resources or coordinate cross-module transactions. Clean is executable; Hexagonal/Onion and many-to-many generation fail readiness explicitly.
+This is an initializer for new/empty projects. It does not regenerate edited applications, convert previous schemas, provision cloud resources or coordinate cross-module transactions. Clean, Hexagonal and Onion are executable; many-to-many generation still fails readiness explicitly.

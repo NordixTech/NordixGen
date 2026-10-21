@@ -34,7 +34,7 @@ function twoBackends() {
   return config;
 }
 describe("resolved scopes, defaults and configuration failures", () => {
-  it("refuses temporary renderer fallbacks and supports a resolved backend without persistence", () => {
+  it("supports Onion and a resolved backend without persistence", () => {
     const config = targetConfig("single-module");
     config.backends[0].persistence = undefined;
     const project = resolvedFixture(config);
@@ -42,8 +42,8 @@ describe("resolved scopes, defaults and configuration failures", () => {
     expect(() => generateBackend(project, "missing")).toThrow("UNKNOWN_BACKEND_TARGET");
     config.backends[0].modules.notes.architecture = "onion";
     expect(generateBackend(resolvedFixture(config), "api")).toMatchObject({
-      success: false,
-      diagnostics: [expect.objectContaining({ code: "MODULE_ARCHITECTURE_UNIMPLEMENTED" })],
+      success: true,
+      diagnostics: [],
     });
     expect(generateBackend(resolvedFixture(targetConfig()), "api").success).toBe(true);
     config.backends[0].modules.notes.architecture = "clean";

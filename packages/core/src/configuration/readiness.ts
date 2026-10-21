@@ -2,20 +2,10 @@ import { createDiagnostic } from "../diagnostics.js";
 import type { ResolvedEntity, ResolvedModule, ResolvedProject } from "../project/types.js";
 
 export function resolveGenerationReadiness(
-  modules: readonly ResolvedModule[],
+  _modules: readonly ResolvedModule[],
   entities: Readonly<Record<string, ResolvedEntity>>,
 ) {
   return [
-    ...modules
-      .filter((module) => module.architecture !== "clean")
-      .map((module) => ({
-        ...createDiagnostic(
-          "MODULE_ARCHITECTURE_UNIMPLEMENTED",
-          `${module.origin.path}.architecture`,
-          `Architecture '${module.architecture}' is recognized, but its generator is not implemented. Select Clean; no fallback or files are emitted.`,
-        ),
-        ...(module.architectureOrigin.source ? { source: module.architectureOrigin.source } : {}),
-      })),
     ...Object.values(entities).flatMap((entity) =>
       Object.values(entity.relations)
         .filter((relation) => relation.type === "many-to-many")

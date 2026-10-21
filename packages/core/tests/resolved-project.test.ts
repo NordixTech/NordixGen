@@ -11,12 +11,12 @@ import { resolvedFixture, targetConfig } from "./fixtures.js";
 
 describe("shared resolved project and boundary views", () => {
   it.each(["single-module", "clean-modules", "mixed-modules"])(
-    "resolves %s without claiming generation readiness",
+    "resolves %s with executable generation readiness",
     (name) => {
       const project = resolvedFixture(targetConfig(name));
       expect(project.formatVersion).toBe(5);
       expect(generationReadiness(project)).toBe(project.readiness);
-      expect(project.readiness.length === 0).toBe(name !== "mixed-modules");
+      expect(project.readiness.length === 0).toBe(true);
       expect(Object.isFrozen(project.entities)).toBe(true);
       expect(Object.isFrozen(project.operations)).toBe(true);
     },
@@ -177,15 +177,10 @@ describe("shared resolved project and boundary views", () => {
       result.project.operations["api.customers.listCustomers"].pagination?.origin.source?.line,
     ).toBeGreaterThan(0);
     const ready = resolveProjectYaml(source, "client.yaml", { requireGeneration: true });
-    expect(ready.success).toBe(false);
-    const unsupported = ready.diagnostics.find(
-      (d) => d.code === "MODULE_ARCHITECTURE_UNIMPLEMENTED",
-    );
-    const line =
-      source.split("\n").findIndex((line) => line.includes("architecture: hexagonal")) + 1;
-    expect(unsupported).toMatchObject({
-      path: "backends[0].modules.billing.architecture",
-      source: { file: "client.yaml", line },
+    expect(ready.success).toBe(true);
+    expect(result.project.modules["api.billing"].architectureOrigin.source).toMatchObject({
+      file: "client.yaml",
+      line: source.split("\n").findIndex((line) => line.includes("architecture: hexagonal")) + 1,
     });
   });
   it("rejects stored FK cycles with the actual cycle and its source while leaving module order separate", () => {

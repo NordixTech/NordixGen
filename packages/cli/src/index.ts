@@ -50,11 +50,7 @@ export function createProgram(): Command {
         });
         if (!result.success) {
           task.stop(
-            result.diagnostics.some(
-              (d) =>
-                d.code === "MODULE_ARCHITECTURE_UNIMPLEMENTED" ||
-                d.code === "RELATION_MAPPING_UNIMPLEMENTED",
-            )
+            result.diagnostics.some((d) => d.code === "RELATION_MAPPING_UNIMPLEMENTED")
               ? "Configuration is valid; generation is not ready"
               : "Configuration is invalid",
           );

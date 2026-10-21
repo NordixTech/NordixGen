@@ -22,8 +22,13 @@ export interface BackendPaths {
   readonly entryPoints: { readonly worker: string };
   readonly scaffold: UpstreamScaffoldPlan;
 }
-export interface CleanLayout {
+export interface ArchitectureLayout {
   readonly directories: Readonly<Record<ArchitectureFileRole, string>>;
+  readonly domainRoot: string;
+  readonly applicationRoot: string;
+  readonly inboundPort: string;
+  readonly schema: string;
+  readonly databaseClient: string;
 }
 export type DomainModelContext = BackendModelView;
 export interface PersistenceContext {
@@ -41,7 +46,7 @@ export interface PersistenceContext {
 }
 export interface BackendRenderContext {
   readonly framework: BackendPaths;
-  readonly architecture: CleanLayout;
+  readonly architecture: ArchitectureLayout;
   readonly domainModel: BackendModelView;
   readonly persistence?: PersistenceContext;
   readonly identity?: ResolvedIdentity;

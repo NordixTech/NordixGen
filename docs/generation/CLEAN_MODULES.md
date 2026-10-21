@@ -4,7 +4,7 @@ Each backend now generates one modular monolith with module-owned domain entitie
 
 Platform identity, authorization, HTTP problems/routes, database client and migration/seed helpers are emitted once under `src/platform/`. Business tables and relations live under each module's `infrastructure/database/schema/`; the platform schema aggregates those exports, shared PostgreSQL enums and identity tables once. The explicit composition creates one business database client and supplies that instance to all module bootstrap factories through module-scoped query types. One Hono application mounts the declared operations from all modules. Platform composition can import module bootstrap/controller implementations; another business module cannot.
 
-Module `index.ts` is the [public application boundary](PUBLIC_MODULES.md). Explicit typed exports/imports, trusted context, application results and direct wiring are implemented. Hexagonal/Onion and many-to-many still fail shared preflight before effects. Modules cannot import the all-table platform schema or bypass their scoped database type.
+Module `index.ts` is the [public application boundary](PUBLIC_MODULES.md). Explicit typed exports/imports, trusted context, application results and direct wiring are implemented. Hexagonal and Onion use the same module composition and public contracts. Many-to-many still fails shared preflight before effects. Modules cannot import the all-table platform schema or bypass their scoped database type.
 
 ## Enforced boundaries
 

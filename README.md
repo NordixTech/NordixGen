@@ -2,13 +2,13 @@
 
 NordixGen is an internal Nordix tool for generating the starting point of client projects from a declarative YAML configuration. It focuses on the stack Nordix uses and maintains: TypeScript, Next.js App Router, Tailwind CSS, Hono, Drizzle ORM, PostgreSQL on Neon, Better Auth, TanStack Query, and Zustand.
 
-A generated backend is a modular monolith: business modules run together in one process. Clean is the implemented module architecture. Hexagonal and Onion are recognized future families and fail generation readiness until their renderers are implemented. Modules communicate through explicit, typed application contracts and direct in-process calls. Project configuration describes the business systemâ€”its repositories and paths, applications and connections, databases, modules, entities, endpoints, pagination, and authentication/authorization needsâ€”rather than selecting unrelated technology stacks.
+A generated backend is a modular monolith: business modules run together in one process. Clean, Hexagonal and Onion are executable per-module architectures and can coexist in the same backend. Modules communicate through explicit, typed application contracts and direct in-process calls. Project configuration describes the business systemâ€”its repositories and paths, applications and connections, databases, modules, entities, endpoints, pagination, and authentication/authorization needsâ€”rather than selecting unrelated technology stacks.
 
 ## Implementation status
 
 The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
 
-**Independent Clean module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Multiple Clean modules share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Hexagonal/Onion remain unsupported. Focused persistence, identity, browser access, forms and cache-isolation checks pass. A maintained fresh full-stack acceptance check now exercises the connected product; the same check must pass again after repository cleanup.
+**Clean, Hexagonal and Onion module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Modules of all three families share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Architecture-specific ports and dependency checks preserve each module's inward boundaries. Focused persistence, identity, browser access, forms and cache-isolation checks pass. A maintained fresh full-stack acceptance check now exercises the connected product; the same check must pass again after repository cleanup.
 
 ## Generate and explore the commerce example
 
@@ -54,7 +54,7 @@ node packages/cli/dist/index.js init
 # Validate configuration and supported generation readiness
 node packages/cli/dist/index.js validate -f nordix.config.yaml
 
-# Generate a supported Clean project into a new or empty directory
+# Generate a supported project into a new or empty directory
 node packages/cli/dist/index.js generate -f nordix.config.yaml -o ./my-client-project
 ```
 

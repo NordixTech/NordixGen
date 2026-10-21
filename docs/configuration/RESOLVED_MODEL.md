@@ -33,7 +33,7 @@ Module dependencies and stored-foreign-key dependencies have independent graphs 
 
 ## Readiness and direct generation
 
-Both CLI `validate` and `generate` call resolution with `{ requireGeneration: true }`. Invalid configuration or resolution fails before readiness. One or multiple Clean modules generate through the [direct backend pipeline](../generation/DIRECT_BACKEND.md). Hexagonal/Onion report `MODULE_ARCHITECTURE_UNIMPLEMENTED`; many-to-many reports `RELATION_MAPPING_UNIMPLEMENTED`. No output, installation or publication starts on those failures.
+Both CLI `validate` and `generate` call resolution with `{ requireGeneration: true }`. Invalid configuration or resolution fails before readiness. One or multiple Clean, Hexagonal and Onion modules generate through the [direct backend pipeline](../generation/DIRECT_BACKEND.md). Many-to-many reports `RELATION_MAPPING_UNIMPLEMENTED`. No output, installation or publication starts on those failures.
 
 Backend and frontend generation call concrete typed renderers over resolved views. The internal `plugins/` directory contains those renderers and small path/context types, not a selectable plugin protocol. There is no registry, composer, capability negotiation, planner, legacy normalizer or second authoritative model. Package exports expose configuration, model views, generation and file APIs; concrete renderers remain internal.
 
