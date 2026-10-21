@@ -1,40 +1,48 @@
-# NordixGen documentation
+# Welcome to NordixGen
 
-NordixGen initializes ordinary, editable client applications from strict YAML v2. This directory documents the generator and its output. Paths such as `src/platform/` refer to a generated application unless a guide explicitly says otherwise. Commands for generated applications run in that application's directory; generator commands run in this checkout.
+NordixGen turns a YAML description of your application into a working TypeScript project. Define your data, API operations and access rules; generate the backend, web interface and deployment setup together.
 
-## Start with your task
+Created by Nordix for building client applications, it handles the repetitive setup so you can start with business features. The generated source belongs to your project. You can edit it and run it without installing NordixGen in production.
 
-| Task | Read |
+## What you can build
+
+- One or more Hono backends, organized into business modules.
+- One or more Next.js frontends connected to those backends.
+- PostgreSQL data models, typed APIs, forms and management screens.
+- Authentication, database-managed roles, audit trails and document storage.
+- Optional AI chat and MCP access to your business operations.
+- Local Docker environments and Cloudflare staging/production deployments.
+
+The stack is TypeScript, Next.js App Router, Tailwind CSS, Hono, Drizzle, PostgreSQL/Neon, Better Auth, TanStack Query and Zustand. You configure the application rather than choose frameworks.
+
+## Start here
+
+1. [Quick start](GETTING_STARTED.md) — generate and run a small application.
+2. [Project structure](configuration/PROJECT_STRUCTURE.md) — organize repositories, backends and frontends.
+3. [Backend](guides/BACKEND.md) and [frontend](guides/FRONTEND.md) — understand what is generated.
+
+## Build your application
+
+| Topic | What you will learn |
 | --- | --- |
-| Generate and run a first project | [Getting started](GETTING_STARTED.md) |
-| Find a feature, its configuration and its limits | [Capability map](CAPABILITIES.md) |
-| Edit configuration | [YAML v2 reference](configuration/YAML_V2.md), then [validation and diagnostics](configuration/VALIDATION.md) |
-| Add business behavior after generation | [Extending a generated project](EXTENDING_PROJECTS.md) |
-| Configure login, delivery and the first administrator | [Authentication setup](generation/AUTHENTICATION.md) and [identity/IAM](generation/IDENTITY_ACCESS.md) |
-| Add chat, external AI clients or custom tools | [AI and MCP](generation/AI_MCP.md) |
-| Run Docker or configure staging/production | [CLI workflow](generation/CLI_WORKFLOW.md) and [deployment](DEPLOYMENT.md) |
-| Manage buckets, documents and infrastructure changes | [R2 infrastructure](INFRASTRUCTURE.md) |
-| Diagnose setup or runtime failures | [Troubleshooting](TROUBLESHOOTING.md) |
-| Change NordixGen itself | [Contributing](CONTRIBUTING.md) |
+| [Entities](configuration/ENTITIES.md) | Fields, defaults, enums, timestamps and soft deletion |
+| [Relations and indexes](configuration/RELATIONS_INDEXES.md) | Connect data and configure database indexes |
+| [Endpoints](configuration/ENDPOINTS.md) | Reads, writes, filters, joins and pagination |
+| [Modules](guides/MODULES.md) | Choose an architecture and organize business code |
+| [Module communication](guides/MODULE_COMMUNICATION.md) | Call another module through typed contracts |
+| [Authentication](guides/AUTHENTICATION.md) | Login, providers, password policies and delivery |
+| [Roles and permissions](guides/ROLES_PERMISSIONS.md) | Configure grants and administer accounts |
+| [Page access](guides/PAGE_ACCESS.md) | Public, private and mixed frontend pages |
+| [Forms and API clients](guides/FORMS_CLIENTS.md) | Generated actions, validation and query state |
+| [Themes](configuration/THEMES.md) | Colors and Light/Dark/System modes |
+| [Audit logging](guides/AUDIT_LOGGING.md) | Record and inspect application activity |
+| [AI and MCP](guides/AI.md) | Chat, external clients and custom tools |
+| [Storage](INFRASTRUCTURE.md) | R2 buckets, uploads, downloads and infrastructure |
 
-## Technical references
+## Run and maintain
 
-| Area | Reference |
-| --- | --- |
-| Product intent and supported system shape | [Specification](SPECIFICATION.md) |
-| Parsing, resolution, scoped views and type mapping | [Resolved model](configuration/RESOLVED_MODEL.md), [core package](../packages/core/README.md) |
-| Generation stages and command effects | [CLI workflow](generation/CLI_WORKFLOW.md), [CLI package](../packages/cli/README.md) |
-| Backend renderers, architecture families and dependencies | [Direct backend](generation/DIRECT_BACKEND.md), [module ownership](generation/CLEAN_MODULES.md) |
-| Typed module imports, trusted context and error handling | [Public module communication](generation/PUBLIC_MODULES.md) |
-| Frontend generation, state and design tokens | [Direct frontend](generation/DIRECT_FRONTEND.md) |
-| Clients, forms, filtering, pagination and query isolation | [API screens](generation/API_SCREENS.md) |
-| Server page access and identity authority | [Frontend access](generation/FRONTEND_ACCESS.md) |
-| Audit capture, inspection and delivery limits | [Audit logging](generation/AUDIT_LOGGING.md) |
+[Local development](guides/LOCAL_DEVELOPMENT.md) · [Deployment and CI/CD](DEPLOYMENT.md) · [Continue development](EXTENDING_PROJECTS.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
-## Which document is authoritative?
+## Reference
 
-The YAML reference defines accepted configuration and defaults. The validation guide identifies unsupported generation mappings and test evidence. Task guides explain how to use those capabilities; the specification describes product intent and may discuss broader goals. The capability map explicitly separates implemented behavior from limits. There is no maintained `IMPLEMENTATION_PLAN.md`; use these documents rather than a historical implementation plan.
-
-Each generated repository has its own README and `docs/DEPLOYMENT.md` and `docs/DISASTER_RECOVERY.md`, with commands and paths for that particular project. Those emitted files are distinct from this repository's guides. After initialization, maintain them alongside the application code.
-
-Documentation is maintained in English. New features should update their configuration reference, usage instructions, operational limitations and this index where necessary. Source-code localization outside Markdown remains a separate concern; see the [contributor guide](CONTRIBUTING.md).
+[YAML configuration](configuration/YAML_V2.md) · [Validation](configuration/VALIDATION.md) · [Core API](configuration/RESOLVED_MODEL.md) · [Contributing](CONTRIBUTING.md)
