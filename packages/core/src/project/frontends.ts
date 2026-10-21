@@ -205,6 +205,10 @@ export function resolveFrontend(
     ]),
   );
   const inventory = new Set(["/"]);
+  if (frontend.ai?.enabled) {
+    if (frontend.ai.chat.enabled && frontend.ai.chat.placement === "page") inventory.add("/chat");
+    if (frontend.ai.connectPortal.enabled) inventory.add("/connect-ai");
+  }
   if (visible.length) inventory.add("/api-explorer");
   for (const operation of visible) inventory.add(entities[operation.entity].page);
   if (identity) {
@@ -231,6 +235,14 @@ export function resolveFrontend(
       ));
   return {
     name: frontend.name,
+    ...(frontend.ai?.enabled
+      ? {
+          ai: {
+            ...frontend.ai,
+            authMethods: backends[frontend.ai.backend].ai?.mcp.authMethods ?? [],
+          },
+        }
+      : {}),
     theme: resolveTheme(frontend.theme),
     repository: config.repositories.find(
       (r) => r.name === frontend.repository,
@@ -241,7 +253,11 @@ export function resolveFrontend(
     access: { ...frontend.access, ...(identity ? { backend: identity.backend } : {}) },
     pages: [...inventory].sort().map((path) => ({
       path,
-      authenticated: path === "/admin/roles" || path === "/profile" || !publicPage(path),
+      authenticated:
+        (frontend.ai?.enabled && (path === "/chat" || path === "/connect-ai")) ||
+        path === "/admin/roles" ||
+        path === "/profile" ||
+        !publicPage(path),
     })),
     operations: visible.map((operation) => operation.id),
     operationNames: names,

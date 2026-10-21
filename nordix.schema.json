@@ -535,6 +535,52 @@
               "defaultRole"
             ],
             "additionalProperties": false
+          },
+          "ai": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "mcp": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "authMethods": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "oauth",
+                        "api-key"
+                      ]
+                    },
+                    "default": [
+                      "oauth",
+                      "api-key"
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "default": {}
+              },
+              "tools": {
+                "type": "object",
+                "properties": {
+                  "requireConfirmationOnMutations": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                },
+                "additionalProperties": false,
+                "default": {}
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [
@@ -781,6 +827,53 @@
                 ]
               }
             },
+            "additionalProperties": false
+          },
+          "ai": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "backend": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "chat": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "placement": {
+                    "type": "string",
+                    "enum": [
+                      "floating",
+                      "page"
+                    ],
+                    "default": "floating"
+                  }
+                },
+                "additionalProperties": false,
+                "default": {}
+              },
+              "connectPortal": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false,
+                "default": {}
+              }
+            },
+            "required": [
+              "backend"
+            ],
             "additionalProperties": false
           }
         },

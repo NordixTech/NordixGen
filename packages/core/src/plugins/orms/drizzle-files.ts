@@ -133,6 +133,8 @@ export function generateDrizzleSchemaFiles(
           ),
           'export * from "./enums.js";',
           'export * from "./audit-schema.js";',
+          ...(model.backend.ai?.mcp.enabled ? ['export * from "./ai-schema.js";'] : []),
+          ...(model.backend.ai ? ['export * from "./chat-schema.js";'] : []),
           ...(context.identity
             ? ['export * from "./auth-schema.js";', 'export * from "./iam-schema.js";']
             : []),
