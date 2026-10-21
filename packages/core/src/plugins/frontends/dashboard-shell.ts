@@ -56,7 +56,7 @@ export function dashboardShellFiles(context: FrontendRenderContext): GeneratedFi
     ...(auth
       ? [
           { href: "/admin/roles", label: "Administration", icon: "shield", group: "Manage" },
-          { href: "/audit", label: "Auditoría", icon: "shield", group: "Manage" },
+          { href: "/audit", label: "Activity", icon: "shield", group: "Manage" },
         ]
       : []),
   ];

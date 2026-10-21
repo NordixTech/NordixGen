@@ -1,5 +1,6 @@
 import type { GeneratedFile } from "../contracts.js";
 import type { FrontendRenderContext } from "../frontend-contracts.js";
+import { activityPresentation, auditActivity } from "./audit-activity.js";
 import { iamStyles } from "./iam-styles.js";
 
 export function generateFrontendIam(context: FrontendRenderContext): readonly GeneratedFile[] {
@@ -7,6 +8,7 @@ export function generateFrontendIam(context: FrontendRenderContext): readonly Ge
   const root = context.framework.codeRoot;
   return [
     { path: `${root}/components/iam/audit-activity.tsx`, content: auditActivity },
+    { path: `${root}/lib/iam/activity-presentation.ts`, content: activityPresentation },
     {
       path: `${root}/app/audit/page.tsx`,
       content: `import {requireIamAccess} from "@/lib/auth/server";
@@ -14,7 +16,7 @@ import {AuditLog} from "@/components/iam/audit-log";
 import "@/styles/iam.css";
 export default async function AuditPage(){
  await requireIamAccess("iam:roles:manage");
- return <main className="ng-iam-page"><header className="ng-iam-heading"><div><p className="ng-iam-eyebrow">SECURITY & ACCOUNTABILITY</p><h1>Auditoría</h1><p>Review who did what and when across your application.</p></div></header><AuditLog/></main>;
+ return <main className="ng-iam-page"><header className="ng-iam-heading"><div><p className="ng-iam-eyebrow">SECURITY & ACCOUNTABILITY</p><h1>Activity</h1><p>Review who did what and when across your application.</p></div></header><AuditLog/></main>;
 }
 `,
     },
@@ -27,7 +29,7 @@ export function AuditLog(){
  const session=useSessionView();
  if(session.isPending)return <p role="status">Checking your access…</p>;
  if(!session.hasPermission("iam:roles:manage"))return <p role="alert">Your account cannot view audit history.</p>;
- return <div className="ng-iam-card"><AuditActivity key={session.user?.id} revision={0} standalone/></div>;
+ return <div className="ng-iam-card"><AuditActivity key={session.user?.id} revision={0}/></div>;
 }
 `,
     },
@@ -71,10 +73,9 @@ import {useEffect,useState,type FormEvent} from "react";
 import {useSessionView} from "@/lib/auth/use-session-view";
 import {iamRequest,IamError,type AccessImpact,type IamRole,type IamUser} from "@/lib/iam/client";
 import {Dialog} from "@/components/ui/dialog";
-import {AuditActivity} from "./audit-activity";
 import {Table} from "@/components/ui/table";
 type Draft={id:string;name:string;description:string;permissions:string[];existing:boolean};
-type Tab="roles"|"users"|"activity";
+type Tab="roles"|"users";
 const defaultRole=${JSON.stringify(context.api.authentication.defaultRole)};
 const iconPaths={
  roles:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
@@ -114,7 +115,7 @@ export function IamAdministration(){
  const [draft,setDraft]=useState<Draft|null>(null),[deleting,setDeleting]=useState<IamRole|null>(null);
  const [error,setError]=useState(""),[success,setSuccess]=useState(""),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[revision,setRevision]=useState(0);
  const [tab,setTab]=useState<Tab>("roles"),[search,setSearch]=useState("");
- const activeTab=tab==="activity"&&manageRoles?"activity":manageRoles&&(!manageUsers||tab==="roles")?"roles":"users";
+ const activeTab=manageRoles&&(!manageUsers||tab==="roles")?"roles":"users";
  useEffect(()=>{let active=true;setError("");setLoading(true);
   const load=async()=>{
    if(manageRoles){const [catalog,registry]=await Promise.all([iamRequest<IamRole[]>("/roles"),iamRequest<string[]>("/permissions")]);if(active){setRoles(catalog);setPermissions(registry);}}
@@ -144,12 +145,11 @@ export function IamAdministration(){
   {error&&!draft&&!deleting&&<div className="ng-iam-message ng-iam-message--error" role="alert"><span>{error}</span><button type="button" onClick={()=>setRevision(value=>value+1)}>Try again</button></div>}
   {success&&<div className="ng-iam-message ng-iam-message--success" role="status"><Icon name="check"/><span>{success}</span></div>}
   <section className="ng-iam-card" aria-busy={loading}>
-   <div className="ng-iam-card-top"><div role="tablist" aria-label="Access management" className="ng-iam-tabs" onKeyDown={event=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(event.key)){event.preventDefault();const tabs:Tab[]=[...(manageRoles?["roles" as const]:[]),...(manageUsers?["users" as const]:[]),...(manageRoles?["activity" as const]:[])];const next=tabs[event.key==="Home"?0:event.key==="End"?tabs.length-1:(tabs.indexOf(activeTab)+(event.key==="ArrowRight"?1:tabs.length-1))%tabs.length];changeTab(next);document.getElementById("iam-"+next+"-tab")?.focus();}}}>
+   <div className="ng-iam-card-top"><div role="tablist" aria-label="Access management" className="ng-iam-tabs" onKeyDown={event=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(event.key)){event.preventDefault();const tabs:Tab[]=[...(manageRoles?["roles" as const]:[]),...(manageUsers?["users" as const]:[])];const next=tabs[event.key==="Home"?0:event.key==="End"?tabs.length-1:(tabs.indexOf(activeTab)+(event.key==="ArrowRight"?1:tabs.length-1))%tabs.length];changeTab(next);document.getElementById("iam-"+next+"-tab")?.focus();}}}>
     {manageRoles&&<button id="iam-roles-tab" role="tab" tabIndex={activeTab==="roles"?0:-1} aria-selected={activeTab==="roles"} aria-controls="iam-roles-panel" onClick={()=>changeTab("roles")}><Icon name="roles"/>Roles<span>{roles.length}</span></button>}
     {manageUsers&&<button id="iam-users-tab" role="tab" tabIndex={activeTab==="users"?0:-1} aria-selected={activeTab==="users"} aria-controls="iam-users-panel" onClick={()=>changeTab("users")}><Icon name="users"/>Users<span>{total}</span></button>}
-    {manageRoles&&<button id="iam-activity-tab" role="tab" tabIndex={activeTab==="activity"?0:-1} aria-selected={activeTab==="activity"} aria-controls="iam-activity-panel" onClick={()=>changeTab("activity")}><Icon name="shield"/>Activity</button>}
    </div><span className="ng-iam-card-hint"><Icon name="lock"/>Permission-based access</span></div>
-   {activeTab!=="activity"&&<div className="ng-iam-toolbar"><div><h2 id={activeTab==="roles"?"roles-title":"users-title"}>{activeTab==="roles"?"Roles":"Users"}</h2><p>{activeTab==="roles"?"Define what each role can do across your application.":"Assign an existing role to give each person the access they need."}</p></div><div className="ng-iam-toolbar-actions"><label className="ng-iam-search"><Icon name="search"/><input type="search" aria-label={activeTab==="roles"?"Search roles":"Search users on this page"} placeholder={activeTab==="roles"?"Search roles…":"Search this page…"} value={search} onChange={event=>setSearch(event.target.value)}/></label>{manageRoles&&activeTab==="roles"&&<button className="ng-button ng-button--primary" disabled={busy||loading} onClick={()=>{setError("");setDraft({id:"",name:"",description:"",permissions:[],existing:false});}}><Icon name="plus"/>Create role</button>}</div></div>}
+   <div className="ng-iam-toolbar"><div><h2 id={activeTab==="roles"?"roles-title":"users-title"}>{activeTab==="roles"?"Roles":"Users"}</h2><p>{activeTab==="roles"?"Define what each role can do across your application.":"Assign an existing role to give each person the access they need."}</p></div><div className="ng-iam-toolbar-actions"><label className="ng-iam-search"><Icon name="search"/><input type="search" aria-label={activeTab==="roles"?"Search roles":"Search users on this page"} placeholder={activeTab==="roles"?"Search roles…":"Search this page…"} value={search} onChange={event=>setSearch(event.target.value)}/></label>{manageRoles&&activeTab==="roles"&&<button className="ng-button ng-button--primary" disabled={busy||loading} onClick={()=>{setError("");setDraft({id:"",name:"",description:"",permissions:[],existing:false});}}><Icon name="plus"/>Create role</button>}</div></div>
    {activeTab==="roles"&&manageRoles&&<div role="tabpanel" id="iam-roles-panel" aria-labelledby="iam-roles-tab">
     {loading&&roles.length===0?<div className="ng-iam-empty" role="status">Loading roles…</div>:<><Table className="ng-iam-roles-table"><thead><tr><th scope="col">Role</th><th scope="col">Permissions</th><th scope="col"><span className="ng-iam-actions-label">Actions</span></th></tr></thead><tbody>{visibleRoles.map(role=><tr key={role.id}><td><div className="ng-iam-role-cell"><span className={"ng-iam-role-icon"+(role.isSystem?" ng-iam-role-icon--system":"")}><Icon name={role.isSystem?"shield":"roles"}/></span><div><div className="ng-iam-role-name">{role.name}{role.isSystem&&<span className="ng-iam-tag ng-iam-tag--system"><Icon name="lock"/>System</span>}</div><span className="ng-iam-role-id">{role.id}</span>{role.description&&<p>{role.description}</p>}</div></div></td><td><div className="ng-iam-grants">{role.permissions.includes("*")?<span className="ng-iam-tag ng-iam-tag--full"><Icon name="shield"/>Full access</span>:role.permissions.length?role.permissions.map(permission=><span className={"ng-iam-tag"+(permission.startsWith("iam:")?" ng-iam-tag--admin":"")} key={permission} title={permission}>{permissionLabel(permission)}</span>):<span className="ng-iam-muted">No permissions assigned</span>}</div></td><td><div className="ng-iam-row-actions"><button className="ng-iam-edit" aria-label={"Edit "+role.id} disabled={busy} onClick={()=>{setError("");setDraft({id:role.id,name:role.name,description:role.description??"",permissions:role.permissions,existing:true});}}><Icon name="edit"/>Edit</button><button className="ng-iam-icon-button ng-iam-icon-button--danger" aria-label={"Delete "+role.id} title={role.isSystem?"System roles cannot be deleted":"Delete role"} disabled={busy||role.isSystem} onClick={()=>{setError("");setDeleting(role);}}><Icon name={role.isSystem?"lock":"trash"}/></button></div></td></tr>)}</tbody></Table>{visibleRoles.length===0&&<div className="ng-iam-empty"><Icon name="search"/><h3>No roles found</h3><p>Try a different name or permission.</p></div>}</>}
     <footer className="ng-iam-card-footer"><span>{visibleRoles.length} of {roles.length} roles</span><span><Icon name="shield"/>System roles are protected from deletion.</span></footer>
@@ -158,7 +158,6 @@ export function IamAdministration(){
     {loading&&users.length===0?<div className="ng-iam-empty" role="status">Loading users…</div>:<><Table className="ng-iam-users-table"><thead><tr><th scope="col">Team member</th><th scope="col">Assigned role</th></tr></thead><tbody>{visibleUsers.map(user=><tr key={user.id}><td><div className="ng-iam-person"><span className="ng-iam-avatar" aria-hidden="true">{(user.name||user.email).split(" ").filter(Boolean).slice(0,2).map(word=>word[0]).join("").toUpperCase()}</span><div><div className="ng-iam-role-name">{user.name||"Unnamed user"}{user.id===userId&&<span className="ng-iam-tag">You</span>}</div><span className="ng-iam-email">{user.email}</span></div></div></td><td><div className="ng-iam-role-picker"><select className="ng-input" aria-label={"Role for "+user.email} disabled={busy||loading} value={user.role} onChange={event=>void mutate("/users/"+encodeURIComponent(user.id)+"/role","POST","User role updated. Their new access applies on the next request.",{role:event.target.value})}>{options.map(role=><option key={role.id} value={role.id}>{role.name}</option>)}</select></div></td></tr>)}</tbody></Table>{visibleUsers.length===0&&<div className="ng-iam-empty"><Icon name="users"/><h3>No users found</h3><p>{query?"Try another name, email, or role on this page.":"New accounts will appear here after registration."}</p></div>}</>}
     <footer className="ng-iam-card-footer"><span>{total===0?"No users":String((page-1)*25+1)+"–"+Math.min(page*25,total)+" of "+total+" users"}</span>{query&&<span>Filtered on this page</span>}<div className="ng-iam-pagination"><button className="ng-button ng-button--secondary" disabled={busy||loading||page===1} onClick={()=>setPage(page-1)}>Previous</button><span>Page {page}</span><button className="ng-button ng-button--secondary" disabled={busy||loading||page*25>=total} onClick={()=>setPage(page+1)}>Next</button></div></footer>
    </div>}
-   {activeTab==="activity"&&manageRoles&&<AuditActivity key={userId} revision={revision}/>}
   </section>
   {confirmation&&<Dialog open title={confirmation.impact.selfLoss.length?"Remove your own administrative access?":"Remove administrative access?"} description="Changes take effect immediately." onOpenChange={open=>{if(!open&&!busy)setConfirmation(null);}}><div className="ng-iam-editor"><div className="ng-iam-editor-note"><Icon name="shield"/><div><strong>{confirmation.impact.selfLoss.length?"This change affects your own account.":"This change affects "+confirmation.impact.affected+" team member(s)."}</strong><p>{confirmation.impact.selfLoss.length?"You will lose the capabilities listed below. You may need another administrator to restore your access.":"These users will lose the administrative capabilities listed below."}</p></div></div><ul>{(confirmation.impact.selfLoss.length?confirmation.impact.selfLoss:confirmation.impact.lost).map(permission=><li key={permission}>{permissionLabel(permission)}</li>)}</ul><p>You can cancel to keep the current access.</p><footer className="ng-iam-editor-footer"><button data-initial-focus type="button" className="ng-button ng-button--secondary" disabled={busy} onClick={()=>setConfirmation(null)}>Cancel</button><button type="button" className="ng-button ng-iam-delete-confirm" disabled={busy} onClick={()=>void mutate(confirmation.path,confirmation.method,confirmation.message,{...confirmation.value as object,confirmation:confirmation.impact.token})}>{busy?"Applying…":"Confirm access change"}</button></footer></div></Dialog>}
   <p className="ng-iam-footnote"><Icon name="shield"/>Access is verified by your application on every request.</p>
@@ -179,42 +178,3 @@ export function IamAdministration(){
     },
   ];
 }
-
-const auditActivity = `"use client";
-import {useEffect,useState,type FormEvent} from "react";
-import {iamRequest} from "@/lib/iam/client";
-interface Entry {id:string;actorId:string;action:string;resourceType:string;resourceId:string|null;before:unknown;after:unknown;ipAddress:string|null;userAgent:string|null;metadata:unknown;createdAt:string;}
-interface Page {items:Entry[];total:number;page:number;pageSize:number;}
-function differences(before:unknown,after:unknown,path="$",result:{path:string;before:unknown;after:unknown}[]=[]){
- if(JSON.stringify(before)===JSON.stringify(after))return result;
- if(before&&after&&typeof before==="object"&&typeof after==="object"&&!Array.isArray(before)&&!Array.isArray(after)){
-  const left=before as Record<string,unknown>,right=after as Record<string,unknown>;
-  for(const key of new Set([...Object.keys(left),...Object.keys(right)]))differences(left[key],right[key],path+"."+key,result);
- }else result.push({path,before,after});
- return result;
-}
-const pretty=(value:unknown)=>value===undefined?"—":JSON.stringify(value,null,2);
-export function AuditActivity({revision,standalone=false}:{revision:number;standalone?:boolean}){
- const [filters,setFilters]=useState({actor:"",action:"",from:"",to:""});
- const [query,setQuery]=useState(""),[page,setPage]=useState(1),[refresh,setRefresh]=useState(0);
- const [data,setData]=useState<Page>({items:[],total:0,page:1,pageSize:25}),[loading,setLoading]=useState(true),[error,setError]=useState("");
- useEffect(()=>{let active=true;setLoading(true);setError("");
-  iamRequest<Page>("/audit?page="+page+"&pageSize=25"+query).then(value=>{if(active)setData(value);}).catch(reason=>{if(active){setData({items:[],total:0,page:1,pageSize:25});setError(reason instanceof Error?reason.message:"Activity is unavailable.");}}).finally(()=>{if(active)setLoading(false);});
-  return()=>{active=false;};
- },[page,query,refresh,revision]);
- function apply(event:FormEvent){event.preventDefault();const params=new URLSearchParams();for(const [key,value] of Object.entries(filters))if(value.trim())params.set(key,key==="from"||key==="to"?new Date(value).toISOString():value.trim());setPage(1);setQuery(params.size?"&"+params.toString():"");setRefresh(value=>value+1);}
- return <section id={standalone?undefined:"iam-activity-panel"} role={standalone?"region":"tabpanel"} aria-label={standalone?"Audit events":undefined} aria-labelledby={standalone?undefined:"iam-activity-tab"} className="ng-audit" aria-busy={loading}>
-  <header><div><h2>Activity</h2><p>Authentication, access changes, and audited application operations.</p></div><button type="button" className="ng-button ng-button--secondary" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh activity</button></header>
-  <form onSubmit={apply} className="ng-audit-filters">
-   <label>Actor ID<input className="ng-input" value={filters.actor} maxLength={200} onChange={event=>setFilters({...filters,actor:event.target.value})}/></label>
-   <label>Action<input className="ng-input" placeholder="iam.role.updated" value={filters.action} maxLength={200} onChange={event=>setFilters({...filters,action:event.target.value})}/></label>
-   <label>From<input className="ng-input" type="datetime-local" value={filters.from} onChange={event=>setFilters({...filters,from:event.target.value})}/></label>
-   <label>To<input className="ng-input" type="datetime-local" value={filters.to} onChange={event=>setFilters({...filters,to:event.target.value})}/></label>
-   <button className="ng-button ng-button--primary" disabled={loading}>Apply filters</button>
-  </form>
-  {error&&<p role="alert" className="ng-iam-message ng-iam-message--error">{error}</p>}
-  {loading?<p role="status">Loading activity…</p>:data.items.length?<ul className="ng-audit-events">{data.items.map(entry=><li key={entry.id}><div className="ng-audit-event-heading"><strong>{entry.action}</strong><time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString()}</time></div><p>Actor: {entry.actorId} · {entry.resourceType}{entry.resourceId?" · "+entry.resourceId:""}</p><details><summary>Inspect changes</summary>{differences(entry.before,entry.after).length?<div className="ng-audit-diffs">{differences(entry.before,entry.after).map(diff=><div key={diff.path}><code>{diff.path}</code><div><section><h3>Before</h3><pre>{pretty(diff.before)}</pre></section><section><h3>After</h3><pre>{pretty(diff.after)}</pre></section></div></div>)}</div>:<p>No data changes.</p>}<h3>Request details</h3><pre>{pretty({ipAddress:entry.ipAddress,userAgent:entry.userAgent,metadata:entry.metadata})}</pre></details></li>)}</ul>:<p>No activity matches these filters.</p>}
-  <footer><span>{data.total} events · Page {page}</span><div><button type="button" className="ng-button ng-button--secondary" disabled={loading||page===1} onClick={()=>setPage(value=>value-1)}>Previous activity</button><button type="button" className="ng-button ng-button--secondary" disabled={loading||page*25>=data.total} onClick={()=>setPage(value=>value+1)}>Next activity</button></div></footer>
- </section>;
-}
-`;

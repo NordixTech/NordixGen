@@ -740,17 +740,17 @@ export async function verifyApplication(state, directory, expireAccountant) {
     const firstAudit = await (await admin.get("/api/auth/iam/audit?pageSize=1")).json();
     const secondAudit = await (await admin.get("/api/auth/iam/audit?pageSize=1&page=2")).json();
     expect(firstAudit.items[0].id).not.toBe(secondAudit.items[0].id);
-    await iamPage.getByRole("tab", { name: "Activity", exact: true }).click();
+    await iamPage.goto(`${web}/audit`);
     await expect(iamPage.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
     await iamPage.getByLabel("Action", { exact: true }).fill("iam.role.updated");
-    await iamPage.getByLabel("Actor ID", { exact: true }).fill(persistence.identities.admin);
+    await iamPage.getByLabel("User ID", { exact: true }).fill(persistence.identities.admin);
     await iamPage.getByLabel("From", { exact: true }).fill("2000-01-01T00:00");
     await iamPage.getByLabel("To", { exact: true }).fill("2099-01-01T00:00");
     await iamPage.getByRole("button", { name: "Apply filters", exact: true }).click();
     const activity = iamPage.locator(".ng-audit-events>li").first();
     await expect(activity).toBeVisible();
     await expect(activity).toContainText("iam.role.updated");
-    await activity.getByText("Inspect changes", { exact: true }).click();
+    await activity.getByText("View details", { exact: true }).click();
     await expect(
       activity.getByRole("heading", { name: "Before", exact: true }).first(),
     ).toBeVisible();

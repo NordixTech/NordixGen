@@ -72,6 +72,65 @@ function runtime() {
   };
 }
 describe("unified audit capture", () => {
+  it("presents user names and structured request fields without exposing IDs as names", () => {
+    const f = fixture();
+    const files = generateFrontend(f.project, "web").virtualFileSystem.snapshot();
+    const presentation = generatedRuntime(files)(
+      "apps/web/src/lib/iam/activity-presentation.ts",
+    ) as {
+      userLabel: (entry: Record<string, unknown>) => string;
+      actionLabel: (action: string) => string;
+      requestDetails: (entry: Record<string, unknown>) => { label: string; value: string }[];
+      changes: (before: unknown, after: unknown) => unknown[];
+    };
+    expect(
+      presentation.userLabel({
+        actorId: "internal-user-id",
+        actorName: "Jane Doe",
+        actorEmail: "jane@example.test",
+      }),
+    ).toBe("Jane Doe");
+    expect(presentation.userLabel({ actorId: "deleted-user-id" })).toBe("Unknown or deleted user");
+    expect(presentation.userLabel({ actorId: "anonymous" })).toBe("Anonymous visitor");
+    expect(presentation.userLabel({ actorId: "system" })).toBe("System");
+    expect(presentation.actionLabel("auth.signin")).toBe("Signed in");
+    expect(presentation.actionLabel("note.created")).toBe("Created note");
+    const fields = presentation.requestDetails({
+      ipAddress: "127.0.0.1",
+      userAgent: "Example browser",
+      metadata: {
+        method: "POST",
+        path: "/api/notes",
+        status: 200,
+        durationMs: 12.345,
+        params: { noteId: "record-id" },
+        query: {},
+        resourceIds: ["record-id"],
+        custom: { retryCount: 1 },
+      },
+    });
+    expect(fields).toEqual(
+      expect.arrayContaining([
+        { label: "Method", value: "POST" },
+        { label: "Route", value: "/api/notes" },
+        { label: "Response status", value: "200" },
+        { label: "Duration", value: "12.3 ms" },
+        { label: "Route parameters · note Id", value: "record-id" },
+        { label: "custom · retry Count", value: "1" },
+      ]),
+    );
+    expect(presentation.requestDetails({ metadata: null })).toEqual([]);
+    expect(presentation.changes(null, null)).toEqual([]);
+    expect(presentation.changes({ title: "Old" }, { title: "New" })).toEqual([
+      { path: "$.title", before: "Old", after: "New" },
+    ]);
+    expect(files["apps/web/src/components/iam/administration.tsx"]).not.toContain("AuditActivity");
+    expect(files["apps/web/src/components/iam/administration.tsx"]).not.toContain(
+      'id="iam-activity-tab"',
+    );
+    expect(files["apps/web/src/app/audit/page.tsx"]).toContain("<h1>Activity</h1>");
+    expect(f.files[`${root}/audit/store.ts`]).toContain("leftJoin(authUser");
+  });
   it("generates audited reads, custom operations and hard/boolean/timestamp deletes", () => {
     for (const softDelete of [false, "boolean", "timestamp"] as const) {
       const config = persistenceFixture();
@@ -315,7 +374,7 @@ describe("unified audit capture", () => {
     expect(await generatedTypeErrors(selected)).toEqual([]);
     const frontend = generateFrontend(f.project, "web").virtualFileSystem.snapshot();
     expect(frontend["apps/web/src/components/iam/administration.tsx"]).toContain('role="tab"');
-    expect(frontend["apps/web/src/components/iam/audit-activity.tsx"]).toContain("Inspect changes");
+    expect(frontend["apps/web/src/components/iam/audit-activity.tsx"]).toContain("View details");
   }, 30000);
   it("classifies real auth paths and does not mark OAuth initiation or a two-factor challenge as completed signin", () => {
     const { load } = runtime();

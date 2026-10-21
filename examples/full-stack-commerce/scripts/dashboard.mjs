@@ -68,14 +68,15 @@ export async function verifyDashboard(browser, web, directory, adminState) {
         true,
       );
       await page.goto(`${web}/admin/roles`);
-      await page.getByRole("tab", { name: "Activity", exact: true }).click();
-      await expect(page.getByRole("tabpanel", { name: "Activity", exact: true })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Activity", exact: true })).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       );
       await page.goto(`${web}/audit`);
-      await expect(page.getByRole("heading", { name: "Auditoría", exact: true })).toBeVisible();
-      await expect(page.getByRole("region", { name: "Audit events", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("region", { name: "Activity events", exact: true }),
+      ).toBeVisible();
       await expect(
         page.getByRole("button", { name: "Refresh activity", exact: true }),
       ).toBeEnabled();
