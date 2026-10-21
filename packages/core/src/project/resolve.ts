@@ -78,6 +78,7 @@ function resolveValidated(
         backend.name,
         {
           name: backend.name,
+          ...(backend.ai?.enabled ? { ai: backend.ai } : {}),
           storage: [...(backend.iac?.r2_storage ?? [])].sort(),
           repository: config.repositories.find(
             (r) => r.name === backend.repository,

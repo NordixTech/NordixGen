@@ -94,7 +94,7 @@ describe("fixed frontend contracts", () => {
       files,
       { module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler },
       {
-        "framework.d.ts": `declare namespace JSX { interface Element {} interface IntrinsicElements { [tag: string]: { children?: unknown; onChange?: (event: {target: {value: string}}) => void; [key: string]: unknown } } }
+        "framework.d.ts": `declare namespace JSX { interface Element {type:string;props:Record<string,unknown>;key:string|null;} interface IntrinsicElements { [tag: string]: { children?: unknown; onChange?: (event: {target: {value: string}}) => void; [key: string]: unknown } } }
 declare module "react" {
   export function useState<T>(initial: T | (() => T)): [T, (value: T | ((previous: T) => T)) => void];
   export function useState<T = undefined>(): [T | undefined, (value: T | undefined) => void];
@@ -236,7 +236,7 @@ describe("fixed UI assembly and declared features", () => {
     expect(files[`${root}/app/api-explorer/page.tsx`]).toBeUndefined();
     expect(files[`${root}/lib/auth/client.ts`]).toBeUndefined();
     expect(result.frameworkContext.scaffold.argumentsBeforeTarget).toContain(
-      "create-next-app@15.5.26",
+      "create-next-app@16.4.2",
     );
     expect(result.frameworkContext.scaffold.argumentsAfterTarget).toContain("--tailwind");
   });

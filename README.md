@@ -24,6 +24,8 @@ Authentication screens and access control are separate concerns. The generated s
 
 Authentication and IAM changes are recorded asynchronously in a unified audit store. Declare `audit: true` on a business endpoint to include it; the protected Activity tab provides actor/action/date filters, pagination and before/after inspection. Audit failures do not roll back the primary operation. See [audit logging](docs/generation/AUDIT_LOGGING.md).
 
+Optional AI infrastructure exposes declared business operations as permission-filtered tools shared by an authenticated streaming chat and a remote MCP server. MCP uses a separate public gateway Worker with a Service Binding to the private Hono backend, OAuth 2.1/PKCE and/or scoped personal API keys. Frontends independently enable a floating/page assistant and `/connect-ai` portal. Provider credentials and model overrides stay in runtime environment variables. See [AI configuration](docs/configuration/YAML_V2.md#ai-chat-tools-and-mcp).
+
 Generated frontends support semantic design tokens with per-project light/dark palettes and a persistent Light/Dark/System switcher. Each mode accepts either all seven main colors or none; status colors default individually. See [theme configuration](docs/configuration/YAML_V2.md#frontend-design-tokens-and-theme).
 
 Business HTTP operations are described through endpoint declarations. Entity definitions describe data; they do not form the intended API contract by themselves. Health checks, Better Auth handlers and IAM administration are platform routes.

@@ -16,6 +16,7 @@ import {
 import { generateDrizzleFiles } from "../plugins/orms/drizzle.js";
 import type { ResolvedProject } from "../project/types.js";
 import { backendView } from "../project/views.js";
+import { AI_STACK, MCP_STACK, generateAiFiles } from "./ai.js";
 import { generateApplicationRuntime } from "./application-runtime.js";
 import { generateAuditFiles } from "./audit.js";
 import { generateBoundaryCheck } from "./boundaries.js";
@@ -84,6 +85,7 @@ export function generateBackend(project: ResolvedProject, name: string) {
   if (errors.length) return { success: false as const, diagnostics: errors };
   const context = backendRenderContext(project, name);
   const contributions = [
+    { owner: "ai", files: generateAiFiles(context) },
     ...view.modules.flatMap((module) => {
       const scoped = moduleRenderContext(project, name, module.id);
       // Each module selects its built-in dependency layout; shared assembly stays single-owned.
@@ -150,7 +152,18 @@ export function generateBackend(project: ResolvedProject, name: string) {
     virtualFileSystem: collectFiles(view.backend.path, contributions),
     frameworkContext: context.framework,
     ...backendDependencies(Boolean(context.persistence), Boolean(context.identity)),
-    ...(view.backend.storage.length
+    ...(view.backend.ai
+      ? {
+          runtimeDependencies: {
+            ...backendDependencies(Boolean(context.persistence), Boolean(context.identity))
+              .runtimeDependencies,
+            ...AI_STACK,
+            ...(view.backend.ai.mcp.enabled ? MCP_STACK : {}),
+            ...(view.backend.storage.length ? { miniflare: "4.20260730.0" } : {}),
+          },
+        }
+      : {}),
+    ...(view.backend.storage.length && !view.backend.ai
       ? {
           runtimeDependencies: {
             ...backendDependencies(Boolean(context.persistence), Boolean(context.identity))

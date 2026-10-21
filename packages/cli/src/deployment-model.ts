@@ -4,7 +4,9 @@ export interface DeploymentApplication {
   name: string;
   path: string;
   worker: string;
-  kind: "backend" | "frontend";
+  kind: "backend" | "frontend" | "gateway";
+  mcpGateway?: string;
+  ai?: boolean;
   database: boolean;
   identity: boolean;
   connections: string[];

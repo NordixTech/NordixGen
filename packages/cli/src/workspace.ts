@@ -55,6 +55,13 @@ export function applicationManifest(
         `Scaffold dependency "${name}" is duplicated across runtime and development categories. Correct the upstream integration.`,
       );
   const required = {
+    ...(app.backend && app.runtime.ai
+      ? {
+          pretypecheck: "node scripts/discover-tools.mjs",
+          predev: "node scripts/discover-tools.mjs",
+          prebuild: "node scripts/discover-tools.mjs",
+        }
+      : {}),
     typecheck: app.backend ? "tsc --noEmit" : "next typegen && tsc --noEmit",
     ...(app.backend ? { "check:boundaries": "node scripts/check-boundaries.mjs" } : {}),
     ...(app.database
@@ -151,7 +158,13 @@ export async function finishWorkspace(
   }
   await writeFile(
     join(directory, "pnpm-workspace.yaml"),
-    `packages:\n${apps.map((app) => `  - ${JSON.stringify(app.path)}`).join("\n")}\n`,
+    `packages:\n${apps
+      .flatMap((app) => [
+        app.path,
+        ...(project.backends[app.name]?.ai?.mcp.enabled ? [`${app.path}/mcp-gateway`] : []),
+      ])
+      .map((path) => `  - ${JSON.stringify(path)}`)
+      .join("\n")}\n`,
   );
   const ignore = join(directory, ".gitignore");
   const previous = (await exists(ignore)) ? await readFile(ignore, "utf8") : "";

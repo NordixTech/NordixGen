@@ -4,6 +4,18 @@ import type { FrontendRenderContext } from "../plugins/frontend-contracts.js";
 export function backendEnvironmentFile(context: BackendRenderContext): GeneratedFile {
   const identity = context.identity;
   const lines = [
+    ...(context.domainModel.backend.ai
+      ? [
+          "OPENAI_API_KEY=",
+          "ANTHROPIC_API_KEY=",
+          "GEMINI_API_KEY=",
+          "GROQ_API_KEY=",
+          "AI_MODEL=",
+          ...(context.domainModel.backend.ai.mcp.enabled
+            ? ["MCP_PUBLIC_URL=http://localhost:8790"]
+            : []),
+        ]
+      : []),
     "# Local examples only. Supply real values externally; never commit runtime secrets.",
     ...(context.persistence ? ["DATABASE_URL="] : []),
     ...(identity

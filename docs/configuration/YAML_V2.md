@@ -549,3 +549,47 @@ iac:
 ```
 
 Multiple backends may reference the same bucket. Omission creates no infrastructure. Generation emits independent OpenTofu files; subsequent changes are ordinary edits to those generated files, including their storage output associations. This does not change the existing one-shot generation lifecycle. Public buckets require a Cloudflare custom domain and zone per environment. See [infrastructure operations](../INFRASTRUCTURE.md).
+
+## AI chat, tools and MCP
+
+AI is opt-in on one backend per project. That backend requires authentication and persistence. Add the following fields to otherwise complete backend/frontend declarations:
+
+```yaml
+# backends[].ai
+ai:
+  enabled: true
+  mcp:
+    enabled: true
+    authMethods: [oauth, api-key]
+  tools:
+    requireConfirmationOnMutations: true
+```
+
+```yaml
+# frontends[].ai
+ai:
+  enabled: true
+  backend: api
+  chat: { enabled: true, placement: floating }
+  connectPortal: { enabled: true }
+```
+
+The frontend AI backend must be in `connectsTo` and be the frontend's session authority (`access.backend` when ambiguous). Chat and portal are independent switches, disabled by default. Chat placement is `floating` or `page` (`/chat`). `/chat` and `/connect-ai` always require a verified session. The portal requires MCP on its backend. MCP defaults to disabled; when enabled, `authMethods` defaults to both methods and must be nonempty. Mutation confirmation defaults to enabled. `AI_BACKEND_NOT_ENABLED`, `AI_BACKEND_NOT_CONNECTED`, `AI_BACKEND_MULTIPLE`, `AI_IDENTITY_REQUIRED`, `AI_IDENTITY_MISMATCH`, `AI_MCP_NOT_ENABLED`, and collision diagnostics fail before generation.
+
+Declared business operations become tools named `<module>_<operationId>` (module hyphens become underscores; maximum 64 characters). Inputs include path/query/body/pagination values and preserve required/nullable/type constraints. `confirm` is reserved. IAM, identity and health routes are not business tools. Every discovery and execution resolves current database permissions; personal keys further restrict those permissions. Enabled `audit` operations retain capture through AI execution.
+
+The chat backend detects nonempty credentials in this order: `OPENAI_API_KEY` (default `gpt-4o-mini`), `ANTHROPIC_API_KEY` (default `claude-3-5-sonnet-latest`), `GEMINI_API_KEY` (default `gemini-1.5-flash`), then `GROQ_API_KEY` (default `openai/gpt-oss-20b`). Optional `AI_MODEL` overrides the selected provider's model. No provider selector belongs in YAML. Supply a currently available model identifier via `AI_MODEL` if the provider retires a default. An authenticated request without any provider key returns a descriptive 400. Credentials belong only in backend secrets, never browser configuration.
+
+Chat history belongs to the application database. Generated `ai_chat` and `ai_chat_message` tables associate conversations with the authenticated account, with indexed history listing and JSONB message parts that preserve text, tool results and signed approvals. Owner checks apply to listing, reading, writing and deletion; deleting a conversation cascades to its messages and action records. The browser can append text or answer a stored pending approval, but cannot rewrite previous assistant messages or tool results. Conversations are bounded to 100 messages and 2 MB. `ai_chat_action` records attempted mutations so resubmitting the same tool call does not repeat a completed or uncertain write. Files and large attachments can use object storage independently; R2 is not required for text history.
+
+The chat interface renders safe Markdown, including tables, keeps the composer below a scrolling transcript, and offers account-specific conversation selection and deletion. Tool output is presented in expandable result cards. Groq tool calls run sequentially. Bounded AI SDK stream recovery retries only the failed model step, preserving earlier tool results and buffering new tool calls until a valid response is complete; completed mutations are not replayed. Exhausted provider failures show actionable errors. Access hints in the browser refresh on focus or IAM changes, rather than polling every five seconds. Backend authorization remains live on every protected operation.
+
+The generated `<backend-path>/mcp-gateway` is a separate public Worker. It forwards only `/mcp` and the necessary OAuth metadata, authorization, token, registration, login and consent routes to Hono using a Service Binding. The business backend retains `workers_dev: false`, no public routes and disabled preview URLs. MCP streaming does not pass through Next.js; its generic backend proxy rejects `/mcp`. API-only projects receive the same gateway and Hono-hosted login/consent screens. OAuth discovery is public; tool access always requires valid credentials. WAF rules and custom domains remain account configuration rather than an implicit generated protection.
+
+Set `MCP_PUBLIC_URL` to the gateway origin, independently of the frontend's `BETTER_AUTH_URL`. MCP supports stateless Streamable HTTP with SSE responses, OAuth 2.1 authorization-code/PKCE, and API keys through `x-api-key` or Bearer. The portal shows the URL and client onboarding instructions; the external client initiates OAuth to own PKCE/state/callback verification. The portal creates keys with selected current permissions, a 30-day expiration, one-time secret display and revocation. Keys are hashed by Better Auth; expired/revoked keys fail authentication. This implementation targets the SDK's negotiated MCP versions; it does not implement legacy HTTP+SSE endpoints separately.
+
+The gateway advertises RFC 9207 and returns the exact public metadata issuer on authorization success and error responses. The public `authorization_servers` entry, metadata `issuer` and response `iss` use the gateway origin; `/api/auth` is an endpoint prefix, not a second issuer. Authorization responses are rejected if their state differs from the signed request. PKCE, exact registered redirect matching, scopes and live permissions remain enforced. Native loopback OAuth clients are inferred during registration without permitting insecure HTTP redirects for web clients.
+
+POST/PUT/PATCH/DELETE tools carry `annotations.destructiveHint: true`. With confirmation enabled, MCP requires `confirm: true` in the tool arguments. The MCP client owns interactive approval; this boolean is a client declaration, not proof of a human click. Web chat uses signed AI SDK approval requests and renders approve/deny cards before server execution.
+
+After generation, add custom tools in exported `*.tool.ts` files anywhere under backend `src/`, using `defineTool` from `src/platform/ai/define-tool.ts`. Export a variable initialized directly with `defineTool({ name, description, permission, isDestructive, schema, execute })`. Discovery runs before backend development, typechecks and builds; adding a file during an existing dev session requires restarting that command. Both transports share these tools. Custom permission tokens join the IAM catalog automatically; assign them through IAM before ordinary users can execute the tool. Use `ctx.invoke(module, operation, input)` to call an existing application operation with its trusted context and authorization. Do not grant callers database or token authority through tool inputs.

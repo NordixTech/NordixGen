@@ -148,8 +148,17 @@ function authRuntimeContent(
     maxDelay: durationSeconds(sms.cooldown.maxDelay),
   };
   const projectName = config.projectName;
+  const ai = context.domainModel.backend.ai;
+  const oauth = ai?.mcp.enabled && ai.mcp.authMethods.includes("oauth");
+  const keys = ai?.mcp.enabled && ai.mcp.authMethods.includes("api-key");
   const defaultRole = config.authorization.defaultRole;
   const lines = [
+    ...(ai?.mcp.enabled
+      ? [
+          'import * as aiSchema from "../database/schema/ai-schema.js";',
+          `import {${[...(oauth ? ["mcpOAuth", "mcpVerifier"] : []), ...(keys ? ["mcpApiKeys"] : [])].join(",")}} from "../ai/auth.js";`,
+        ]
+      : []),
     'import { betterAuth } from "better-auth";',
     'import {nordixAuthPolicy,assertAllowedEmail} from "./nordix-auth-policy.js";',
     'import {nordixAbuseProtection} from "./abuse-protection.js";',
@@ -173,6 +182,11 @@ function authRuntimeContent(
     `import { createDrizzleDatabase } from "${relativeImport(authFilePath, databasePath)}";`,
     "",
     "export interface AuthEnvironment extends DeliveryEnvironment {",
+    ...(ai
+      ? [
+          "  OPENAI_API_KEY?:string;ANTHROPIC_API_KEY?:string;GEMINI_API_KEY?:string;GROQ_API_KEY?:string;AI_MODEL?:string;MCP_PUBLIC_URL?:string;",
+        ]
+      : []),
     "  DATABASE_URL: string;",
     "  BETTER_AUTH_SECRET: string;",
     "  BETTER_AUTH_URL: string;",
@@ -187,6 +201,8 @@ function authRuntimeContent(
     "",
   ];
   const pluginValues = [
+    ...(oauth ? ["mcpOAuth(env)", "mcpVerifier(env)"] : []),
+    ...(keys ? ["mcpApiKeys()"] : []),
     `nordixAuthPolicy({domains:${JSON.stringify(domains)},emailPassword:${methods.includes("email-password")},phone:${methods.includes("phone-number")},emailDelivery:()=>assertEmailDelivery(env),verifyEmail:${emailVerification}})`,
     `nordixAbuseProtection({connectionString:env.DATABASE_URL,secret:env.BETTER_AUTH_SECRET,account:${JSON.stringify(accountRule)},sms:${JSON.stringify(smsRule)}})`,
     `nordixIamPlugin({connectionString:env.DATABASE_URL,defaultRole:${JSON.stringify(defaultRole)},adminRole:${JSON.stringify(config.authorization.adminRole)},trustedOrigins:getTrustedAuthOrigins(env),audit})`,
@@ -224,6 +240,11 @@ function authRuntimeContent(
     '  if (!env.DATABASE_URL) throw new Error("Set DATABASE_URL in the runtime environment.");',
     '  if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) throw new Error("Set BETTER_AUTH_SECRET to a random value with at least 32 characters.");',
     '  if (!env.BETTER_AUTH_URL) throw new Error("Set BETTER_AUTH_URL in the runtime environment.");',
+    ...(ai?.mcp.enabled
+      ? [
+          '  if(!env.MCP_PUBLIC_URL)throw Error("Set MCP_PUBLIC_URL to the public gateway origin.");',
+        ]
+      : []),
     ...(emailDelivery
       ? [
           "  const queueAuthEmail = (to: string, subject: string, url: string): Promise<void> => {",
@@ -243,7 +264,7 @@ function authRuntimeContent(
     `    rateLimit: {enabled:${limit.enabled},storage:"database",window:${limitRule.window},max:${limitRule.max},customRules:${JSON.stringify({ "/get-session": false, "/iam/*": false, ...Object.fromEntries(["/sign-in/*", "/sign-up/*", "/request-password-reset", "/reset-password", "/set-password", "/change-password", "/send-verification-email", "/phone-number/*", "/two-factor/*"].map((path) => [path, limitRule])) })}},`,
     '    advanced: {ipAddress:{ipAddressHeaders:["x-nordix-client-ip"]}},',
     `    databaseHooks:{user:{create:{before:async (user,ctx)=>{assertAllowedEmail(user.email,${JSON.stringify(domains)});const name=ctx?.path==="/phone-number/verify"&&typeof ctx.body?.name==="string"?ctx.body.name.trim().slice(0,100):"";return {data:name?{...user,name}:user};}},update:{before:async user=>{if(user.email!==undefined)assertAllowedEmail(user.email,${JSON.stringify(domains)});return {data:user};}}}},`,
-    '    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema: { ...schema, ...iamSchema, user: schema.authUser, auth_roles: iamSchema.authRoles, auth_role_permissions: iamSchema.authRolePermissions } }),',
+    `    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema: { ...schema, ...iamSchema, ${ai?.mcp.enabled ? "...aiSchema," : ""} user: schema.authUser, auth_roles: iamSchema.authRoles, auth_role_permissions: iamSchema.authRolePermissions } }),`,
     `    user: {validateUserInfo:async ({user,source})=>{if(source.method==="oauth"&&source.action==="link-account"&&!user.emailVerified)return {error:"oauth_email_not_verified",errorDescription:"Verify your provider email before signing in."};if(${JSON.stringify(domains)}.length&&(!user.email||!(${JSON.stringify(domains)} as string[]).includes(user.email.split("@")[1]?.toLowerCase()??"")))return {error:"email_domain_restricted",errorDescription:"Registration restricted to authorized company domains"};}, additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } } },`,
     "    emailAndPassword: {",
     `      enabled: ${methods.includes("email-password")},`,
@@ -319,6 +340,9 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
         "export const auth=createAuth({",
         ' DATABASE_URL:"postgresql://schema:schema@schema.invalid/schema",',
         ' BETTER_AUTH_URL:"https://schema.invalid",',
+        ...(context.domainModel.backend.ai?.mcp.enabled
+          ? [' MCP_PUBLIC_URL:"https://mcp.schema.invalid",']
+          : []),
         ' BETTER_AUTH_SECRET:"schema-discovery-only-not-a-runtime-secret",',
         ...config.authentication.identityProviders.flatMap((provider) => [
           ` ${provider.toUpperCase()}_CLIENT_ID:"schema-only",`,

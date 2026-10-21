@@ -245,6 +245,7 @@ export interface ResolvedIdentity {
   readonly rolePermissions: Readonly<Record<string, readonly string[]>>;
 }
 export interface ResolvedBackend {
+  readonly ai?: Readonly<NonNullable<BackendDefinition["ai"]>>;
   readonly storage: readonly string[];
   readonly name: string;
   readonly repository: Readonly<NordixConfig["repositories"][number]>;
@@ -307,6 +308,9 @@ export interface TransportOperation {
   };
 }
 export interface ResolvedFrontend {
+  readonly ai?: Readonly<NonNullable<FrontendDefinition["ai"]>> & {
+    readonly authMethods: readonly ("oauth" | "api-key")[];
+  };
   readonly theme: import("./theme.js").ResolvedTheme;
   readonly name: string;
   readonly repository: Readonly<NordixConfig["repositories"][number]>;

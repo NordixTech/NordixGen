@@ -301,6 +301,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       'import { Hono } from "hono";',
       'import { HTTPException } from "hono/http-exception";',
       'import { cors } from "hono/cors";',
+      ...(model.backend.ai ? ['import {createAiRoutes} from "./platform/ai/routes.js";'] : []),
       ...(hasAuthentication
         ? [
             `import { createAuth, isTrustedAuthOrigin, type AuthEnvironment } from "${relativeImport(entryPoint, authFilePath)}";`,
@@ -356,7 +357,10 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       ...(hasAuthentication
         ? [
             "// Better Auth owns credential, session, cookie, and CSRF handling.",
-            'app.all("/api/auth/*", (c) => createAuth(c.env,c.executionCtx).handler(c.req.raw));',
+            ...(model.backend.ai ? ['app.route("/",createAiRoutes());'] : []),
+            model.backend.ai?.mcp.enabled
+              ? 'app.all("/api/auth/*", (c) => createAuth(c.req.header("x-nordix-mcp-gateway")==="1"?{...c.env,BETTER_AUTH_URL:new URL(c.env.MCP_PUBLIC_URL!).origin}:c.env,c.executionCtx).handler(c.req.raw));'
+              : 'app.all("/api/auth/*", (c) => createAuth(c.env,c.executionCtx).handler(c.req.raw));',
             "",
           ]
         : []),

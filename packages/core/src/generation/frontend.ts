@@ -13,6 +13,7 @@ import { generateApiClientFiles } from "../plugins/frontends/typed-api-client.js
 import { generateTailwindFiles } from "../plugins/styling/tailwind.js";
 import type { ResolvedProject } from "../project/types.js";
 import { frontendView } from "../project/views.js";
+import { frontendAiFiles } from "./ai-frontend.js";
 import { frontendCloudflareFiles } from "./cloudflare.js";
 import { collectFiles } from "./files.js";
 import { generateFrontendAccess, protectFrontendPage } from "./frontend-access.js";
@@ -57,6 +58,7 @@ export function frontendRenderContext(
 export function generateFrontend(project: ResolvedProject, name: string) {
   const context = frontendRenderContext(project, name);
   const contributions = [
+    { owner: "ai", files: frontendAiFiles(context) },
     { owner: "shell", files: generateFrontendShell(context) },
     { owner: "theme", files: generateThemeFiles(context) },
     { owner: "runtime-environment", files: [frontendEnvironmentFile(context)] },
@@ -94,6 +96,14 @@ export function generateFrontend(project: ResolvedProject, name: string) {
     ),
     frameworkContext: context.framework,
     runtimeDependencies: {
+      ...(context.frontend.ai?.chat.enabled
+        ? {
+            ai: "7.0.147",
+            "@ai-sdk/react": "4.0.151",
+            "react-markdown": "10.1.0",
+            "remark-gfm": "4.0.1",
+          }
+        : {}),
       ...FRONTEND_STACK.runtime,
       ...(context.api.authentication?.methods.includes("phone-number")
         ? { "react-phone-number-input": "3.4.18", "libphonenumber-js": "1.13.15" }

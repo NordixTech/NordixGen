@@ -19,7 +19,7 @@ export async function fixtureCommand(file: string, args: string[], cwd: string):
         scripts: { dev: args[1].startsWith("hono@") ? "wrangler dev" : "next dev" },
         dependencies: args[1].startsWith("hono@")
           ? { hono: "^4.0.0" }
-          : { next: "15.5.26", react: "19.1.1", "react-dom": "19.1.1" },
+          : { next: "16.4.2", react: "19.3.1", "react-dom": "19.3.1" },
       }),
     );
     await writeFile(join(target, "tsconfig.json"), '{"compilerOptions":{"strict":true}}');

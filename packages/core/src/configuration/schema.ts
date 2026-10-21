@@ -197,6 +197,28 @@ export const BackendSchema = z
       .refine((v) => Object.keys(v).length > 0, "Declare at least one business module."),
     authentication: AuthenticationSchema.optional(),
     authorization: AuthorizationSchema.optional(),
+    ai: z
+      .object({
+        enabled: z.boolean().default(true),
+        mcp: z
+          .object({
+            enabled: z.boolean().default(false),
+            authMethods: unique(z.enum(["oauth", "api-key"]))
+              .refine(
+                (values) => values.length > 0,
+                "Enable at least one MCP authentication method.",
+              )
+              .default(["oauth", "api-key"]),
+          })
+          .strict()
+          .default({}),
+        tools: z
+          .object({ requireConfirmationOnMutations: z.boolean().default(true) })
+          .strict()
+          .default({}),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export const FrontendAccessSchema = z
@@ -214,6 +236,24 @@ export const FrontendSchema = z
     connectsTo: unique(SlugSchema).default([]),
     access: FrontendAccessSchema.default({}),
     theme: FrontendThemeSchema.optional(),
+    ai: z
+      .object({
+        enabled: z.boolean().default(true),
+        backend: SlugSchema,
+        chat: z
+          .object({
+            enabled: z.boolean().default(false),
+            placement: z.enum(["floating", "page"]).default("floating"),
+          })
+          .strict()
+          .default({}),
+        connectPortal: z
+          .object({ enabled: z.boolean().default(false) })
+          .strict()
+          .default({}),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export const DatabaseSchema = z.object({}).strict();

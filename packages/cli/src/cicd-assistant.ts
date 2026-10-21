@@ -261,7 +261,7 @@ export async function executeStage(
           throw Error("DATABASE_URL is required as a build secret before migrations.");
         await run(["--dir", app.path, "run", "db:migrate"], process.cwd(), env);
       }
-    } else
+    } else if (app.kind === "frontend")
       await run(
         ["--dir", app.path, "exec", "opennextjs-cloudflare", "build", "--env", environment],
         process.cwd(),
@@ -428,6 +428,7 @@ export async function configure(
       const values: Record<string, string> = {};
       if (app.database) values.DATABASE_URL = dbConnections[app.name][environment];
       if (app.kind === "backend") {
+        if (app.mcpGateway) values.MCP_PUBLIC_URL = profile.urls[environment][app.mcpGateway];
         values[app.identity ? "AUTH_TRUSTED_ORIGINS" : "CORS_ALLOWED_ORIGINS"] = Object.values(
           profile.urls[environment],
         ).join(",");
@@ -447,6 +448,27 @@ export async function configure(
             "",
             /SECRET|KEY|TOKEN|PASSWORD/.test(key),
           );
+        if (app.ai) {
+          const provider = answer(
+            await select({
+              message: `${app.name}/${environment}: AI chat provider`,
+              options: [
+                { value: "", label: "Configure later" },
+                { value: "OPENAI_API_KEY", label: "OpenAI" },
+                { value: "ANTHROPIC_API_KEY", label: "Anthropic" },
+                { value: "GEMINI_API_KEY", label: "Google Gemini" },
+                { value: "GROQ_API_KEY", label: "Groq" },
+              ],
+            }),
+          );
+          if (provider)
+            values[String(provider)] = await secretInput(`${app.name}/${environment}: ${provider}`);
+          const model = await input(
+            `${app.name}/${environment}: AI_MODEL (empty uses provider default)`,
+            "",
+          );
+          if (model) values.AI_MODEL = model;
+        }
         if (app.emailDelivery) {
           const provider = answer(
             await select({
@@ -586,7 +608,7 @@ export async function configure(
 export function validateTopology(manifest: DeploymentManifest, profile: DeploymentProfile) {
   for (const environment of environments)
     for (const app of manifest.applications) {
-      if (app.kind === "frontend" || app.identity)
+      if (app.kind === "frontend" || app.kind === "gateway" || app.identity)
         publicOrigin(profile.urls[environment][app.name]);
     }
   const projects = manifest.applications

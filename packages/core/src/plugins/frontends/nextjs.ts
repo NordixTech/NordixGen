@@ -6,7 +6,7 @@ export function frontendPaths(applicationRoot: string): FrontendPaths {
     codeRoot: posix.join(applicationRoot, "src"),
     scaffold: {
       executable: "pnpm",
-      argumentsBeforeTarget: ["dlx", "create-next-app@15.5.26"],
+      argumentsBeforeTarget: ["dlx", "create-next-app@16.4.2"],
       argumentsAfterTarget: [
         "--yes",
         "--typescript",

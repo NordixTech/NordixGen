@@ -18,8 +18,8 @@ export function deploymentManifest(
     project: project.project.name,
     repository: repository.name,
     infrastructure: infrastructureManifest(project, repository.name),
-    publicFrontends: Object.fromEntries(
-      Object.values(project.frontends).map((app) => [
+    publicFrontends: Object.fromEntries([
+      ...Object.values(project.frontends).map((app) => [
         app.name,
         {
           worker: cloudflareWorkerName(project.project.name, app.name),
@@ -27,12 +27,35 @@ export function deploymentManifest(
           identityBackend: app.identity?.backend,
         },
       ]),
-    ),
+      ...Object.values(project.backends)
+        .filter((app) => app.ai?.mcp.enabled)
+        .map((app) => [
+          `${app.name}-mcp`,
+          {
+            worker: cloudflareWorkerName(project.project.name, `${app.name}-mcp`),
+            connections: [app.name],
+          },
+        ]),
+    ]),
     applications: [
+      ...Object.values(project.backends)
+        .filter((app) => app.repository.name === repository.name && app.ai?.mcp.enabled)
+        .map((app) => ({
+          name: `${app.name}-mcp`,
+          path: `${app.path}/mcp-gateway`,
+          worker: cloudflareWorkerName(project.project.name, `${app.name}-mcp`),
+          kind: "gateway" as const,
+          database: false,
+          identity: false,
+          connections: [app.name],
+          runtimeKeys: [],
+        })),
       ...Object.values(project.backends)
         .filter((a) => a.repository.name === repository.name)
         .map((a) => ({
           name: a.name,
+          ...(a.ai?.mcp.enabled ? { mcpGateway: `${a.name}-mcp` } : {}),
+          ...(a.ai ? { ai: true } : {}),
           path: a.path,
           worker: cloudflareWorkerName(project.project.name, a.name),
           kind: "backend" as const,
@@ -122,6 +145,28 @@ export function deploymentDocumentation(project: ResolvedProject, repository: Re
 | main | production | main |
 
 One persistent Worker per application/environment. Feature branches do not deploy through these triggers. Staging is not an ephemeral Preview. A Git merge applies committed migrations; it never copies or merges staging database data into production. Each persisted backend owns a dedicated Neon project/database resource. Backend-only, frontend-only repositories and monorepos use the same root commands below. Configure a split backend repository first. Frontends bind to the stable backend Worker names; no public backend URL is required.
+
+${
+  manifest.applications.some((app) => app.ai)
+    ? `## AI chat and MCP
+
+AI provider secrets belong on the backend Worker only. Set one of OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or GROQ_API_KEY (selection follows that priority), and optionally AI_MODEL. Without any key, chat returns a descriptive 400 while MCP/domain tools remain usable. Do not put these credentials in build output, browser variables or the gateway.
+
+${manifest.applications
+  .filter((app) => app.mcpGateway)
+  .map(
+    (app) =>
+      `- Backend ${app.name} stays private. Deploy gateway ${app.mcpGateway} from ${app.path}/mcp-gateway with its own staging/production Workers Builds triggers and public origin. Its Service Binding names the corresponding private backend Worker. Set backend MCP_PUBLIC_URL to that gateway origin; preserve BETTER_AUTH_URL for the frontend session authority (use the gateway origin in API-only deployments). Publish the backend before routing production traffic through the gateway.\n- For ${app.name}, local MCP development can run Wrangler with both configuration files, or the generated Docker gateway on loopback port 8790. Override MCP_${app.name.toUpperCase().replaceAll("-", "_")}_PORT and ${app.name.toUpperCase().replaceAll("-", "_")}_MCP_PUBLIC_URL together. The gateway exposes only MCP and OAuth onboarding routes; it does not publish general business routes.`,
+  )
+  .join("\n")}
+
+Connect external clients to the gateway /mcp URL. OAuth starts from the MCP client so it owns PKCE and state. The portal (/connect-ai when generated) also creates scoped, expiring personal keys and provides revocation. API keys use x-api-key or Authorization: Bearer; never put credentials in a URL. WAF rules and custom domain routes are explicit Cloudflare account configuration.
+
+Custom backend tools are exported variables initialized with defineTool in src/**/*.tool.ts. predev/pretypecheck/prebuild discover these files; restart dev after adding a file. Both chat and MCP use the shared registry and current IAM grants. With mutation confirmation enabled, the chat shows approval cards; MCP publishes destructiveHint and requires confirm:true, with interactive approval managed by the external client.
+
+`
+    : ""
+}
 
 ## Prerequisites for both options
 

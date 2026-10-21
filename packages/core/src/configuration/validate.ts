@@ -5,6 +5,7 @@ import { isolateConfigurationDictionaries } from "./dictionaries.js";
 import { type NordixConfig, NordixConfigSchema } from "./schema.js";
 import { THEME_MAIN_COLORS } from "./theme.js";
 import { validateAccess } from "./validation/access.js";
+import { validateAi } from "./validation/ai.js";
 import { validateApplications } from "./validation/applications.js";
 import { validateEndpoints } from "./validation/endpoints.js";
 import { validateEntities } from "./validation/entities.js";
@@ -182,6 +183,7 @@ export function validateNordixConfig(input: unknown): ConfigValidationResult {
     ...validateEndpoints(config),
     ...validatePersistence(config),
     ...validateAccess(config),
+    ...validateAi(config),
     ...(config.iac?.repository &&
     !config.repositories.some((repo) => repo.name === config.iac?.repository)
       ? [
