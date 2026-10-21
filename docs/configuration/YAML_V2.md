@@ -265,13 +265,52 @@ One backend database resource is shared, but a direct call does not create an am
 
 | Authentication field | Required / default | Contract |
 | --- | --- | --- |
-| `methods` | `[email-password]` | Unique nonempty subset of `email-password`, `username-password`; username requires email-password |
-| `identityProviders` | `[]` | Unique subset of `google`, `github` |
+| `methods` | `[email-password]` | Unique nonempty subset of `email-password`, `username-password`, `phone-number`; username requires email-password |
+| `identityProviders` | `[]` | Unique subset of `google`, `github`, `microsoft`, `facebook`; providers require email-password |
 | `features` | `[]` | Unique subset of `email-verification`, `password-recovery`, `two-factor` |
 
-No plugin ID or `enabled` alias exists. Omission disables authentication; null/false are invalid. Presence enables the settings. Existing supported Better Auth integration settings are retained, but backend feature generation is not a claim of completed enrollment/recovery/provider UI journeys. Credentials, provider keys, session secrets, trusted origins and connection strings come from runtime environment, never YAML.
+No plugin ID or authentication-level `enabled` alias exists. Omission disables authentication. Provider credentials, SMTP/Twilio credentials, session secrets, trusted origins and connection strings come from the runtime environment, never YAML.
 
-Credential registration retains the current open-registration behavior; it cannot accept a user-supplied role. There is no new registration/admin/invitation setting here. The password constraint is one fixed internal shared policy used by backend and frontend; changing its current weak value is owned by backend identity consolidation, not a new YAML selector.
+| Authentication field | Default | Contract |
+| --- | --- | --- |
+| `passwordPolicy` | Minimum 8, maximum 128; complexity flags false | `minLength` / `maxLength` are integers from 4 to 128, with min <= max. `numericOnly` allows ASCII digits only and ignores all `require*` flags with nonblocking warnings. Optional flags: `requireUppercase`, `requireLowercase`, `requireNumber`, `requireSpecialChar`. Browser Zod validation and server hooks share this policy, including password changes and resets. |
+| `session` | `expiresIn: 7d`, `updateAge: 1d` | Positive integer seconds or integer strings ending in s/m/h/d; values are bounded to 2147483647 seconds. |
+| `allowedEmailDomains` | Unrestricted | Nonempty list of exact domains. Company registrations require an authorized email and email verification. Phone-only signup is disabled; verified company users may link a phone from /profile. OAuth provisioning and email changes enforce the same domain boundary. |
+| `rateLimit` | Enabled; IP: 10 per path/60s; account: 10/15m | `ip: {window, max}` and `account: {window, max}` configure independent budgets. Both must allow the request. Legacy top-level `window`/`max` still configure IP limits; an explicit `ip` takes precedence. `enabled: false` disables both login budgets. Session reads and IAM routes remain excluded. |
+| `smsOtp` | 10 SMS attempts/24h; cooldown starts at 60s, doubles, capped at 15m | `dailyLimit`; `cooldown: {initialDelay, multiplier, maxDelay}`. First SMS is immediate; `multiplier: 1` gives a fixed cooldown. Positive durations use the same s/m/h/d syntax. maxDelay must be >= initialDelay and <= 24h. SMS quotas remain active independently of `rateLimit.enabled`. |
+
+For example:
+
+```yaml
+authentication:
+  methods: [email-password, phone-number]
+  identityProviders: [google, microsoft]
+  passwordPolicy:
+    minLength: 6
+    maxLength: 6
+    numericOnly: true
+  session: { expiresIn: 7d, updateAge: 1d }
+  rateLimit:
+    enabled: true
+    ip: { window: 60s, max: 5 }
+    account: { window: 15m, max: 10 }
+  smsOtp:
+    dailyLimit: 10
+    cooldown:
+      initialDelay: 60s
+      multiplier: 2
+      maxDelay: 15m
+```
+
+The account budget counts credential-verification requests (successful or failed) for email/password, username/password and phone OTP login. Existing account IDs unify these identifiers; unknown identifiers are normalized and HMAC-hashed. Neither an IP change nor switching between linked login identifiers creates another account budget. Windows start at the first accepted attempt and do not extend when a request is blocked. This is throttling, not a permanent account lockout or a DDoS guarantee.
+
+SMS limits apply to the destination number and, when authenticated, to the requesting account as well, across login, registration and phone linking. The 24-hour window starts at the first reserved SMS attempt, rather than resetting at midnight. All matching limits are checked and reserved together in a PostgreSQL transaction before creating/sending the OTP. Provider failures still consume a reservation, while requests rejected by cooldown/quota consume none. Both the quota and cooldown survive process restarts. The browser displays the server-provided cooldown; refreshing or bypassing the UI does not bypass enforcement. Deploy the new auth_abuse_limit schema migration before using this runtime. No global email/SMS budget or CAPTCHA is introduced by these settings.
+
+Email authentication includes /forgot-password and /reset-password (token, confirmation and policy validation). OAuth automatically links verified matching email identities to the same verified local account; OAuth-only accounts require password recovery before password login. Microsoft uses MICROSOFT_TENANT_ID (default common).
+
+Phone authentication uses E.164 numbers and six-digit SMS OTPs valid for ten minutes with three verification attempts. The generated /sign-in and /sign-up provide a phone flow; /profile requires a session and links a verified phone to that existing identity. Without domain restrictions, phone-only registration uses an internal unverified email at phone.invalid to satisfy Better Auth's required email column. That placeholder is not a verified email identity.
+
+Production requires real delivery configuration: Twilio for SMS, and SMTP or Resend API for email. Missing credentials produce a safe error; OTPs and reset links are never printed in production. Nonproduction environments use Mailpit/SMTP when configured, otherwise console simulation. Local Docker includes Mailpit (SMTP 1025, UI 8025 by default). Registration always assigns the server-owned least-privilege role.
 
 | Authorization field | Required / default | Contract |
 | --- | --- | --- |

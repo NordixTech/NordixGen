@@ -58,7 +58,14 @@ describe("local Docker topology", () => {
     const resolved = project(true);
     const backend = parse(dockerFiles(resolved, resolved.repositories[0])["docker-compose.yml"]);
     const frontend = parse(dockerFiles(resolved, resolved.repositories[1])["docker-compose.yml"]);
-    expect(Object.keys(backend.services)).toEqual(["postgres-api", "neon-api", "backend-api"]);
+    expect(Object.keys(backend.services)).toEqual([
+      "mailpit-api",
+      "postgres-api",
+      "neon-api",
+      "backend-api",
+    ]);
+    expect(backend.services["backend-api"].environment.SMTP_HOST).toContain("mailpit-api");
+    expect(backend.services["backend-api"].environment.NODE_ENV).toBe("development");
     expect(Object.keys(frontend.services)).toEqual(["frontend-web"]);
     expect(frontend.services["frontend-web"].depends_on).toBeUndefined();
     expect(frontend.services["frontend-web"].environment.BACKEND_API_INTERNAL_URL).toContain(

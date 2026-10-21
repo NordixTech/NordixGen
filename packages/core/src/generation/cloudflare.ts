@@ -18,6 +18,7 @@ export function cloudflareConfiguration(
 ) {
   const name = cloudflareWorkerName(project, app);
   const environment = (environment: string) => ({
+    ...(!frontend ? { vars: { NODE_ENV: "production" } } : {}),
     name: `${name}-${environment}`,
     workers_dev: frontend,
     preview_urls: false,

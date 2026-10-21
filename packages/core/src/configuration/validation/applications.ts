@@ -167,6 +167,8 @@ export function validateApplications(config: NordixConfig): ConfigDiagnostic[] {
           "account",
           "verification",
           "twofactor",
+          "authratelimit",
+          "ratelimit",
         ].includes(snakeCase(name).replaceAll("_", "")))
     )
       add(

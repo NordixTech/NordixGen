@@ -12,7 +12,11 @@ export const BACKEND_STACK = Object.freeze({
     "@neondatabase/serverless": "^0.10.4",
     "@faker-js/faker": "9.9.0",
   }),
-  identity: Object.freeze({ "better-auth": "^1.7.7", "@better-auth/drizzle-adapter": "^1.7.7" }),
+  identity: Object.freeze({
+    "better-auth": "1.7.10",
+    "@better-auth/drizzle-adapter": "1.7.10",
+    nodemailer: "10.1.7",
+  }),
   tooling: Object.freeze({
     typescript: "^5.8.2",
     "@types/node": "^24.0.0",
@@ -31,6 +35,7 @@ export function backendDependencies(database: boolean, identity: boolean) {
     developmentDependencies: {
       ...BACKEND_STACK.tooling,
       ...(database ? BACKEND_STACK.databaseTooling : {}),
+      ...(identity ? { "@types/nodemailer": "8.0.2" } : {}),
     },
   };
 }

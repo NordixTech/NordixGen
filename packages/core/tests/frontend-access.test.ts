@@ -54,9 +54,30 @@ function guard(
       path: string,
     ) => Promise<unknown>,
     requireIam: load(`${root}/lib/auth/server.ts`).requireIamAccess as () => Promise<void>,
+    requireGuest: load(`${root}/lib/auth/server.ts`).requireGuestSession as () => Promise<void>,
   };
 }
 describe("verified server page access", () => {
+  it("redirects verified members away from account entry pages but admits guests and expired sessions", async () => {
+    const member = guard();
+    await expect(member.requireGuest()).rejects.toThrow("redirect:/");
+    expect(member.fetchSession.mock.calls[0][1]).toMatchObject({ cache: "no-store" });
+    const guest = guard("authenticated", null);
+    await expect(guest.requireGuest()).resolves.toBeUndefined();
+    expect(guest.fetchSession).not.toHaveBeenCalled();
+    const expired = guard();
+    expired.fetchSession.mockResolvedValueOnce(new Response("null"));
+    await expect(expired.requireGuest()).resolves.toBeUndefined();
+    const unavailable = guard();
+    unavailable.fetchSession.mockResolvedValueOnce(new Response("unavailable", { status: 503 }));
+    await expect(unavailable.requireGuest()).rejects.toThrow("identity service is unavailable");
+    const files = fixture().output.virtualFileSystem.snapshot();
+    for (const route of ["sign-in", "sign-up"]) {
+      const page = files[`${root}/app/${route}/page.tsx`];
+      expect(page).toContain("await requireGuestSession()");
+      expect(page).toContain('dynamic="force-dynamic"');
+    }
+  });
   it("uses a private Docker authority for server session and IAM checks without changing browser origins", async () => {
     vi.stubEnv("NEXT_PUBLIC_AUTH_BASE_URL", "http://localhost:8787");
     vi.stubEnv("AUTH_INTERNAL_BASE_URL", "http://backend-api:8787");

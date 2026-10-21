@@ -99,7 +99,7 @@ describe("backend Better Auth generation", () => {
     expect(auth).toContain("queueAuthEmail(user.email");
     expect(auth).toContain("google: { clientId:");
     expect(auth).toContain("github: { clientId:");
-    expect(auth).toContain("executionContext.waitUntil");
+    expect(auth).toContain("return sendAuthEmail(env, to, subject, url)");
     expect(auth).toContain("getTrustedAuthOrigins(env)");
     expect(schema).toContain('username: text("username").unique()');
     expect(schema).toContain('twoFactorEnabled: boolean("two_factor_enabled")');

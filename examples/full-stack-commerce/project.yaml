@@ -24,7 +24,8 @@ backends:
         entities: [Invoice]
         imports:
           customers: [getCustomer]
-    authentication: {}
+    authentication:
+      methods: [email-password, phone-number]
     authorization:
       roles: [admin, viewer, accountant, outsider]
       adminRole: admin

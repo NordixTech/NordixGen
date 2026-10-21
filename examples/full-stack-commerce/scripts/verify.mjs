@@ -249,7 +249,9 @@ export async function verifyApplication(state, directory, expireAccountant) {
 
     const signIn = async (role) => {
       await page.goto(`${web}/sign-in`);
-      await page.getByLabel("Email", { exact: true }).fill(`${role}@acceptance.example.test`);
+      await page
+        .getByRole("textbox", { name: "Email", exact: true })
+        .fill(`${role}@acceptance.example.test`);
       await page.getByLabel("Password", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect(page).toHaveURL(`${web}/`);
@@ -401,6 +403,10 @@ export async function verifyApplication(state, directory, expireAccountant) {
       "Browser login, generated typed forms, decimal/JSON/null/date transport, mutation refetch and absent delete action",
     );
 
+    for (const route of ["/sign-in", "/sign-up"]) {
+      await page.goto(`${web}${route}`);
+      await expect(page).toHaveURL(`${web}/`);
+    }
     await page.getByRole("button", { name: "Sign out", exact: true }).click();
     await expect(page).toHaveURL(`${web}/sign-in`);
     await signIn("outsider");
@@ -799,6 +805,117 @@ export async function verifyApplication(state, directory, expireAccountant) {
       "Expired sessions and replayed signed cookies after logout fail at both page/API boundaries",
     );
     expect([...browserOrigins]).toEqual([web]);
+    const authContext = await browser.newContext();
+    const authPage = await authContext.newPage();
+    const lastDevValue = async (pattern) => {
+      let value;
+      await expect
+        .poll(async () => {
+          const log = await readFile(join(directory, "backend.log"), "utf8");
+          value = [...log.matchAll(pattern)].at(-1)?.[1];
+          return Boolean(value);
+        })
+        .toBe(true);
+      return value;
+    };
+    await authPage.goto(`${web}/sign-up`);
+    await authPage.getByLabel("Name", { exact: true }).fill("Recovery member");
+    await authPage
+      .getByRole("textbox", { name: "Email", exact: true })
+      .fill("recovery@acceptance.example.test");
+    await authPage
+      .getByLabel("Password (at least 8 characters)", { exact: true })
+      .fill("original-password-2026");
+    await authPage.getByRole("button", { name: "Create account", exact: true }).click();
+    await expect(authPage).toHaveURL(`${web}/`);
+    await authPage.goto(`${web}/forgot-password`);
+    await authPage
+      .getByRole("textbox", { name: "Email", exact: true })
+      .fill("recovery@acceptance.example.test");
+    await authPage.getByRole("button", { name: "Send reset link", exact: true }).click();
+    await expect(
+      authPage.getByText("If an account exists, check your email for a password reset link.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    const resetLink = await lastDevValue(
+      /\[DEV AUTH\] Email for recovery@acceptance\.example\.test: (\S+)/g,
+    );
+    const resetResponse = await authContext.request.get(resetLink, { maxRedirects: 0 });
+    const resetLocation = resetResponse.headers().location;
+    assert.ok(resetLocation?.startsWith(`${web}/reset-password`));
+    await authPage.goto(resetLocation);
+    await authPage.getByLabel("New password", { exact: true }).fill("updated-password-2026");
+    await authPage
+      .getByLabel("Confirm password / PIN", { exact: true })
+      .fill("updated-password-2026");
+    await authPage.getByRole("button", { name: "Save password", exact: true }).click();
+    await expect(authPage).toHaveURL(`${web}/sign-in`);
+    await authPage
+      .getByRole("textbox", { name: "Email", exact: true })
+      .fill("recovery@acceptance.example.test");
+    await authPage.getByLabel("Password", { exact: true }).fill("updated-password-2026");
+    await authPage.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(authPage).toHaveURL(`${web}/`);
+    for (const resetUrl of [
+      resetLocation,
+      `${web}/reset-password`,
+      `${web}/reset-password?token=not-a-valid-token`,
+    ]) {
+      await authPage.goto(resetUrl);
+      await expect(authPage).toHaveURL(`${web}/forgot-password?error=INVALID_TOKEN`);
+      await expect(
+        authPage.getByText(
+          "This reset link is invalid, expired or already used. Request a new link below.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(authPage.getByLabel("New password", { exact: true })).toHaveCount(0);
+    }
+    await authContext.clearCookies();
+    await authPage.goto(`${web}/sign-in`);
+    await authPage.getByRole("tab", { name: "Phone", exact: true }).click();
+    await authPage.getByLabel("Your name", { exact: true }).fill("Phone member");
+    await authPage.getByLabel("Country and calling code").click();
+    await authPage.getByLabel("Search country or calling code").fill("+51");
+    await authPage.locator(".ng-country-options button").filter({ hasText: "Peru" }).click();
+    await authPage.getByLabel("Phone number", { exact: true }).fill("999111001");
+    await authPage.getByRole("button", { name: "Send code", exact: true }).click();
+    await expect(
+      authPage.getByRole("button", { name: /Request another code in \d+s/ }),
+    ).toBeDisabled();
+    const prematureSms = await authContext.request.post(`${web}/api/auth/phone-number/send-otp`, {
+      headers: { origin: web },
+      data: { phoneNumber: "+51999111001" },
+    });
+    expect(prematureSms.status()).toBe(429);
+    expect(Number(prematureSms.headers()["retry-after"])).toBeGreaterThan(0);
+    const otp = await lastDevValue(/\[DEV AUTH\] SMS OTP for \+51999111001: (\d{6})/g);
+    await authPage.getByLabel("Verification code", { exact: true }).fill(otp);
+    await authPage.getByRole("button", { name: "Verify code", exact: true }).click();
+    await expect(authPage).toHaveURL(`${web}/`);
+    await authPage.goto(`${web}/profile`);
+    await expect(
+      authPage.getByRole("heading", { name: "Your profile", exact: true }),
+    ).toBeVisible();
+    await expect(
+      authPage.getByRole("heading", { name: "Phone member", exact: true }),
+    ).toBeVisible();
+    await authPage.getByLabel("Country and calling code").click();
+    await authPage.getByLabel("Search country or calling code").fill("Perú");
+    await authPage.locator(".ng-country-options button").filter({ hasText: "Peru" }).click();
+    await authPage.getByLabel("Phone number", { exact: true }).fill("999111002");
+    await authPage.getByRole("button", { name: "Send code", exact: true }).click();
+    const linkedOtp = await lastDevValue(/\[DEV AUTH\] SMS OTP for \+51999111002: (\d{6})/g);
+    await authPage.getByLabel("Verification code", { exact: true }).fill(linkedOtp);
+    await authPage.getByRole("button", { name: "Verify code", exact: true }).click();
+    await expect(
+      authPage.getByText("Phone number linked. You can use it to sign in.", { exact: true }),
+    ).toBeVisible();
+    await authContext.close();
+    await passed(
+      "Browser signup, password recovery/reset, phone OTP registration and protected profile linking use real generated handlers",
+    );
     expect(browserErrors).toEqual([]);
     await passed("The connected browser journey completes without uncaught application errors");
     return behaviors;

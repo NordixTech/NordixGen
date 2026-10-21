@@ -222,6 +222,92 @@ describe
       const tables = await sql("SELECT tablename FROM pg_tables WHERE schemaname='public'");
       expect(tables.map((row) => row.tablename)).toContain("invoice_line");
     });
+    it("atomically caps parallel account attempts and persists counters across connections", async () => {
+      const store = load(`${root}/platform/auth/abuse-store.ts`) as {
+        consumeLimits: (
+          url: string,
+          rules: { key: string; max: number; window: number }[],
+        ) => Promise<{ retryAfter: number }>;
+      };
+      const rule = { key: "integration-account", max: 3, window: 900 };
+      const replies = await Promise.all(
+        Array.from({ length: 12 }, () => store.consumeLimits(databaseUrl ?? "", [rule])),
+      );
+      expect(replies.filter((r) => r.retryAfter === 0)).toHaveLength(3);
+      expect(
+        Number((await sql("SELECT count FROM auth_abuse_limit WHERE key=$1", [rule.key]))[0].count),
+      ).toBe(3);
+      expect((await store.consumeLimits(databaseUrl ?? "", [rule])).retryAfter).toBeGreaterThan(0);
+      await sql("UPDATE auth_abuse_limit SET window_start=window_start-900000 WHERE key=$1", [
+        rule.key,
+      ]);
+      expect((await store.consumeLimits(databaseUrl ?? "", [rule])).retryAfter).toBe(0);
+    }, 60000);
+    it("enforces SMS cooldown and a ten-send 24h budget without charging blocked destinations", async () => {
+      const store = load(`${root}/platform/auth/abuse-store.ts`) as {
+        consumeLimits: (
+          url: string,
+          rules: {
+            key: string;
+            max: number;
+            window: number;
+            initialDelay?: number;
+            multiplier?: number;
+            maxDelay?: number;
+          }[],
+        ) => Promise<{ retryAfter: number; nextDelay: number }>;
+      };
+      const rule = {
+        key: "integration-sms",
+        max: 10,
+        window: 86400,
+        initialDelay: 60,
+        multiplier: 2,
+        maxDelay: 900,
+      };
+      expect(await store.consumeLimits(databaseUrl ?? "", [rule])).toMatchObject({
+        retryAfter: 0,
+        nextDelay: 60,
+      });
+      expect((await store.consumeLimits(databaseUrl ?? "", [rule])).retryAfter).toBeGreaterThan(0);
+      await sql("UPDATE auth_abuse_limit SET last_request=last_request-60000 WHERE key=$1", [
+        rule.key,
+      ]);
+      expect(await store.consumeLimits(databaseUrl ?? "", [rule])).toMatchObject({
+        retryAfter: 0,
+        nextDelay: 120,
+      });
+      for (let i = 2; i < 10; i++) {
+        await sql("UPDATE auth_abuse_limit SET last_request=last_request-900000 WHERE key=$1", [
+          rule.key,
+        ]);
+        expect((await store.consumeLimits(databaseUrl ?? "", [rule])).retryAfter).toBe(0);
+      }
+      expect((await store.consumeLimits(databaseUrl ?? "", [rule])).retryAfter).toBeGreaterThan(
+        80000,
+      );
+      await sql("UPDATE auth_abuse_limit SET window_start=window_start-86400000 WHERE key=$1", [
+        rule.key,
+      ]);
+      expect(await store.consumeLimits(databaseUrl ?? "", [rule])).toMatchObject({
+        retryAfter: 0,
+        nextDelay: 60,
+      });
+      const actor = { key: "integration-actor", max: 1, window: 86400 };
+      const phone = { key: "integration-phone", max: 10, window: 86400 };
+      expect((await store.consumeLimits(databaseUrl ?? "", [actor, phone])).retryAfter).toBe(0);
+      expect(
+        (
+          await store.consumeLimits(databaseUrl ?? "", [
+            { ...phone, key: "integration-other-phone" },
+            actor,
+          ])
+        ).retryAfter,
+      ).toBeGreaterThan(0);
+      expect(
+        await sql("SELECT key FROM auth_abuse_limit WHERE key='integration-other-phone'"),
+      ).toHaveLength(0);
+    }, 60000);
     it("seeds both modules and their relation in deterministic order without auth identities", async () => {
       const seed = load(`${root}/platform/database/seed.ts`) as unknown as DatabaseTools;
       const first = await seed.seedDatabase({ seed: 2026 });

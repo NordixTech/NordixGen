@@ -1,4 +1,5 @@
 import { type ConfigDiagnostic, createDiagnostic } from "../../diagnostics.js";
+import { durationSeconds } from "../../project/account-policy.js";
 import { IAM_PERMISSIONS, backendPermissions } from "../../project/permissions.js";
 import type { NordixConfig } from "../schema.js";
 import { entitySlug, routePath, scopedOperationName } from "./shared.js";
@@ -9,6 +10,64 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
     diagnostics.push(createDiagnostic(code, path, message));
   for (const [bi, backend] of config.backends.entries()) {
     const path = `backends[${bi}]`;
+    const auth = backend.authentication;
+    if (auth) {
+      if (
+        durationSeconds(auth.smsOtp.cooldown.initialDelay) >
+        durationSeconds(auth.smsOtp.cooldown.maxDelay)
+      )
+        add(
+          "SMS_COOLDOWN_INVALID",
+          `${path}.authentication.smsOtp.cooldown.maxDelay`,
+          "maxDelay must be greater than or equal to initialDelay.",
+        );
+      if (durationSeconds(auth.smsOtp.cooldown.maxDelay) > 86400)
+        add(
+          "SMS_COOLDOWN_INVALID",
+          `${path}.authentication.smsOtp.cooldown.maxDelay`,
+          "maxDelay must not exceed the 24-hour SMS quota window.",
+        );
+      if (auth.features.includes("email-verification") && !auth.methods.includes("email-password"))
+        add(
+          "EMAIL_VERIFICATION_REQUIRES_EMAIL_AUTHENTICATION",
+          `${path}.authentication.features`,
+          "email-verification requires the email-password authentication method.",
+        );
+      if (auth.identityProviders.length && !auth.methods.includes("email-password"))
+        add(
+          "OAUTH_REQUIRES_EMAIL_AUTHENTICATION",
+          `${path}.authentication.identityProviders`,
+          "OAuth providers require email-password authentication.",
+        );
+      if (auth.allowedEmailDomains && !auth.methods.includes("email-password"))
+        add(
+          "EMAIL_DOMAIN_REQUIRES_EMAIL_AUTHENTICATION",
+          `${path}.authentication.allowedEmailDomains`,
+          "Restricted registration requires email-password authentication; phones may only be linked to an existing company account.",
+        );
+      if (auth.passwordPolicy.minLength > auth.passwordPolicy.maxLength)
+        add(
+          "PASSWORD_POLICY_INVALID",
+          `${path}.authentication.passwordPolicy`,
+          "minLength must not exceed maxLength.",
+        );
+      if (auth.passwordPolicy.numericOnly)
+        for (const flag of [
+          "requireUppercase",
+          "requireLowercase",
+          "requireNumber",
+          "requireSpecialChar",
+        ] as const)
+          if (auth.passwordPolicy[flag])
+            diagnostics.push(
+              createDiagnostic(
+                "PASSWORD_COMPLEXITY_IGNORED",
+                `${path}.authentication.passwordPolicy.${flag}`,
+                "This complexity requirement is ignored in numeric-only mode.",
+                "warning",
+              ),
+            );
+    }
     if (
       backend.authentication?.methods.includes("username-password") &&
       !backend.authentication.methods.includes("email-password")
@@ -117,6 +176,13 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
         "Protected pages require a connected authentication authority. Enable/select one or use public mode.",
       );
     if (selected)
+      if (frontend.access.publicRoutes?.some((pattern) => pattern === "/profile"))
+        add(
+          "FRONTEND_ACCESS_ROUTE_INVALID",
+          `${path}.access.publicRoutes`,
+          "Profile pages always require a verified session.",
+        );
+    if (selected)
       for (const backend of authorities)
         if (
           backend.name !== selected.name &&
@@ -157,9 +223,26 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
       operations.set(name, `${endpoint.backend}.${endpoint.operationId}`);
     }
     if (visible.length) inventory.add("/api-explorer");
+    if (selected?.authentication?.methods.includes("phone-number")) inventory.add("/profile");
     const slugs = new Map<string, string>();
     for (const endpoint of visible) {
       const slug = entitySlug(endpoint.entity);
+      if (
+        selected &&
+        [
+          ...(selected.authentication?.methods.includes("email-password")
+            ? ["forgot-password", "reset-password"]
+            : []),
+          "sign-in",
+          "sign-up",
+          ...(selected.authentication?.methods.includes("phone-number") ? ["profile"] : []),
+        ].includes(slug)
+      )
+        add(
+          "GENERATED_NAME_COLLISION",
+          `${path}.connectsTo`,
+          `Entity "${endpoint.entity}" conflicts with a generated authentication page. Rename the entity.`,
+        );
       const previous = slugs.get(slug);
       if (previous && previous !== endpoint.entity)
         add(
@@ -196,6 +279,8 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
         !routePath(base) ||
         pattern === "/sign-in" ||
         pattern === "/sign-up" ||
+        pattern === "/forgot-password" ||
+        pattern === "/reset-password" ||
         ![...inventory].some((page) => matches(pattern, page))
       )
         add(

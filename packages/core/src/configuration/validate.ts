@@ -217,7 +217,7 @@ export function validateNordixConfig(input: unknown): ConfigValidationResult {
           ],
     ),
     ...Object.keys(config.iac?.cloudflare.r2_storage ?? {}).flatMap((key) =>
-      /^(DATABASE_URL|BETTER_AUTH_.*|AUTH_.*|CORS_.*|R2_.*|NODE_ENV|PORT|RESEND_API_KEY|GOOGLE_CLIENT_.*|GITHUB_CLIENT_.*)$/.test(
+      /^(DATABASE_URL|BETTER_AUTH_.*|AUTH_.*|CORS_.*|R2_.*|NODE_ENV|PORT|RESEND_API_KEY|SMTP_.*|TWILIO_.*|MICROSOFT_.*|FACEBOOK_CLIENT_.*|GOOGLE_CLIENT_.*|GITHUB_CLIENT_.*)$/.test(
         key.toUpperCase(),
       )
         ? [

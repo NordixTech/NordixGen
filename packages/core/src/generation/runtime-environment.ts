@@ -11,14 +11,31 @@ export function backendEnvironmentFile(context: BackendRenderContext): Generated
           "BETTER_AUTH_SECRET=",
           "BETTER_AUTH_URL=http://localhost:3000",
           "AUTH_TRUSTED_ORIGINS=http://localhost:3000",
+          "NODE_ENV=development",
+          ...(identity.identityProviders.includes("microsoft")
+            ? ["MICROSOFT_TENANT_ID=common"]
+            : []),
+          ...(identity.methods.includes("phone-number")
+            ? ["TWILIO_ACCOUNT_SID=", "TWILIO_AUTH_TOKEN=", "TWILIO_FROM_NUMBER="]
+            : []),
           ...identity.identityProviders.flatMap((provider) => [
             `${provider.toUpperCase()}_CLIENT_ID=`,
             `${provider.toUpperCase()}_CLIENT_SECRET=`,
           ]),
-          ...(identity.features.some(
+          ...(identity.methods.includes("email-password") ||
+          identity.allowedEmailDomains?.length ||
+          identity.features.some(
             (feature) => feature === "email-verification" || feature === "password-recovery",
           )
-            ? ["RESEND_API_KEY=", "AUTH_EMAIL_FROM="]
+            ? [
+                "RESEND_API_KEY=",
+                "AUTH_EMAIL_FROM=",
+                "SMTP_HOST=",
+                "SMTP_PORT=1025",
+                "SMTP_SECURE=false",
+                "SMTP_USER=",
+                "SMTP_PASSWORD=",
+              ]
             : []),
         ]
       : ["CORS_ALLOWED_ORIGINS=http://localhost:3000"]),

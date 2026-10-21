@@ -241,7 +241,8 @@
                   "type": "string",
                   "enum": [
                     "email-password",
-                    "username-password"
+                    "username-password",
+                    "phone-number"
                   ]
                 },
                 "default": [
@@ -254,7 +255,9 @@
                   "type": "string",
                   "enum": [
                     "google",
-                    "github"
+                    "github",
+                    "microsoft",
+                    "facebook"
                   ]
                 },
                 "default": []
@@ -270,6 +273,225 @@
                   ]
                 },
                 "default": []
+              },
+              "passwordPolicy": {
+                "type": "object",
+                "properties": {
+                  "minLength": {
+                    "type": "integer",
+                    "minimum": 4,
+                    "maximum": 128,
+                    "default": 8
+                  },
+                  "maxLength": {
+                    "type": "integer",
+                    "minimum": 4,
+                    "maximum": 128,
+                    "default": 128
+                  },
+                  "numericOnly": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "requireUppercase": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "requireLowercase": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "requireNumber": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "requireSpecialChar": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false,
+                "default": {}
+              },
+              "session": {
+                "type": "object",
+                "properties": {
+                  "expiresIn": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9]\\d*[smhd]$"
+                      }
+                    ],
+                    "default": "7d"
+                  },
+                  "updateAge": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9]\\d*[smhd]$"
+                      }
+                    ],
+                    "default": "1d"
+                  }
+                },
+                "additionalProperties": false,
+                "default": {}
+              },
+              "allowedEmailDomains": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}$"
+                }
+              },
+              "rateLimit": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "window": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9]\\d*[smhd]$"
+                      }
+                    ],
+                    "default": "60s"
+                  },
+                  "max": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000,
+                    "default": 10
+                  },
+                  "ip": {
+                    "type": "object",
+                    "properties": {
+                      "window": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^[1-9]\\d*[smhd]$"
+                          }
+                        ],
+                        "default": "60s"
+                      },
+                      "max": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1000000,
+                        "default": 10
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "account": {
+                    "type": "object",
+                    "properties": {
+                      "window": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^[1-9]\\d*[smhd]$"
+                          }
+                        ],
+                        "default": "15m"
+                      },
+                      "max": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1000000,
+                        "default": 10
+                      }
+                    },
+                    "additionalProperties": false,
+                    "default": {}
+                  }
+                },
+                "additionalProperties": false,
+                "default": {}
+              },
+              "smsOtp": {
+                "type": "object",
+                "properties": {
+                  "dailyLimit": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000,
+                    "default": 10
+                  },
+                  "cooldown": {
+                    "type": "object",
+                    "properties": {
+                      "initialDelay": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^[1-9]\\d*[smhd]$"
+                          }
+                        ],
+                        "default": "60s"
+                      },
+                      "multiplier": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "default": 2
+                      },
+                      "maxDelay": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^[1-9]\\d*[smhd]$"
+                          }
+                        ],
+                        "default": "15m"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "default": {}
+                  }
+                },
+                "additionalProperties": false,
+                "default": {}
               }
             },
             "additionalProperties": false

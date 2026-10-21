@@ -92,13 +92,86 @@ export const ModuleSchema = z
       .default({}),
   })
   .strict();
+export const AuthDurationSchema = z.union([
+  z.number().int().positive().max(2147483647),
+  z
+    .string()
+    .regex(/^[1-9]\d*[smhd]$/)
+    .refine((value) => {
+      const units: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+      return Number(value.slice(0, -1)) * units[value.slice(-1)] <= 2147483647;
+    }, "Duration exceeds the supported limit."),
+]);
+export const PasswordPolicySchema = z
+  .object({
+    minLength: z.number().int().min(4).max(128).default(8),
+    maxLength: z.number().int().min(4).max(128).default(128),
+    numericOnly: z.boolean().default(false),
+    requireUppercase: z.boolean().default(false),
+    requireLowercase: z.boolean().default(false),
+    requireNumber: z.boolean().default(false),
+    requireSpecialChar: z.boolean().default(false),
+  })
+  .strict();
 export const AuthenticationSchema = z
   .object({
-    methods: unique(z.enum(["email-password", "username-password"]))
+    methods: unique(z.enum(["email-password", "username-password", "phone-number"]))
       .refine((v) => v.length > 0, "Enable at least one credential method.")
       .default(["email-password"]),
-    identityProviders: unique(z.enum(["google", "github"])).default([]),
+    identityProviders: unique(z.enum(["google", "github", "microsoft", "facebook"])).default([]),
     features: unique(z.enum(["email-verification", "password-recovery", "two-factor"])).default([]),
+    passwordPolicy: PasswordPolicySchema.default({}),
+    session: z
+      .object({
+        expiresIn: AuthDurationSchema.default("7d"),
+        updateAge: AuthDurationSchema.default("1d"),
+      })
+      .strict()
+      .default({}),
+    allowedEmailDomains: unique(
+      z
+        .string()
+        .toLowerCase()
+        .regex(/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/),
+    )
+      .refine((domains) => domains.length > 0, "Declare at least one domain.")
+      .optional(),
+    rateLimit: z
+      .object({
+        enabled: z.boolean().default(true),
+        window: AuthDurationSchema.default("60s"),
+        max: z.number().int().positive().max(1000000).default(10),
+        ip: z
+          .object({
+            window: AuthDurationSchema.default("60s"),
+            max: z.number().int().positive().max(1000000).default(10),
+          })
+          .strict()
+          .optional(),
+        account: z
+          .object({
+            window: AuthDurationSchema.default("15m"),
+            max: z.number().int().positive().max(1000000).default(10),
+          })
+          .strict()
+          .default({}),
+      })
+      .strict()
+      .default({}),
+    smsOtp: z
+      .object({
+        dailyLimit: z.number().int().positive().max(1000000).default(10),
+        cooldown: z
+          .object({
+            initialDelay: AuthDurationSchema.default("60s"),
+            multiplier: z.number().min(1).max(10).default(2),
+            maxDelay: AuthDurationSchema.default("15m"),
+          })
+          .strict()
+          .default({}),
+      })
+      .strict()
+      .default({}),
   })
   .strict();
 export const AuthorizationSchema = z

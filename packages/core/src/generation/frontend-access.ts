@@ -22,10 +22,9 @@ const protectedPages:Readonly<Record<string,boolean>>=${JSON.stringify(pages)};
 export interface VerifiedPageSession {user:{id:string;role?:string|null};session:Record<string,unknown>;}
 export class IdentityUnavailable extends Error {constructor(){super("The identity service is unavailable. Please try again.");this.name="IdentityUnavailable";}}
 /** Called at each protected page boundary, including server navigation. No cookie-presence authorization. */
-export async function requirePageSession(path:string):Promise<VerifiedPageSession|null> {
- if(protectedPages[path]===false)return null;
+async function readPageSession():Promise<VerifiedPageSession|null> {
  const cookie=(await headers()).get("cookie");
- if(!cookie)redirect("/sign-in");
+ if(!cookie)return null;
  let session:VerifiedPageSession|null;
  try {
   const response=await backendFetch(${JSON.stringify(context.frontend.identity?.backend)},"/api/auth/get-session",{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});
@@ -38,6 +37,14 @@ export async function requirePageSession(path:string):Promise<VerifiedPageSessio
    else throw new IdentityUnavailable();
   }
  }catch{throw new IdentityUnavailable();}
+ return session;
+}
+export async function requireGuestSession():Promise<void>{
+ if(await readPageSession())redirect("/");
+}
+export async function requirePageSession(path:string):Promise<VerifiedPageSession|null> {
+ if(protectedPages[path]===false)return null;
+ const session=await readPageSession();
  if(!session)redirect("/sign-in");
  return session;
 }

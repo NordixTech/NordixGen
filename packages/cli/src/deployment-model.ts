@@ -10,6 +10,7 @@ export interface DeploymentApplication {
   connections: string[];
   identityBackend?: string;
   runtimeKeys: string[];
+  emailDelivery?: boolean;
 }
 export interface DeploymentManifest {
   publicFrontends?: Record<

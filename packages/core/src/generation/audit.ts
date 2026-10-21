@@ -81,6 +81,11 @@ export function beginBusinessAudit(request:Request,operations:readonly AuditedOp
  };
 }
 export function authAuditAction(path:string,hasNewSession:boolean,returned:unknown):string|undefined {
+ if(path==="/phone-number/verify"){
+  if(hasNewSession)return "auth.signin";
+  if(returned&&typeof returned==="object"&&"statusCode" in returned&&Number(returned.statusCode)>=400)return "auth.signin_failed";
+  return "auth.phone_verified";
+ }
  if(path==="/sign-out")return "auth.signout";
  if(path.startsWith("/sign-up/"))return "auth.signup";
  if(path==="/request-password-reset")return "auth.password_reset_requested";

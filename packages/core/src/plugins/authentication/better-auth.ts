@@ -1,6 +1,9 @@
 import { posix } from "node:path";
 import { authAuditPlugin } from "../../generation/audit.js";
-import { ACCOUNT_POLICY } from "../../project/account-policy.js";
+import { authAbusePlugin, authAbuseStore } from "../../generation/auth-abuse.js";
+import { authDeliverySource } from "../../generation/auth-delivery.js";
+import { authPolicyPlugin, passwordPolicySource } from "../../generation/auth-policy.js";
+import { DEFAULT_PASSWORD_POLICY, durationSeconds } from "../../project/account-policy.js";
 import { iamPlugin } from "../authorization/iam-plugin.js";
 import type { BackendRenderContext, GeneratedFile } from "../contracts.js";
 
@@ -33,10 +36,18 @@ function authSchemaContent(
     userColumns.push('  username: text("username").unique(),');
     userColumns.push('  displayUsername: text("display_username"),');
   }
+  if (methods.includes("phone-number")) {
+    userColumns.push('  phoneNumber: text("phone_number").unique(),');
+    userColumns.push(
+      '  phoneNumberVerified: boolean("phone_number_verified").notNull().default(false),',
+    );
+  }
   if (features.includes("two-factor")) {
     userColumns.push('  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),');
   }
   const tables = [
+    'export const authAbuseLimit = pgTable("auth_abuse_limit", {key:text("key").primaryKey(),count:integer("count").notNull(),windowStart:bigint("window_start",{mode:"number"}).notNull(),lastRequest:bigint("last_request",{mode:"number"}).notNull()});',
+    'export const rateLimit = pgTable("auth_rate_limit", {id:text("id").primaryKey(),key:text("key").notNull().unique(),count:integer("count").notNull(),lastRequest:bigint("last_request",{mode:"number"}).notNull()});',
     `export const authUser = pgTable("auth_user", {\n${userColumns.join("\n")}\n});`,
     [
       'export const session = pgTable("session", {',
@@ -94,7 +105,7 @@ function authSchemaContent(
     );
   }
   return [
-    'import { boolean, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";',
+    'import { bigint, boolean, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";',
     'import {authRoles} from "./iam-schema.js";',
     "",
     ...tables.flatMap((table) => [table, ""]),
@@ -111,10 +122,41 @@ function authRuntimeContent(
   const methods = config.authentication.methods;
   const providers = config.authentication.identityProviders;
   const features = config.authentication.features;
+  const identity = config.authentication;
+  const policy = identity.passwordPolicy ?? DEFAULT_PASSWORD_POLICY;
+  const domains = identity.allowedEmailDomains ?? [];
+  const emailVerification = features.includes("email-verification") || domains.length > 0;
+  const emailDelivery = emailVerification || methods.includes("email-password");
+  const limit = identity.rateLimit ?? { enabled: true, window: "60s", max: 10 };
+  const limitRule = {
+    window: durationSeconds(limit.ip?.window ?? limit.window),
+    max: limit.ip?.max ?? limit.max,
+  };
+  const accountRule = {
+    enabled: limit.enabled,
+    window: durationSeconds(limit.account?.window ?? "15m"),
+    max: limit.account?.max ?? 10,
+  };
+  const sms = identity.smsOtp ?? {
+    dailyLimit: 10,
+    cooldown: { initialDelay: "60s", multiplier: 2, maxDelay: "15m" },
+  };
+  const smsRule = {
+    dailyLimit: sms.dailyLimit,
+    initialDelay: durationSeconds(sms.cooldown.initialDelay),
+    multiplier: sms.cooldown.multiplier,
+    maxDelay: durationSeconds(sms.cooldown.maxDelay),
+  };
   const projectName = config.projectName;
   const defaultRole = config.authorization.defaultRole;
   const lines = [
     'import { betterAuth } from "better-auth";',
+    'import {nordixAuthPolicy,assertAllowedEmail} from "./nordix-auth-policy.js";',
+    'import {nordixAbuseProtection} from "./abuse-protection.js";',
+    'import {sendAuthEmail,sendSmsOtp,assertEmailDelivery,type DeliveryEnvironment} from "./delivery.js";',
+    ...(methods.includes("phone-number")
+      ? ['import {phoneNumber} from "better-auth/plugins";']
+      : []),
     'import { drizzleAdapter } from "@better-auth/drizzle-adapter";',
     'import { nordixIamPlugin } from "./nordix-iam-plugin.js";',
     'import {nordixAuditPlugin} from "./nordix-audit-plugin.js";',
@@ -130,44 +172,36 @@ function authRuntimeContent(
     'import * as iamSchema from "../database/schema/iam-schema.js";',
     `import { createDrizzleDatabase } from "${relativeImport(authFilePath, databasePath)}";`,
     "",
-    "export interface AuthEnvironment {",
+    "export interface AuthEnvironment extends DeliveryEnvironment {",
     "  DATABASE_URL: string;",
     "  BETTER_AUTH_SECRET: string;",
     "  BETTER_AUTH_URL: string;",
     "  AUTH_TRUSTED_ORIGINS?: string;",
+    ...(providers.includes("microsoft") ? ["  MICROSOFT_TENANT_ID?: string;"] : []),
     ...providers.flatMap((provider) => [
       `  ${provider.toUpperCase()}_CLIENT_ID?: string;`,
       `  ${provider.toUpperCase()}_CLIENT_SECRET?: string;`,
     ]),
-    ...(features.includes("email-verification") || features.includes("password-recovery")
-      ? ["  RESEND_API_KEY?: string;", "  AUTH_EMAIL_FROM?: string;"]
-      : []),
+    ...(emailDelivery ? ["  RESEND_API_KEY?: string;", "  AUTH_EMAIL_FROM?: string;"] : []),
     "}",
     "",
   ];
-  if (features.includes("email-verification") || features.includes("password-recovery")) {
-    lines.push(
-      "async function sendAuthEmail(env: AuthEnvironment, to: string, subject: string, url: string): Promise<void> {",
-      '  if (!env.RESEND_API_KEY || !env.AUTH_EMAIL_FROM) throw new Error("Set RESEND_API_KEY and AUTH_EMAIL_FROM to deliver authentication email.");',
-      '  const response = await fetch("https://api.resend.com/emails", {',
-      '    method: "POST",',
-      '    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },',
-      '    body: JSON.stringify({ from: env.AUTH_EMAIL_FROM, to, subject, html: `<p><a href="${url}">Continue</a></p>` }),',
-      "  });",
-      "  if (!response.ok) throw new Error(`Authentication email delivery failed with status ${response.status}.`);",
-      "}",
-      "",
-    );
-  }
   const pluginValues = [
+    `nordixAuthPolicy({domains:${JSON.stringify(domains)},emailPassword:${methods.includes("email-password")},phone:${methods.includes("phone-number")},emailDelivery:()=>assertEmailDelivery(env),verifyEmail:${emailVerification}})`,
+    `nordixAbuseProtection({connectionString:env.DATABASE_URL,secret:env.BETTER_AUTH_SECRET,account:${JSON.stringify(accountRule)},sms:${JSON.stringify(smsRule)}})`,
     `nordixIamPlugin({connectionString:env.DATABASE_URL,defaultRole:${JSON.stringify(defaultRole)},adminRole:${JSON.stringify(config.authorization.adminRole)},trustedOrigins:getTrustedAuthOrigins(env),audit})`,
     ...(methods.includes("username-password") ? ["username()"] : []),
     ...(features.includes("two-factor") ? ["twoFactor()"] : []),
+    ...(methods.includes("phone-number")
+      ? [
+          `phoneNumber({otpLength:6,expiresIn:600,allowedAttempts:3,phoneNumberValidator:value=>/^\\+[1-9][0-9]{7,14}$/.test(value),sendOTP:({phoneNumber,code})=>sendSmsOtp(env,phoneNumber,code),${domains.length ? "" : "signUpOnVerification:{getTempEmail:phone=>`${phone.slice(1)}@phone.invalid`,getTempName:phone=>phone},"}})`,
+        ]
+      : []),
     "nordixAuditPlugin(audit)",
   ];
   const providerEntries = providers.map(
     (provider) =>
-      `    ${provider}: { clientId: requiredEnvironment(env.${provider.toUpperCase()}_CLIENT_ID, "${provider.toUpperCase()}_CLIENT_ID"), clientSecret: requiredEnvironment(env.${provider.toUpperCase()}_CLIENT_SECRET, "${provider.toUpperCase()}_CLIENT_SECRET") },`,
+      `    ${provider}: { clientId: requiredEnvironment(env.${provider.toUpperCase()}_CLIENT_ID, "${provider.toUpperCase()}_CLIENT_ID"), clientSecret: requiredEnvironment(env.${provider.toUpperCase()}_CLIENT_SECRET, "${provider.toUpperCase()}_CLIENT_SECRET")${provider === "microsoft" ? ', tenantId: env.MICROSOFT_TENANT_ID ?? "common"' : ""} },`,
   );
   lines.push(
     "function requiredEnvironment(value: string | undefined, name: string): string {",
@@ -190,13 +224,11 @@ function authRuntimeContent(
     '  if (!env.DATABASE_URL) throw new Error("Set DATABASE_URL in the runtime environment.");',
     '  if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) throw new Error("Set BETTER_AUTH_SECRET to a random value with at least 32 characters.");',
     '  if (!env.BETTER_AUTH_URL) throw new Error("Set BETTER_AUTH_URL in the runtime environment.");',
-    ...(features.includes("email-verification") || features.includes("password-recovery")
+    ...(emailDelivery
       ? [
           "  const queueAuthEmail = (to: string, subject: string, url: string): Promise<void> => {",
-          "    const delivery = sendAuthEmail(env, to, subject, url);",
-          "    if (!executionContext) return delivery;",
-          '    executionContext.waitUntil(delivery.catch((error: unknown) => { console.error("Authentication email delivery failed.", error); }));',
-          "    return Promise.resolve();",
+          "    assertEmailDelivery(env);",
+          "    return sendAuthEmail(env, to, subject, url);",
           "  };",
         ]
       : []),
@@ -206,22 +238,28 @@ function authRuntimeContent(
     "    baseURL: env.BETTER_AUTH_URL,",
     "    secret: env.BETTER_AUTH_SECRET,",
     "    trustedOrigins: getTrustedAuthOrigins(env),",
+    `    session: {expiresIn:${durationSeconds(identity.session?.expiresIn ?? "7d")},updateAge:${durationSeconds(identity.session?.updateAge ?? "1d")}},`,
+    `    account: {accountLinking:{enabled:true,trustedProviders:${JSON.stringify(providers)},allowDifferentEmails:false}},`,
+    `    rateLimit: {enabled:${limit.enabled},storage:"database",window:${limitRule.window},max:${limitRule.max},customRules:${JSON.stringify({ "/get-session": false, "/iam/*": false, ...Object.fromEntries(["/sign-in/*", "/sign-up/*", "/request-password-reset", "/reset-password", "/set-password", "/change-password", "/send-verification-email", "/phone-number/*", "/two-factor/*"].map((path) => [path, limitRule])) })}},`,
+    '    advanced: {ipAddress:{ipAddressHeaders:["x-nordix-client-ip"]}},',
+    `    databaseHooks:{user:{create:{before:async (user,ctx)=>{assertAllowedEmail(user.email,${JSON.stringify(domains)});const name=ctx?.path==="/phone-number/verify"&&typeof ctx.body?.name==="string"?ctx.body.name.trim().slice(0,100):"";return {data:name?{...user,name}:user};}},update:{before:async user=>{if(user.email!==undefined)assertAllowedEmail(user.email,${JSON.stringify(domains)});return {data:user};}}}},`,
     '    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema: { ...schema, ...iamSchema, user: schema.authUser, auth_roles: iamSchema.authRoles, auth_role_permissions: iamSchema.authRolePermissions } }),',
-    `    user: { additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } } },`,
+    `    user: {validateUserInfo:async ({user,source})=>{if(source.method==="oauth"&&source.action==="link-account"&&!user.emailVerified)return {error:"oauth_email_not_verified",errorDescription:"Verify your provider email before signing in."};if(${JSON.stringify(domains)}.length&&(!user.email||!(${JSON.stringify(domains)} as string[]).includes(user.email.split("@")[1]?.toLowerCase()??"")))return {error:"email_domain_restricted",errorDescription:"Registration restricted to authorized company domains"};}, additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } } },`,
     "    emailAndPassword: {",
-    "      enabled: true,",
-    `      minPasswordLength: ${ACCOUNT_POLICY.minPasswordLength},`,
-    `      requireEmailVerification: ${features.includes("email-verification")},`,
-    ...(features.includes("password-recovery")
+    `      enabled: ${methods.includes("email-password")},`,
+    `      minPasswordLength: ${policy.minLength},`,
+    `      maxPasswordLength: ${policy.maxLength},`,
+    `      requireEmailVerification: ${emailVerification},`,
+    ...(methods.includes("email-password")
       ? [
           '      sendResetPassword: async ({ user, url }) => queueAuthEmail(user.email, "Reset your password", url),',
           "      revokeSessionsOnPasswordReset: true,",
         ]
       : []),
     "    },",
-    ...(features.includes("email-verification")
+    ...(emailVerification
       ? [
-          '    emailVerification: { sendVerificationEmail: async ({ user, url }) => queueAuthEmail(user.email, "Verify your email", url) },',
+          '    emailVerification: { sendOnSignUp:true,sendVerificationEmail: async ({ user, url }) => queueAuthEmail(user.email, "Verify your email", url) },',
         ]
       : []),
     ...(providers.length > 0 ? ["    socialProviders: {", ...providerEntries, "    },"] : []),
@@ -255,6 +293,14 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
   const features = config.authentication.features;
   const defaultRole = config.authorization.defaultRole;
   return [
+    {
+      path: posix.join(infrastructure, "auth/password-policy.ts"),
+      content: passwordPolicySource(config.authentication.passwordPolicy),
+    },
+    { path: posix.join(infrastructure, "auth/nordix-auth-policy.ts"), content: authPolicyPlugin },
+    { path: posix.join(infrastructure, "auth/delivery.ts"), content: authDeliverySource },
+    { path: posix.join(infrastructure, "auth/abuse-store.ts"), content: authAbuseStore },
+    { path: posix.join(infrastructure, "auth/abuse-protection.ts"), content: authAbusePlugin },
     { path: posix.join(infrastructure, "auth/nordix-iam-plugin.ts"), content: iamPlugin },
     { path: posix.join(infrastructure, "auth/nordix-audit-plugin.ts"), content: authAuditPlugin },
     {
@@ -297,13 +343,18 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
         ...config.authentication.identityProviders.flatMap((provider) => [
           `- \`${provider.toUpperCase()}_CLIENT_ID\` and \`${provider.toUpperCase()}_CLIENT_SECRET\`: required for ${provider} sign-in.`,
         ]),
-        ...(features.includes("email-verification") || features.includes("password-recovery")
+        ...(methods.includes("email-password") ||
+        config.authentication.allowedEmailDomains?.length ||
+        features.includes("email-verification") ||
+        features.includes("password-recovery")
           ? [
-              "- `RESEND_API_KEY` and `AUTH_EMAIL_FROM`: required to deliver configured authentication emails.",
+              "- Email: AUTH_EMAIL_FROM plus RESEND_API_KEY, or SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD/SMTP_SECURE. Use TLS SMTP ports 465/587 for Workers; port 25 is unavailable.",
             ]
           : []),
         "",
         "Apply database migrations with the generated Drizzle Kit configuration before serving auth requests.",
+        "Phone: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER. Microsoft: MICROSOFT_TENANT_ID (default common).",
+        "Set NODE_ENV=production on deployments. Missing delivery credentials fail safely; codes/links are logged only outside production. Local Docker includes Mailpit; native local runs may set SMTP_HOST/SMTP_PORT or use console simulation.",
         "",
         "IAM is registered as nordixIamPlugin. Unified audit is recorded asynchronously in audit_logs and queried at /api/auth/iam/audit with iam:roles:manage.",
         "The schema.config.ts entrypoint is for offline Better Auth CLI discovery only. Do not serve it.",
