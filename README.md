@@ -1,92 +1,53 @@
 # NordixGen
 
-NordixGen is an internal Nordix tool for generating the starting point of client projects from a declarative YAML configuration. It focuses on the stack Nordix uses and maintains: TypeScript, Next.js App Router, Tailwind CSS, Hono, Drizzle ORM, PostgreSQL on Neon, Better Auth, TanStack Query, and Zustand.
+Generate a TypeScript application from YAML: Hono APIs, Next.js screens, PostgreSQL persistence, authentication and deployment setup.
 
-A generated backend is a modular monolith: business modules run together in one process. Clean, Hexagonal and Onion are executable per-module architectures and can coexist in the same backend. Modules communicate through explicit, typed application contracts and direct in-process calls. Project configuration describes the business systemâ€”its repositories and paths, applications and connections, databases, modules, entities, endpoints, pagination, and authentication/authorization needsâ€”rather than selecting unrelated technology stacks.
+NordixGen is built by Nordix to make client-project setup consistent. Define the business model and operations once, then continue developing in ordinary application source code.
 
-## Implementation status
+## Get started
 
-The runtime and editor schema now accept strict YAML v2, including module ownership, public imports/exports, authentication and frontend access. Previous schemas and technology selectors are rejected.
-
-**Clean, Hexagonal and Onion module generation is integrated.** The [direct backend flow](docs/generation/DIRECT_BACKEND.md) prepares files before invoking scaffolds and installations. Modules of all three families share one backend and use [typed public application calls](docs/generation/PUBLIC_MODULES.md) with trusted context. Architecture-specific ports and dependency checks preserve each module's inward boundaries. Focused persistence, identity, browser access, forms and cache-isolation checks pass. A maintained fresh full-stack acceptance check now exercises the connected product; CI runs this check on every pull request.
-
-## Generate and explore the commerce example
-
-The [performance configuration](examples/performance/project.yaml) defines one backend, two connected frontends, eight business entities, role permissions, audit capture, R2 storage and database indexes. Generate it with `node packages/cli/dist/index.js generate -f examples/performance/project.yaml -o examples/performance/generated` after building the packages. Only example YAML sources are versioned; generated applications stay ignored.
-
-## Target generated project
-
-From a `nordix.config.yaml` file, NordixGen scaffolds a Next.js frontend and Hono backend, then generates project code for declared business entities and operations. The generated project includes Drizzle persistence for PostgreSQL/Neon, Better Auth identity and sessions, typed frontend API clients, TanStack Query hooks, Zustand UI state, and entity screens based on connected backend operations.
-
-Authentication supports configurable password/PIN policies (8-character default), Google/GitHub/Microsoft/Facebook OAuth, phone SMS OTP, recovery/reset screens and a basic phone-linking profile. Session durations, company email restrictions and database-backed rate limits are configured per backend; local development supports Mailpit and console simulation, while production fails safely without delivery credentials.
-
-Authentication screens and access control are separate concerns. The generated sign-in/sign-up UI lets users authenticate; the backend validates sessions and enforces static capability requirements using current database roles/grants. The generated `/admin/roles` screen and `/api/auth/iam/*` platform endpoints administer roles and user assignments with separate permissions. Migrations seed initial roles without overwriting later edits; `pnpm auth:create-admin operator@example.com` promotes an existing account. See [identity and IAM](docs/generation/IDENTITY_ACCESS.md).
-
-Authentication and IAM changes are recorded asynchronously in a unified audit store. Declare `audit: true` on a business endpoint to include it; the protected Activity tab provides actor/action/date filters, pagination and before/after inspection. Audit failures do not roll back the primary operation. See [audit logging](docs/generation/AUDIT_LOGGING.md).
-
-Optional AI infrastructure exposes declared business operations as permission-filtered tools shared by an authenticated streaming chat and a remote MCP server. MCP uses a separate public gateway Worker with a Service Binding to the private Hono backend, OAuth 2.1/PKCE and/or scoped personal API keys. Frontends independently enable a floating/page assistant and `/connect-ai` portal. Provider credentials and model overrides stay in runtime environment variables. See [AI configuration](docs/configuration/YAML_V2.md#ai-chat-tools-and-mcp).
-
-Generated frontends support semantic design tokens with per-project light/dark palettes and a persistent Light/Dark/System switcher. Each mode accepts either all seven main colors or none; status colors default individually. See [theme configuration](docs/configuration/YAML_V2.md#frontend-design-tokens-and-theme).
-
-Business HTTP operations are described through endpoint declarations. Entity definitions describe data; they do not form the intended API contract by themselves. Health checks, Better Auth handlers and IAM administration are platform routes.
-
-NordixGen generates application scaffolding, source code, and local Docker environments. Each application receives a multi-stage Dockerfile; each repository receives Compose orchestration for its own applications, dedicated PostgreSQL volumes and Neon HTTP proxies. Run `docker compose up -d --build` or `pnpm docker:up` in a generated repository. See [local Docker usage](docs/generation/CLI_WORKFLOW.md#local-docker-environments). Generated repositories also include Cloudflare native CI/CD commands, a guided account setup assistant, a manual deployment guide and Neon PITR recovery instructions. `develop` deploys staging and `main` deploys production; no generated GitHub Actions runners are required.
-
-## Configure CI/CD with a database
-
-Every generated repository starts with an initial commit on `main` and `develop` pointing to that commit. Creating a GitHub remote remains optional. Publish both branches before connecting deployments.
-
-From the generated repository root, choose either:
-
-1. **Guided assistant:** run `pnpm cicd:setup`. Select your Cloudflare account, GitHub repository, build token and Neon project (or create one). Run `pnpm cicd:setup --profile client-name` to configure another destination. Tokens are masked input or shell environment values; account profiles are ignored by Git.
-2. **Manual setup:** follow the generated `docs/DEPLOYMENT.md` to create Neon branches, configure build/runtime secrets and connect each Cloudflare Worker to its Git branch. The guide lists the same build/deploy commands used by the assistant.
-
-Pushes to `develop` deploy staging; pushes to `main` deploy production using native Cloudflare builds. Better Auth remains in the backend. The generated `docs/DISASTER_RECOVERY.md` explains Neon point-in-time recovery. See [the CLI workflow](docs/generation/CLI_WORKFLOW.md#native-cloudflare-cicd-and-neon) for scope and verification.
-
-The generated project includes the guided `cicd:setup` assistant for configuring Cloudflare, Neon regions and automatic deployments.
-
-## Use the CLI
-
-From this checkout, install dependencies with pnpm 10.5.2 and run `pnpm build` first (Node.js 24+). These commands use the current development CLI.
-
-```bash
-# Create a starter configuration
-node packages/cli/dist/index.js init
-
-# Validate configuration and supported generation readiness
-node packages/cli/dist/index.js validate -f nordix.config.yaml
-
-# Generate a supported project into a new or empty directory
-node packages/cli/dist/index.js generate -f nordix.config.yaml -o ./my-client-project
-```
-
-The initializer emits a public database-backed example with list/create operations and an optional frontend. Generation prepares supported output, checks prerequisites, runs pinned official scaffolds, installs each repository workspace, and verifies application types and backend boundaries before mandatory local Git initialization (initial commit on `main`, `develop` at the same commit) and optional GitHub publication of both branches. Configure the emitted environment examples and apply database migrations before starting the applications. See [CLI workflow and evidence](docs/generation/CLI_WORKFLOW.md).
-
-The [approved YAML reference](docs/configuration/YAML_V2.md) defines the target contract. [Validation behavior and evidence](docs/configuration/VALIDATION.md) explains what currently works, how to run checks, diagnostic categories and supported scope and limitations. The core resolution API builds the [shared project model](docs/configuration/RESOLVED_MODEL.md) independently of generation readiness.
-
-## Development requirements
-
-Generated applications deploy to Cloudflare Workers with private frontend-to-backend service bindings. Optional R2 infrastructure uses OpenTofu, separate staging/production state and native PR plan comments. See [deployment](docs/DEPLOYMENT.md) and [infrastructure](docs/INFRASTRUCTURE.md).
-
-- Node.js `>=24`
-- pnpm `>=10`
+Use Node.js 24+, pnpm 10.5.2 and Git with a configured author name and email.
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm test
 pnpm build
+node packages/cli/dist/index.js init
+node packages/cli/dist/index.js validate -f nordix.config.yaml
+node packages/cli/dist/index.js generate -f nordix.config.yaml -o ./my-project
 ```
+
+Generation requires network access and a new or empty output directory. Each generated repository starts with an initial commit on `main` and a `develop` branch. Creating a GitHub remote is optional.
+
+## What is included?
+
+- Modular Hono backends with Clean, Hexagonal or Onion architecture.
+- Next.js App Router frontends with Tailwind, TanStack Query and Zustand.
+- Drizzle schemas and migrations for PostgreSQL/Neon.
+- Better Auth, dynamic roles and permissions, and audit logging.
+- Optional R2 document storage, AI chat and MCP tools.
+- Docker environments and native Cloudflare CI/CD.
+
+NordixGen initializes new projects. It does not regenerate over edited applications. Generated applications run independently of the generator.
+
+**[Read the documentation →](docs/README.md)**
+
+Start with [Quick start](docs/GETTING_STARTED.md), explore [project structure](docs/configuration/PROJECT_STRUCTURE.md), or use the [YAML reference](docs/configuration/YAML_V2.md).
+
+## Examples
+
+| Example | Includes |
+| --- | --- |
+| [Notes](examples/configuration/single-module.yaml) | One persisted module and a filtered list |
+| [Mixed architectures](examples/configuration/mixed-modules.yaml) | Modules using different architecture families |
+| [Commerce](examples/full-stack-commerce/project.yaml) | A connected backend and frontend |
+| [Larger application](examples/performance/project.yaml) | Two frontends, storage, audit, permissions and indexes |
+
+Only YAML inputs are versioned under `examples/`; generate into an ignored `generated/` directory. Example policies and synthetic data should be adapted before production use.
+
+## Development
+
+See [Contributing](docs/CONTRIBUTING.md) for setup and checks.
 
 ## License
 
-NordixGen is licensed under the [MIT License](LICENSE).
-
-## Examples used by CI
-
-Only YAML inputs are versioned under `examples/`; generated projects, dependencies, credentials and measurements are never committed. These YAML files are also regression fixtures, so changing or removing them affects CI:
-
-- [Full-stack commerce](examples/full-stack-commerce/project.yaml): the public API test and `pnpm test:acceptance` generate a fresh backend and frontend, then verify compilation, database persistence, authorization and browser behavior.
-- Configuration variants: [single module](examples/configuration/single-module.yaml), [Clean modules](examples/configuration/clean-modules.yaml) and [mixed architectures](examples/configuration/mixed-modules.yaml) exercise parsing, architecture resolution and CLI generation.
-- [Performance workload](examples/performance/project.yaml): the retained production benchmark input with one backend and two frontends. Running CI does not deploy it or load-test production.
-
-Verification scripts and test-only adapters live under `packages/cli/tests/acceptance/`, outside the examples. Acceptance runs write disposable applications and reports under ignored `tmp/acceptance/commerce/`; manual examples should generate into their own ignored `generated/` directory. Docker and Chromium are required for the full acceptance check.
+[MIT](LICENSE).
