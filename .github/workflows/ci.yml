@@ -7,6 +7,23 @@ on:
     branches: [develop, main]
 
 jobs:
+  windows-lint:
+    name: Windows lint (autocrlf enabled)
+    runs-on: windows-latest
+    steps:
+      - name: Enable automatic CRLF before checkout
+        run: git config --global core.autocrlf true
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: git diff --check
   local-docker:
     name: Generated Docker environment (${{ matrix.layout }})
     runs-on: ubuntu-latest
