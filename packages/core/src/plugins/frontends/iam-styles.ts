@@ -79,13 +79,21 @@ export const iamStyles = `
 .ng-iam-message--success { background: var(--color-success-surface); border-color: var(--color-success-surface); color: var(--color-success); }
 .ng-iam-message button { margin-left: auto; border: 0; background: transparent; font: inherit; text-decoration: underline; cursor: pointer; }
 .ng-iam-footnote { justify-content: center; margin: 0; font-size: 11px; }
-.ng-iam-editor { display: grid; gap: 24px; }
+.ng-iam-editor { display: grid; gap: 22px; font-size: 14px; line-height: 1.6; }
 .ng-dialog:has(.ng-iam-editor) { width: min(660px, calc(100% - 32px)); max-height: calc(100dvh - 40px); overflow: hidden; margin: auto; }
 .ng-dialog:has(.ng-iam-editor) .ng-dialog-content { max-height: calc(100dvh - 158px); overflow-y: auto; }
 .ng-iam-editor h3 { margin: 0 0 14px; font-size: 13px; font-weight: 650; color: var(--color-foreground); }
 .ng-iam-field-grid { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 16px; margin-bottom: 16px; }
 .ng-iam-editor label { font-size: 12px; font-weight: 550; }
-.ng-iam-editor .ng-input { font-size: 13px; min-height: 38px; }
+.ng-iam-editor .ng-input { font-size: 14px; min-height: 44px; width: 100%; box-sizing: border-box; }
+.ng-iam-editor textarea.ng-input { min-height: 88px; resize: vertical; }
+.ng-iam-editor .ng-field { display: grid; gap: 8px; min-width: 0; }
+.ng-iam-editor > p { margin: 0; }
+.ng-iam-editor small { line-height: 1.6; }
+.ng-iam-editor .ng-field > label { color: var(--color-foreground); font-size: 13px; }
+.ng-iam-editor input::placeholder,.ng-iam-editor textarea::placeholder { color: var(--color-muted); opacity: .85; }
+.ng-iam-editor .ng-input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.ng-iam-editor .ng-input:disabled { opacity: .65; cursor: not-allowed; }
 .ng-iam-editor small, .ng-iam-optional { color: var(--color-muted); font-size: 11px; font-weight: 400; }
 .ng-iam-optional { margin-left: 5px; }
 .ng-iam-code { font-family: ui-monospace, monospace; }
@@ -102,7 +110,7 @@ export const iamStyles = `
 .ng-iam-permission-group legend svg { width: 13px; height: 13px; }
 .ng-iam-permission { display: grid; grid-template-columns: 16px 1fr; gap: 10px; align-items: start; padding: 10px; margin-top: 6px; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
 .ng-iam-permission:hover { background: var(--color-surface-subtle); }
-.ng-iam-permission--selected { background: var(--color-primary-surface); border-color: var(--color-foreground); }
+.ng-iam-permission--selected { background: var(--color-primary-surface); border-color: var(--color-primary); }
 .ng-iam-permission input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--color-primary); cursor: pointer; }
 .ng-iam-permission input:disabled { cursor: not-allowed; }
 .ng-iam-permission > span { display: grid; gap: 3px; }
@@ -113,7 +121,22 @@ export const iamStyles = `
 .ng-iam-editor-footer .ng-button { min-height: 36px; padding: 0 15px; font-size: 12px; border-radius: 8px; }
 .ng-iam-delete-confirm { color: var(--color-error-button-foreground); background: var(--color-error); }
 .ng-iam-delete-confirm:hover:enabled { background: var(--color-error); }
-.ng-iam-page button:focus-visible, .ng-iam-editor input:focus-visible, .ng-iam-editor button:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+.ng-iam-page button:focus-visible, .ng-iam-editor input:focus-visible, .ng-iam-editor button:focus-visible, .ng-iam-editor textarea:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+.ng-access-help { color: var(--color-muted); font-size: 12px; line-height: 1.7; margin: 0; }
+.ng-access-permissions > .ng-field { margin-bottom: 16px; }
+.ng-access-permissions .ng-iam-permission-groups { max-height: 340px; overflow-y: auto; padding: 3px; }
+.ng-access-role-choices { border: 0; padding: 0; margin: 0; min-width: 0; }
+.ng-access-role-choices > legend { font-size: 13px; font-weight: 650; margin-bottom: 6px; }
+.ng-access-role-list { display: grid; gap: 6px; max-height: 320px; overflow-y: auto; margin: 14px 0 8px; padding: 3px; }
+.ng-access-role-list .ng-iam-permission { margin: 0; border-color: var(--color-border); padding: 12px; }
+.ng-access-role-list .ng-iam-permission--selected { border-color: var(--color-primary); }
+.ng-access-user-roles { display: grid; gap: 8px; justify-items: start; }
+.ng-access-user-roles .ng-iam-grants { min-width: 0; margin-left: 0; }
+.ng-access-section-links { display: flex; align-items: center; gap: 24px; }
+.ng-access-section-links a { display: block; padding: 18px 0 16px; border-bottom: 2px solid transparent; font-size: 13px; font-weight: 650; color: var(--color-muted); }
+.ng-access-section-links a[aria-current=page] { border-bottom-color: var(--color-primary); color: var(--color-primary); }
+.ng-dialog:has(.ng-iam-editor) .ng-dialog-heading > button { width: 32px; height: 32px; min-height: 32px; align-self: flex-start; padding: 0; font-size: 20px; flex-shrink: 0; background: var(--color-surface-subtle); color: var(--color-muted); border-color: var(--color-border); }
+@media(max-width:640px) { .ng-dialog:has(.ng-iam-editor) .ng-dialog-heading { padding: 18px; gap: 12px; } .ng-dialog:has(.ng-iam-editor) .ng-dialog-heading h2 { font-size: 18px; } .ng-dialog:has(.ng-iam-editor) .ng-dialog-heading p { font-size: 12px; line-height: 1.6; } .ng-dialog:has(.ng-iam-editor) .ng-dialog-content { padding: 18px; max-height: calc(100dvh - 200px); } .ng-iam-editor-footer { margin: 0 -18px -18px; bottom: -18px; padding: 14px 18px; flex-wrap: wrap; } .ng-iam-editor-footer .ng-button { flex: 1; } .ng-iam-editor .ng-input { font-size: 16px; } .ng-access-permissions .ng-iam-permission-groups { max-height: 280px; } }
 @media (max-width: 1000px) { .ng-iam-heading { align-items: flex-start; flex-direction: column; gap: 14px; } .ng-iam-toolbar { align-items: flex-start; flex-direction: column; } .ng-iam-toolbar-actions { width: 100%; } .ng-iam-search { flex: 1; } .ng-iam-search input { width: 100%; } }
 @media (max-width: 640px) { .ng-iam-page { padding: 88px 16px 32px; } .ng-iam-breadcrumb { margin-bottom: 22px; } .ng-iam-summary { grid-template-columns: 1fr; gap: 9px; } .ng-iam-stat { padding: 14px 16px; } .ng-iam-card-top { padding: 0 16px; } .ng-iam-card-hint { display: none; } .ng-iam-toolbar { padding: 20px 16px; } .ng-iam-toolbar-actions { flex-wrap: wrap; } .ng-iam-search { min-width: 130px; } .ng-iam-card th, .ng-iam-card td { padding-left: 16px; padding-right: 16px; } .ng-iam-card-footer { padding: 14px 16px; } .ng-iam-role-cell { min-width: 150px; } .ng-iam-grants { min-width: 160px; } .ng-iam-role-picker { width: 165px; } .ng-iam-field-grid { grid-template-columns: 1fr; gap: 14px; } .ng-iam-permissions-heading { align-items: flex-start; flex-direction: column; } }
 @media (max-width: 640px) {
