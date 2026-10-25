@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect as baseExpect, chromium, request } from "@playwright/test";
+import { verifyAccessDialog } from "./access-dialog.mjs";
 const expect = baseExpect.configure({ timeout: 20000 });
 const password = "acceptance-local-password-2026";
 export async function verifyOrganizationApplication(state, directory) {
@@ -43,35 +44,44 @@ export async function verifyOrganizationApplication(state, directory) {
       .fill("alice@organization.example.test");
     await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await page.getByRole("button", { name: "Active organization", exact: true }).click();
     await expect(page.getByRole("button", { name: "New organization", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "New organization", exact: true }).click();
     let dialog = page.getByRole("dialog");
+    await verifyAccessDialog(page, directory, "organization-create-form.png");
     await dialog.getByLabel("Organization name").fill("Company A");
     await dialog.getByLabel("Organization identifier").fill("company-a");
     await dialog.getByRole("button", { name: "Create organization", exact: true }).click();
-    await expect(page.getByLabel("Active organization")).toHaveValue(/.+/);
+    await expect(
+      page.getByRole("button", { name: "Active organization", exact: true }),
+    ).toContainText("Company A");
     await passed(
       "Organization creation assigns a contextual owner and updates the verified workspace",
     );
-    const organizationA = await page.getByLabel("Active organization").inputValue();
+    const organizationA = (await (await alice.request.get(`${web}/api/auth/iam/me`)).json())
+      .organizationId;
     await page.goto(`${web}/organization/settings/roles`);
     await expect(
       page.getByRole("heading", { name: "Organization roles", exact: true }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Create role", exact: true }).click();
     dialog = page.getByRole("dialog");
+    await verifyAccessDialog(page, directory, "organization-role-form.png");
+    await dialog.getByRole("searchbox", { name: "Find a permission" }).fill("customers");
+    await expect(dialog.getByRole("checkbox")).toHaveCount(2);
+    await dialog.getByRole("searchbox", { name: "Find a permission" }).fill("");
     await dialog.getByLabel("Role name").fill("Local auditor");
     await dialog.getByLabel("Description").fill("Organization-specific reporting");
-    await dialog.getByLabel("customers:read", { exact: true }).check();
+    await dialog.getByLabel("customers:read", { exact: false }).check();
     await dialog.getByRole("button", { name: "Save role", exact: true }).click();
     await expect(page.getByRole("row").filter({ hasText: "Local auditor" })).toBeVisible();
     const roleRow = page.getByRole("row").filter({ hasText: "Local auditor" });
-    await roleRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await roleRow.getByRole("button", { name: "Edit Local auditor", exact: true }).click();
     dialog = page.getByRole("dialog");
     await dialog.getByLabel("Description").fill("Changed without regeneration");
     await dialog.getByRole("button", { name: "Save role", exact: true }).click();
     await expect(roleRow).toContainText("Changed without regeneration");
-    await roleRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await roleRow.getByRole("button", { name: "Delete Local auditor", exact: true }).click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete role", exact: true })
@@ -132,7 +142,9 @@ export async function verifyOrganizationApplication(state, directory) {
     await page.goto(invitationUrl);
     await expect(page.getByRole("heading", { name: "Organization invitation" })).toBeVisible();
     await page.getByRole("button", { name: "Accept invitation", exact: true }).click();
-    await expect(page.getByLabel("Active organization")).toHaveValue(organizationB);
+    await expect(
+      page.getByRole("button", { name: "Active organization", exact: true }),
+    ).toContainText("Company B");
     await page.goto(`${web}/customer`);
     await expect(page.getByText("Only Company B", { exact: true })).toBeVisible();
     await expect(page.getByText("Only Company A", { exact: true })).toHaveCount(0);
@@ -141,8 +153,11 @@ export async function verifyOrganizationApplication(state, directory) {
     await passed(
       "An email invitation activates a verified viewer membership and cannot inherit the other company’s owner permissions",
     );
-    await page.getByLabel("Active organization").selectOption(organizationA);
-    await expect(page.getByLabel("Active organization")).toHaveValue(organizationA);
+    await page.getByRole("button", { name: "Active organization", exact: true }).click();
+    await page.getByRole("button", { name: /Company A company-a/ }).click();
+    await expect(
+      page.getByRole("button", { name: "Active organization", exact: true }),
+    ).toContainText("Company A");
     await page.goto(`${web}/customer`);
     await expect(page.getByText("Only Company A", { exact: true })).toBeVisible();
     await expect(page.getByText("Only Company B", { exact: true })).toHaveCount(0);
@@ -155,10 +170,10 @@ export async function verifyOrganizationApplication(state, directory) {
     ).toBeVisible();
     await page.getByRole("button", { name: "Invite member", exact: true }).click();
     dialog = page.getByRole("dialog");
+    await verifyAccessDialog(page, directory, "organization-invite-form.png");
     await dialog.getByLabel("Email address").fill("bob@organization.example.test");
-    await dialog
-      .getByLabel("Organization roles")
-      .selectOption([`${organizationA}:editor`, `${organizationA}:viewer`]);
+    await dialog.locator(`input[value="${organizationA}:editor"]`).check();
+    await dialog.locator(`input[value="${organizationA}:viewer"]`).check();
     await dialog.getByRole("button", { name: "Send invitation", exact: true }).click();
     await expect(page.getByText("Changes saved.", { exact: true })).toBeVisible();
     await passed("The member interface sends an invitation with several selected roles");
@@ -170,14 +185,18 @@ export async function verifyOrganizationApplication(state, directory) {
     const mobile = await bob.newPage();
     await mobile.goto(bobInvites.at(-1)[1]);
     await mobile.getByRole("button", { name: "Accept invitation", exact: true }).click();
-    await expect(mobile.getByLabel("Active organization")).toHaveValue(organizationA);
+    await expect(
+      mobile.getByRole("button", { name: "Active organization", exact: true }),
+    ).toContainText("Company A");
     await page.reload();
     const bobRow = page.getByRole("row").filter({ hasText: "bob@organization.example.test" });
     await expect(bobRow).toContainText("editor");
     await expect(bobRow).toContainText("viewer");
     await bobRow.getByRole("button", { name: "Change roles", exact: true }).click();
     dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Organization roles").selectOption([`${organizationA}:viewer`]);
+    await dialog.locator(`input[value="${organizationA}:editor"]`).uncheck();
+    await expect(dialog.locator(`input[value="${organizationA}:viewer"]`)).toBeChecked();
+    await verifyAccessDialog(page, directory, "organization-member-roles-form.png");
     await dialog.getByRole("button", { name: "Save roles", exact: true }).click();
     await expect(bobRow).not.toContainText("editor");
     await bobRow.getByRole("button", { name: "Remove", exact: true }).click();
@@ -200,12 +219,17 @@ export async function verifyOrganizationApplication(state, directory) {
       mobile.getByRole("heading", { name: "Organization roles", exact: true }),
     ).toBeVisible();
     await expect(mobile.getByRole("table")).toBeVisible();
-    await expect(mobile.getByLabel("Active organization")).toHaveValue(organizationB);
+    await expect(
+      mobile.getByRole("button", { name: "Active organization", exact: true }),
+    ).toContainText("Company B");
     expect(
       await mobile.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
     await mobile.screenshot({ path: join(directory, "organization-mobile.png"), fullPage: true });
-    await passed("Organization administration renders on desktop and mobile");
+    await mobile.getByRole("button", { name: "Create role", exact: true }).click();
+    await verifyAccessDialog(mobile, directory, "organization-role-form-mobile.png");
+    await mobile.getByRole("button", { name: "Cancel", exact: true }).click();
+    await passed("Organization administration and styled forms render on desktop and mobile");
     return behaviors;
   } catch (error) {
     await page
