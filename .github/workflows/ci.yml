@@ -150,3 +150,4 @@ jobs:
             tmp/acceptance/commerce/*/operation-artifacts.json
             tmp/acceptance/commerce/*/*.png
             tmp/acceptance/commerce/*/*.log
+            tmp/acceptance/commerce/*/*.txt

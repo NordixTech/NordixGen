@@ -5,6 +5,7 @@ import { validateNordixConfig } from "../src/configuration/validate.js";
 import { generateBackend } from "../src/generation/backend.js";
 import { generateFrontend } from "../src/generation/frontend.js";
 import { resolvedFixture, targetConfig } from "./fixtures.js";
+import { frontendRuntime } from "./frontend-runtime.js";
 import { generatedRuntime } from "./generated-runtime.js";
 import { generatedTypeErrors } from "./generated-types.js";
 
@@ -54,6 +55,54 @@ function organizationFixture(
   return config;
 }
 describe("scoped authorization generation", () => {
+  it("preserves verified multi-role identity while the native session finishes hydration", () => {
+    const files = generateFrontend(
+      resolvedFixture(organizationFixture("multiple", "multiple")),
+      "web",
+    ).virtualFileSystem.snapshot();
+    const initial = {
+      id: "alice",
+      role: "viewer",
+      permissions: [],
+      globalRoles: ["viewer"],
+      globalPermissions: [],
+      organizationId: "a",
+      organizationRoles: ["a:owner"],
+      organizationPermissions: ["*"],
+    };
+    let state: {
+      isPending: boolean;
+      data: { user: { id: string }; session: { activeOrganizationId: string } } | null;
+    } = { isPending: true, data: null };
+    const iamRequest = vi.fn(async () => initial);
+    const load = frontendRuntime(files, "apps/web/src", {
+      "@/lib/auth/client": { authClient: { useSession: () => state } },
+      "@/lib/iam/client": { iamRequest },
+      react: {
+        createContext: () => ({}),
+        createElement: () => null,
+        useContext: () => initial,
+        useRef: () => ({ current: false }),
+        useState: (value: unknown) => [value, () => {}],
+        useEffect: (effect: () => unknown) => {
+          effect();
+        },
+      },
+    });
+    const view = load("@/lib/auth/use-session-view.ts").useSessionView as () => {
+      user: unknown;
+      isPending: boolean;
+      hasPermission(permission: string, scope: string): boolean;
+    };
+    expect(view()).toMatchObject({ user: { id: "alice", organizationId: "a" }, isPending: false });
+    state = {
+      isPending: false,
+      data: { user: { id: "alice" }, session: { activeOrganizationId: "a" } },
+    };
+    expect(view()).toMatchObject({ user: { id: "alice", organizationId: "a" }, isPending: false });
+    expect(view().hasPermission("org:roles:manage", "organization")).toBe(true);
+    expect(iamRequest).not.toHaveBeenCalled();
+  });
   it.each([
     ["single", "single"],
     ["single", "multiple"],

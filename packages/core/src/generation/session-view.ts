@@ -1,4 +1,4 @@
-export function sessionViewSource(organizations: boolean): string {
+export function sessionViewSource(organizations: boolean, hasSingleGlobalRole: boolean): string {
   return `"use client";
 import {authClient} from "@/lib/auth/client";
 import {createContext,createElement,useContext,useEffect,useRef,useState,type ReactNode} from "react";
@@ -33,7 +33,8 @@ export function useSessionView():{user:SessionUser|null;isPending:boolean;error:
  const usingInitial=!settled.current&&session.isPending&&initial!==undefined&&!session.error;
  const user=usingInitial?initial:toSessionUser(session.data?.user);
  const organizationId=${organizations ? "usingInitial?initial?.organizationId:(session.data?.session as {activeOrganizationId?:string|null}|undefined)?.activeOrganizationId??undefined" : "undefined"};
- const id=user?.id,key=id?JSON.stringify([id,user?.role??null,organizationId??null]):undefined;
+ // Only single-role storage exposes user.role in the native session. Bootstrap display labels must not invalidate multi-role identity during hydration.
+ const id=user?.id,key=id?JSON.stringify([id,${hasSingleGlobalRole ? "user?.role??null" : "null"},organizationId??null]):undefined;
  const [,render]=useState(0);
  useEffect(()=>{const listener=()=>render(value=>value+1);listeners.add(listener);clearIdentity(key);
   if(id&&usingInitial&&initial?.id===id&&!sharedAccess){sharedAccess={...initial,permissions:[...(initial.permissions??[])]};lastAccessAt=Date.now();setTransportOrganization(initial.organizationId);}

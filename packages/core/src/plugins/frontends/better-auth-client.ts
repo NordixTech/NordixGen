@@ -101,8 +101,8 @@ function permissionsContent(config: FrontendAuthenticationContract): string {
     "}",
   ]);
 }
-function sessionViewContent(organizations: boolean): string {
-  return sessionViewSource(organizations);
+function sessionViewContent(organizations: boolean, hasSingleGlobalRole: boolean): string {
+  return sessionViewSource(organizations, hasSingleGlobalRole);
 }
 function signOutButtonContent(): string {
   return source([
@@ -167,7 +167,10 @@ export function generateFrontendAuthFiles(
     { path: `${root}/lib/auth/permissions.ts`, content: permissionsContent(config) },
     {
       path: `${root}/lib/auth/use-session-view.ts`,
-      content: sessionViewContent(config.organizations.enabled),
+      content: sessionViewContent(
+        config.organizations.enabled,
+        config.global.enabled && config.global.mode === "single",
+      ),
     },
     { path: `${root}/lib/auth/README.md`, content: authReadme(config) },
     { path: `${root}/components/auth/sign-out-button.tsx`, content: signOutButtonContent() },

@@ -11,6 +11,12 @@ export async function verifyOrganizationApplication(state, directory) {
   const alice = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const bob = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await alice.newPage();
+  const sessionDelay = state.sessionDelay ?? 1500;
+  if (sessionDelay)
+    await page.route("**/api/auth/get-session*", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, sessionDelay));
+      await route.continue();
+    });
   const behaviors = [];
   const passed = async (name) => {
     behaviors.push(name);
