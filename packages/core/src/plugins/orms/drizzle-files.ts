@@ -139,6 +139,9 @@ export function generateDrizzleSchemaFiles(
           ...(context.identity
             ? ['export * from "./auth-schema.js";', 'export * from "./iam-schema.js";']
             : []),
+          ...(context.identity?.organizations.enabled
+            ? ['export * from "./organization-schema.js";']
+            : []),
           "",
         ].join("\n"),
       },
@@ -147,6 +150,7 @@ export function generateDrizzleSchemaFiles(
   const files: GeneratedFile[] = [];
   for (const name of model.entityOrder) {
     const entity = model.entities[name];
+    const organization = entity.scope === "organization";
     const tablePath = posix.join(directory, `${name}.table.ts`);
     const owning = Object.values(entity.relations).filter(
       (relation) => relation.type === "many-to-one" || relation.type === "one-to-one",
@@ -159,7 +163,12 @@ export function generateDrizzleSchemaFiles(
       ),
     ];
     const columns = Object.entries(entity.fields).map(([fieldName, field]) => {
-      let builder = drizzleColumnBuilder(fieldName, field);
+      let builder = drizzleColumnBuilder(
+        fieldName,
+        organization && field.unique && fieldName !== "id" ? { ...field, unique: false } : field,
+      );
+      if (field.generated === "organization")
+        builder += '.references(()=>organizationTable.id,{onDelete:"restrict"})';
       const relation = owning.find((relation) => relation.foreignKey === fieldName);
       if (relation)
         builder += `.references(() => ${relation.target}Table.id, { onDelete: ${JSON.stringify(relation.onDelete === "set-null" ? "set null" : relation.onDelete === "no-action" ? "no action" : relation.onDelete)} })`;
@@ -169,7 +178,12 @@ export function generateDrizzleSchemaFiles(
       path: tablePath,
       content: [
         'import {sql} from "drizzle-orm";',
-        `import {pgTable,text,varchar,uuid,integer,numeric,doublePrecision,boolean,timestamp,jsonb${entity.indexes.length ? ",index" : ""}} from "drizzle-orm/pg-core";`,
+        `import {pgTable,text,varchar,uuid,integer,numeric,doublePrecision,boolean,timestamp,jsonb${entity.indexes.length ? ",index" : ""}${organization ? ",uniqueIndex" : ""}} from "drizzle-orm/pg-core";`,
+        ...(organization
+          ? [
+              `import {organization as organizationTable} from "${importPath(tablePath, posix.join(context.platformRoot, "database/schema/organization-schema.ts"))}";`,
+            ]
+          : []),
         ...[...new Set(owning.map((relation) => relation.target))]
           .sort()
           .map((target) => `import {${target}Table} from "./${target}.table.js";`),
@@ -195,7 +209,17 @@ export function generateDrizzleSchemaFiles(
                 const name = `ng_${entity.table.slice(0, 24)}_${hash}_idx`;
                 return `index(${JSON.stringify(name)}).on(${definition.fields.map((field) => `table[${JSON.stringify(field)}]`).join(",")})`;
               })
-              .join(",")}]);`
+              .join(",")}${
+              organization
+                ? Object.entries(entity.fields)
+                    .filter(([name, field]) => field.unique && name !== "id")
+                    .map(
+                      ([field]) =>
+                        `,uniqueIndex(${JSON.stringify(`ng_${entity.table}_${field}_tenant_unique`)}).on(table.organizationId,table[${JSON.stringify(field)}])`,
+                    )
+                    .join("")
+                : ""
+            }]);`
           : "});",
         "",
       ].join("\n"),
@@ -280,6 +304,7 @@ export function generateDrizzleAdapterFiles(
   // Generate one persistence adapter for each declared operation.
   for (const endpoint of model.endpoints) {
     const mainEntity = model.entities[endpoint.entity];
+    const organization = endpoint.access.scope === "organization";
     const operationName = endpointTypeName(endpoint);
     const adapterPath = posix.join(adapterDirectory, `${operationName}.drizzle.query.adapter.ts`);
     const portPath = posix.join(outboundPortDirectory, `${operationName}.query.port.ts`);
@@ -326,12 +351,17 @@ export function generateDrizzleAdapterFiles(
 
     const joinsQueryConfig: string[] = [];
     const joinResultMappings: string[] = [];
-    const active = (name: string, table: string) =>
-      model.entities[name].softDelete === "boolean"
-        ? `eq(${table}.isDeleted,false)`
-        : model.entities[name].softDelete === "timestamp"
-          ? `isNull(${table}.deletedAt)`
-          : "undefined";
+    const active = (name: string, table: string) => {
+      const deleted =
+        model.entities[name].softDelete === "boolean"
+          ? `eq(${table}.isDeleted,false)`
+          : model.entities[name].softDelete === "timestamp"
+            ? `isNull(${table}.deletedAt)`
+            : "undefined";
+      return organization && model.entities[name].scope === "organization"
+        ? `and(eq(${table}.organizationId,organizationId),${deleted})`
+        : deleted;
+    };
     const innerConditions: string[] = [];
     const filterBranches = [
       `      if (filter.entity === ${JSON.stringify(endpoint.entity)}) {`,
@@ -347,6 +377,9 @@ export function generateDrizzleAdapterFiles(
         [
           ...new Set([
             ...join.fields,
+            ...(organization && model.entities[join.entity].scope === "organization"
+              ? ["organizationId"]
+              : []),
             "id",
             ...(model.entities[join.entity].softDelete === "boolean"
               ? ["isDeleted"]
@@ -361,11 +394,14 @@ export function generateDrizzleAdapterFiles(
       );
       const project = `{${join.fields.map((name) => `${JSON.stringify(name)}:${decimalFields(join.entity).includes(name) ? `value.${name} == null ? null : Number(value.${name})` : `value.${name}`}`).join(",")}}`;
       const visible =
-        model.entities[join.entity].softDelete === "boolean"
+        (organization && model.entities[join.entity].scope === "organization"
+          ? "value.organizationId===organizationId&&"
+          : "") +
+        (model.entities[join.entity].softDelete === "boolean"
           ? "!value.isDeleted"
           : model.entities[join.entity].softDelete === "timestamp"
             ? "value.deletedAt == null"
-            : "true";
+            : "true");
       joinResultMappings.push(
         `        ${join.entity}: ${join.cardinality === "many" ? `(row.${relName} ?? []).filter((value:any)=>${visible}).map((value:any)=>(${project}))` : `((value:any)=>value && ${visible} ? ${project} : null)(row.${relName})`},`,
       );
@@ -410,7 +446,7 @@ export function generateDrizzleAdapterFiles(
         ? endpoint.body.kind
         : undefined;
     const mutation = requestBodyOperation ?? (endpoint.method === "DELETE" ? "delete" : undefined);
-    const writeValues = `{ ${endpoint.body.writeFields
+    const writeValues = `{ ${organization && mutation === "create" ? "organizationId," : ""}${endpoint.body.writeFields
       .map((name) => {
         const field = mainEntity.fields[name];
         const value = `input.request[${JSON.stringify(name)}]`;
@@ -518,15 +554,33 @@ export function generateDrizzleAdapterFiles(
       `export class Drizzle${operationName}QueryAdapter implements ${operationName}QueryPort {`,
       "  constructor(private readonly db: DrizzleDatabase) {}",
       "",
-      "  async execute(input: QueryExecution): Promise<Response> {",
+      `  async execute(${organization ? "organizationId:string, " : ""}input: QueryExecution): Promise<Response> {`,
       "    try {",
       "    const conditions: any[] = [];",
+      ...(organization
+        ? [
+            `    if(!organizationId)throw new ApplicationFailure({code:"forbidden",reason:"TENANT_MEMBERSHIP_REQUIRED",message:"Organization context is required."});`,
+            `    conditions.push(eq(schema.${endpoint.entity}Table.organizationId,organizationId));`,
+          ]
+        : []),
       ...(softDeleteCondition ? [`    conditions.push(${softDeleteCondition});`] : []),
       "    for (const filter of input.filters) {",
       ...filterBranches,
       "    }",
       ...pathConditionLines,
       ...innerConditions,
+      ...(organization && (mutation === "create" || mutation === "update")
+        ? Object.values(mainEntity.relations)
+            .filter(
+              (relation) =>
+                (relation.type === "many-to-one" || relation.type === "one-to-one") &&
+                model.entities[relation.target].scope === "organization",
+            )
+            .map(
+              (relation) =>
+                `    if(input.request[${JSON.stringify(relation.foreignKey)}]!=null){const matches=await this.db.select({id:schema.${relation.target}Table.id}).from(schema.${relation.target}Table).where(and(eq(schema.${relation.target}Table.id,input.request[${JSON.stringify(relation.foreignKey)}]),eq(schema.${relation.target}Table.organizationId,organizationId))).limit(1);if(!matches.length)throw new ApplicationFailure({code:"validation",message:"A related record does not belong to the active organization."});}`,
+            )
+        : []),
       "",
       ...executeQuery,
       '    } catch(error) {const code=(error as {cause?:{code?:string};code?:string})?.cause?.code ?? (error as {code?:string})?.code;if(code === "23503" || code === "23505" || code === "23514")throw new ApplicationFailure({code:"conflict",message:"The operation conflicts with stored data."});throw error;}',
@@ -674,6 +728,10 @@ export function generateDrizzleSeedFiles(
         fieldAssignments.push(`        ${fieldName}: false,`);
         continue;
       }
+      if (field.generated === "organization") {
+        fieldAssignments.push(`        ${fieldName}: organizationId,`);
+        continue;
+      }
       if (fieldName === "deletedAt") {
         fieldAssignments.push(`        ${fieldName}: null,`);
         continue;
@@ -786,6 +844,7 @@ export function generateDrizzleSeedFiles(
     const count = `Math.min(${[5, ...enumCapacities, ...oneToOne.map((relation) => `seeded.${relation.target}.length`)].join(",")})`;
     entitySeeders.push(`    // Seed ${entityName} (deterministic synthetic records)
     seeded.${entityName} = [];
+    ${entity.scope === "organization" ? "if(organizationId) {" : ""}
     for (let i = 0; i < ${count}; i++) {
       const record = {
 ${fieldAssignments.join("\n")}
@@ -795,7 +854,7 @@ ${fieldAssignments.join("\n")}
         seeded.${entityName}.push(inserted);
       }
     }
-    console.log(\`Seeded \${seeded.${entityName}.length} records for ${entityName}\`);`);
+    console.log(\`Seeded \${seeded.${entityName}.length} records for ${entityName}\`);${entity.scope === "organization" ? "}" : ""}`);
   }
 
   const seedContent = [
@@ -806,7 +865,12 @@ ${fieldAssignments.join("\n")}
     `import * as schema from "${importPath(seedPath, schemaIndexPath)}";`,
     ...(context.identity ? ['import {seedAuthorization} from "../authorization/seed.js";'] : []),
     "",
-    "export async function seedDatabase(options?: { seed?: number }): Promise<Record<string, any[]>> {",
+    `export async function seedDatabase(options?: { seed?: number${context.identity?.organizations.enabled ? "; organizationId?:string" : ""} }): Promise<Record<string, any[]>> {`,
+    ...(context.identity?.organizations.enabled
+      ? [
+          "  const organizationId=options?.organizationId??process.env.NORDIXGEN_SEED_ORGANIZATION_ID;",
+        ]
+      : []),
     `  const connectionString = process.env.${persistence.connectionStringEnvironmentVariable};`,
     "  if (!connectionString) {",
     `    throw new Error("Set ${persistence.connectionStringEnvironmentVariable} before running database seed.");`,

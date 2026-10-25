@@ -1,3 +1,4 @@
+import * as asyncHooks from "node:async_hooks";
 import { posix } from "node:path";
 import * as access from "better-auth/plugins/access";
 import ts from "typescript";
@@ -7,7 +8,11 @@ export function generatedRuntime(
   external: Readonly<Record<string, unknown>> = {},
   globals: Readonly<Record<string, unknown>> = {},
 ) {
-  const modules = { "better-auth/plugins/access": access, ...external };
+  const modules = {
+    "better-auth/plugins/access": access,
+    "node:async_hooks": asyncHooks,
+    ...external,
+  };
   const cache = new Map<string, Record<string, unknown>>();
   function load(request: string): Record<string, unknown> {
     let path = request;

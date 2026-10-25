@@ -20,6 +20,7 @@ export function resolveOperation(
   origin: (path: string) => ConfigurationOrigin,
 ): ResolvedOperation {
   const entity = entities[endpoint.entity];
+  const scope = endpoint.scope ?? "global";
   const path = `endpoints[${index}]`;
   const input: Record<string, ResolvedInput> = dictionary([]);
   const binding = (ref: { entity: string; field: string }): FieldBinding => ({
@@ -197,6 +198,7 @@ export function resolveOperation(
       : [];
   const id = `${entity.moduleId}.${endpoint.operationId}`;
   const access = {
+    scope,
     ...(backend.identity ? { authority: backend.name } : {}),
     authenticated: authRequired,
     roles: endpoint.roles,
@@ -212,6 +214,7 @@ export function resolveOperation(
   const { requestBody: _declaration, ...http } = endpoint;
   return {
     ...http,
+    scope,
     id,
     moduleId: entity.moduleId,
     entityId: entity.id,

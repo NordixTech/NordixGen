@@ -6,7 +6,7 @@ import { iamStyles } from "./iam-styles.js";
 export function generateFrontendIam(context: FrontendRenderContext): readonly GeneratedFile[] {
   if (!context.api.authentication) return [];
   const root = context.framework.codeRoot;
-  return [
+  const files: GeneratedFile[] = [
     { path: `${root}/components/iam/audit-activity.tsx`, content: auditActivity },
     { path: `${root}/lib/iam/activity-presentation.ts`, content: activityPresentation },
     {
@@ -40,11 +40,13 @@ export function AuditLog(){
     {
       path: `${root}/lib/iam/client.ts`,
       content: `export interface IamRole {id:string;name:string;description:string|null;isSystem:boolean;permissions:string[];}
-export interface IamUser {id:string;name:string;email:string;role:string;}
+export interface IamUser {id:string;name:string;email:string;role:string;roles?:string[];}
 export interface AccessImpact {code:string;token:string;selfLoss:string[];lost:string[];affected:number;}
 export class IamError extends Error {constructor(message:string,public impact?:AccessImpact){super(message);}}
+${context.api.authentication.organizations.enabled ? 'import {organizationHeaders} from "@/lib/auth/organization-context";' : ""}
 export async function iamRequest<T>(path:string,init:RequestInit={}):Promise<T>{
- const response=await fetch("/api/auth/iam"+path,{...init,headers:{...(init.body==null?{}:{"Content-Type":"application/json"}),...init.headers},credentials:"include",cache:"no-store"});
+ const headers=new Headers(${context.api.authentication.organizations.enabled ? "organizationHeaders()" : "undefined"});new Headers(init.headers).forEach((value,name)=>headers.set(name,value));if(init.body!=null)headers.set("Content-Type","application/json");
+ const response=await fetch("/api/auth/iam"+path,{...init,headers,credentials:"include",cache:"no-store"});
  if(!response.ok){const error=await response.json().catch(()=>null);throw new IamError(error?.detail??error?.message??"Administration request failed.",error?.code?error:undefined);}
  return response.status===204?undefined as T:await response.json() as T;
 }
@@ -177,4 +179,22 @@ export function IamAdministration(){
 `,
     },
   ];
+  if (!context.api.authentication.global.enabled)
+    return files.filter(
+      (file) => file.path === `${root}/lib/iam/client.ts` || file.path === `${root}/styles/iam.css`,
+    );
+  if (context.api.authentication.global.mode === "multiple")
+    return files.map((file) => ({
+      ...file,
+      content: file.content
+        .replace(
+          "value={user.role} onChange={event=>void mutate",
+          "multiple value={user.roles??[]} onChange={event=>void mutate",
+        )
+        .replace(
+          "{role:event.target.value}",
+          "{roles:Array.from(event.currentTarget.selectedOptions,option=>option.value)}",
+        ),
+    }));
+  return files;
 }

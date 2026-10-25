@@ -109,7 +109,7 @@ export function generateModulePublicFiles(
         "interface Executions {",
         ...operations.map(
           (operation) =>
-            `readonly ${JSON.stringify(operation.operationId)}:{readonly useCase:{execute(input:unknown,context?:OperationContext):Promise<${operation.typeName}Output>}};`,
+            `readonly ${JSON.stringify(operation.operationId)}:{readonly useCase:{execute(input:unknown,context${operation.access.scope === "organization" ? "" : "?"}:OperationContext):Promise<${operation.typeName}Output>}};`,
         ),
         "}",
         `const policies={${operations.map((operation) => `${JSON.stringify(operation.operationId)}:${JSON.stringify(operation.access)}`).join(",")}} as const;`,

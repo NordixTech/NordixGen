@@ -5,6 +5,7 @@ export interface PreparedApplication {
   readonly path: string;
   readonly backend: boolean;
   readonly database: boolean;
+  readonly globalAuthorization?: boolean;
   readonly repository: ResolvedProject["repositories"][number];
   readonly files: VirtualFileSystem;
   readonly scaffold: UpstreamScaffoldPlan;

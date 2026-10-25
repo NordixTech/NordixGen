@@ -1,5 +1,6 @@
 import type { FieldDefinition, NordixConfig } from "../configuration/schema.js";
 import { fieldDefinitions, snakeCase } from "../configuration/validation/shared.js";
+import { organizationEntities } from "./permissions.js";
 import type {
   ConfigurationOrigin,
   JsonValue,
@@ -95,10 +96,12 @@ export function resolveEntities(
   owner: ReadonlyMap<string, string>,
   origin: (path: string) => ConfigurationOrigin,
 ): Record<string, ResolvedEntity> {
+  const tenantEntities = organizationEntities(config);
   return sortedRecord(
     Object.entries(config.entities).map(([name, entity]) => {
       const moduleId = owner.get(name) as string;
       const id = `${moduleId}.${name}`;
+      const organization = tenantEntities.has(name);
       const generated: Record<string, ResolvedField["generated"]> = dictionary([
         ["id", "identity"],
       ]);
@@ -130,6 +133,14 @@ export function resolveEntities(
           ];
         }),
       );
+      if (organization)
+        fields.organizationId = resolveField(
+          "organizationId",
+          { type: "string", required: true, unique: false },
+          config.enums,
+          origin(`entities.${name}`),
+          "organization",
+        );
       const relations = sortedRecord(
         Object.entries(entity.relations).map(([relationName, relation]) => {
           const inverse = relation.type === "one-to-many";
@@ -169,6 +180,7 @@ export function resolveEntities(
         name,
         {
           id,
+          scope: organization ? "organization" : "global",
           name,
           backend: entity.backend,
           moduleId,
@@ -177,7 +189,12 @@ export function resolveEntities(
           ...(entity.description === undefined ? {} : { description: entity.description }),
           fields,
           relations,
-          indexes: entity.indexes.map((index) => ({ fields: [...index.fields] })),
+          indexes: [
+            ...entity.indexes.map((index) => ({
+              fields: [...(organization ? ["organizationId"] : []), ...index.fields],
+            })),
+            ...(organization ? [{ fields: ["organizationId", "id"] }] : []),
+          ],
           timestamps: entity.timestamps,
           softDelete: entity.softDelete,
           generatedFields: Object.keys(fields).filter((key) => fields[key].generated),

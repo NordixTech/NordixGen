@@ -92,7 +92,7 @@ describe("verified server page access", () => {
       "api",
       "customers",
       "list",
-      ["private", "a", "viewer"],
+      ["private", "a", ["viewer"], null, [], [], []],
       { query: { page: 1 } },
     ]);
     expect(backendFetch.mock.calls[0]).toEqual([
@@ -236,8 +236,8 @@ describe("verified server page access", () => {
     };
     expect(view()).toMatchObject({ user: null, isPending: true });
     state = { isPending: false, data: { user: { id: "verified", role: "viewer" } } };
-    expect(view()).toMatchObject({ user: { id: "verified" }, isPending: true });
-    expect(view().hasRole("viewer")).toBe(true);
+    expect(view()).toMatchObject({ user: null, isPending: true });
+    expect(view().hasRole("viewer")).toBe(false);
     state = { isPending: false, data: null };
     expect(view()).toMatchObject({ user: null, isPending: false });
     expect(view().hasRole("viewer")).toBe(false);

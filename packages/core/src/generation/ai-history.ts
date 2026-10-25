@@ -5,6 +5,17 @@ export const aiChatMessage=pgTable("ai_chat_message",{chatId:text("chat_id").not
 export const aiChatAction=pgTable("ai_chat_action",{chatId:text("chat_id").notNull().references(()=>aiChat.id,{onDelete:"cascade"}),callId:text("call_id").notNull(),status:text("status").notNull(),result:jsonb("result")},t=>[primaryKey({columns:[t.chatId,t.callId]})]);
 `;
 
+export const organizationChatSchemaSource = chatSchemaSource
+  .replace(
+    "import {authUser}",
+    'import {organization} from "./organization-schema.js";\nimport {authUser}',
+  )
+  .replace(
+    "ownerId:text(",
+    'organizationId:text("organization_id").references(()=>organization.id,{onDelete:"cascade"}),ownerId:text(',
+  )
+  .replace(".on(t.ownerId,t.updatedAt)", ".on(t.ownerId,t.organizationId,t.updatedAt)");
+
 export const chatHistorySource = `import {and,eq,desc,asc,sql} from "drizzle-orm";
 import type {UIMessage} from "ai";
 import {createDrizzleDatabase} from "../database/drizzle-database.js";
@@ -64,3 +75,21 @@ export function createChatStore(url:string){
  };
 }
 `;
+
+export const organizationChatHistorySource = chatHistorySource
+  .replace("and,eq,desc,asc,sql", "and,eq,desc,asc,sql,isNull")
+  .replace("createChatStore(url:string)", "createChatStore(url:string,organizationId?:string)")
+  .replace(
+    "const owned=",
+    "const tenant=organizationId?eq(aiChat.organizationId,organizationId):isNull(aiChat.organizationId);const owned=",
+  )
+  .replace("eq(aiChat.ownerId,owner));", "eq(aiChat.ownerId,owner),tenant);")
+  .replace(".where(eq(aiChat.ownerId,owner))", ".where(and(eq(aiChat.ownerId,owner),tenant))")
+  .replace(
+    "values({id,ownerId:owner})",
+    "values({id,ownerId:owner,organizationId:organizationId??null})",
+  )
+  .replace(
+    "AND lease=${token}",
+    "AND organization_id IS NOT DISTINCT FROM ${organizationId??null} AND lease=${token}",
+  );

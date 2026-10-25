@@ -18,10 +18,12 @@ function aiFixture() {
   Object.assign(config.backends[0], {
     authentication: {},
     authorization: {
-      roles: ["admin", "member"],
-      adminRole: "admin",
-      defaultRole: "member",
-      rolePermissions: { member: ["notes:read"] },
+      global: {
+        roles: ["admin", "member"],
+        adminRole: "admin",
+        defaultRole: "member",
+        rolePermissions: { member: ["notes:read"] },
+      },
     },
     ai: { enabled: true, mcp: { enabled: true, authMethods: ["oauth", "api-key"] } },
   });
@@ -58,6 +60,65 @@ function backendFiles(config: unknown = aiFixture()) {
   return result.virtualFileSystem.snapshot();
 }
 describe("AI configuration and generated application contracts", () => {
+  it.each(["organization-only", "both-multiple", "global-multiple"])(
+    "compiles scoped AI grants and histories for %s",
+    async (scenario) => {
+      const config = aiFixture();
+      const authorization = config.backends[0].authorization;
+      if (!authorization) throw Error("Missing fixture authorization");
+      authorization.global.mode = "multiple";
+      if (scenario !== "global-multiple") {
+        authorization.global.enabled = scenario !== "organization-only";
+        authorization.global.rolePermissions = {};
+        authorization.organizations = {
+          enabled: true,
+          mode: "multiple",
+          roles: ["owner", "editor", "viewer"],
+          ownerRole: "owner",
+          defaultRole: "viewer",
+          rolePermissions: { editor: ["notes:read", "notes:write"], viewer: ["notes:read"] },
+        };
+        for (const endpoint of config.endpoints) endpoint.scope = "organization";
+      }
+      const project = resolvedFixture(config);
+      const backend = backendFiles(config);
+      expect(
+        await generatedTypeErrors(
+          Object.fromEntries(
+            Object.entries(backend)
+              .filter(([name]) => name.endsWith(".ts") && !name.includes("mcp-gateway"))
+              .map(([name, content]) => [name.replace("apps/api/", ""), content]),
+          ),
+        ),
+      ).toEqual([]);
+      const frontend = generateFrontend(project, "web").virtualFileSystem.snapshot();
+      if (scenario !== "global-multiple") {
+        expect(backend["apps/api/src/platform/ai/define-tool.ts"]).toContain(
+          'scope:"global"|"organization"',
+        );
+        expect(backend["apps/api/src/platform/ai/history.ts"]).toContain(
+          "organization_id IS NOT DISTINCT FROM",
+        );
+        expect(
+          await generatedTypeErrors(
+            Object.fromEntries(
+              Object.entries(frontend)
+                .filter(([name]) => name.includes("/components/ai/") && name.endsWith(".tsx"))
+                .map(([name, content]) => [name.replace("apps/web/src/", ""), content]),
+            ),
+            { module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler },
+            {
+              "lib/auth/use-session-view.ts":
+                "export function useSessionView():{user:{id:string;organizationId?:string}|null;isPending:boolean}{return {user:null,isPending:false};}",
+              "lib/auth/organization-context.ts":
+                frontend["apps/web/src/lib/auth/organization-context.ts"],
+            },
+          ),
+        ).toEqual([]);
+      }
+    },
+    60000,
+  );
   it("resolves strict AI switches and protects AI pages independently of public business pages", () => {
     const project = resolvedFixture(aiFixture());
     expect(project.backends.api.ai?.tools.requireConfirmationOnMutations).toBe(true);

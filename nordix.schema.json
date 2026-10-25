@@ -503,42 +503,115 @@
           "authorization": {
             "type": "object",
             "properties": {
-              "roles": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "pattern": "^[a-z][a-z0-9-]*$"
-                }
-              },
-              "adminRole": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]*$"
-              },
-              "defaultRole": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]*$"
-              },
-              "rolePermissions": {
-                "default": {},
-                "type": "object",
-                "propertyNames": {
-                  "type": "string",
-                  "pattern": "^[a-z][a-z0-9-]*$"
+              "global": {
+                "default": {
+                  "enabled": false
                 },
-                "additionalProperties": {
-                  "type": "array",
-                  "items": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "mode": {
+                    "default": "single",
                     "type": "string",
-                    "pattern": "^\\S+$"
+                    "enum": [
+                      "single",
+                      "multiple"
+                    ]
+                  },
+                  "roles": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    }
+                  },
+                  "defaultRole": {
+                    "default": "user",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "rolePermissions": {
+                    "default": {},
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^\\S+$"
+                      }
+                    }
+                  },
+                  "adminRole": {
+                    "default": "admin",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]*$"
                   }
-                }
+                },
+                "additionalProperties": false
+              },
+              "organizations": {
+                "default": {
+                  "enabled": false
+                },
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "mode": {
+                    "default": "single",
+                    "type": "string",
+                    "enum": [
+                      "single",
+                      "multiple"
+                    ]
+                  },
+                  "roles": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    }
+                  },
+                  "defaultRole": {
+                    "default": "user",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "rolePermissions": {
+                    "default": {},
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^\\S+$"
+                      }
+                    }
+                  },
+                  "ownerRole": {
+                    "default": "owner",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  }
+                },
+                "additionalProperties": false
               }
             },
-            "required": [
-              "roles",
-              "adminRole",
-              "defaultRole"
-            ],
             "additionalProperties": false
           },
           "ai": {
@@ -1301,6 +1374,13 @@
       "items": {
         "type": "object",
         "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "organization"
+            ]
+          },
           "backend": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"

@@ -44,7 +44,13 @@ export type ResolvedField = Readonly<FieldDefinition> & {
   readonly name: string;
   readonly column: string;
   readonly origin: ConfigurationOrigin;
-  readonly generated: false | "identity" | "created-at" | "updated-at" | "soft-delete";
+  readonly generated:
+    | false
+    | "identity"
+    | "created-at"
+    | "updated-at"
+    | "soft-delete"
+    | "organization";
   readonly nullable: boolean;
   readonly value: ResolvedValue;
   readonly defaultValue:
@@ -66,6 +72,7 @@ export type ResolvedRelation = Readonly<RelationDefinition> & {
   readonly origin: ConfigurationOrigin;
 };
 export interface ResolvedEntity {
+  readonly scope: "global" | "organization";
   readonly id: string;
   readonly name: string;
   readonly backend: string;
@@ -119,6 +126,7 @@ export interface ResolvedResponse {
   readonly status: 200;
 }
 export interface ResolvedAccess {
+  readonly scope: "global" | "organization";
   readonly authority?: string;
   readonly authenticated: boolean;
   readonly roles: readonly string[];
@@ -217,6 +225,14 @@ export interface ResolvedDatabase {
   readonly backend?: string;
 }
 export interface ResolvedIdentity {
+  readonly permissionCatalogs: {
+    readonly global: readonly string[];
+    readonly organization: readonly string[];
+  };
+  readonly global: Readonly<NonNullable<BackendDefinition["authorization"]>["global"]>;
+  readonly organizations: Readonly<
+    NonNullable<BackendDefinition["authorization"]>["organizations"]
+  >;
   readonly passwordPolicy?: import("./account-policy.js").PasswordPolicy;
   readonly session?: { readonly expiresIn: string | number; readonly updateAge: string | number };
   readonly allowedEmailDomains?: readonly string[];
@@ -278,6 +294,7 @@ export type TransportJoin = Pick<
   "entity" | "type" | "fields" | "cardinality" | "nullable"
 > & { readonly projection: Readonly<Record<string, TransportField>> };
 export interface TransportOperation {
+  readonly scope: "global" | "organization";
   readonly id: string;
   readonly moduleId: string;
   readonly operationId: string;

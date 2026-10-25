@@ -103,7 +103,7 @@ See [Endpoints](ENDPOINTS.md) for route syntax, filtering, response wrappers and
 
 Authentication omission disables identity; `{}` enables defaults. Durations accept positive seconds or integer `s`/`m`/`h`/`d` strings, bounded to 2147483647 seconds. Rate limiting accepts `ip: { window, max }`, `account: { window, max }`; top-level `window`/`max` configure IP limits unless `ip` is supplied.
 
-Authorization requires `roles`, `adminRole`, `defaultRole`; `rolePermissions` defaults to `{}`. With identity and no authorization object, defaults are admin/user roles. See [Authentication](../guides/AUTHENTICATION.md) and [Roles](../guides/ROLES_PERMISSIONS.md).
+Authorization has independent optional `global` and `organizations` domains. An omitted domain defaults to `enabled: false`; a present domain defaults to enabled and `mode: single`. Declare `roles`, the least-privilege `defaultRole`, and `adminRole` (global) or `ownerRole` (organization); `rolePermissions` defaults to `{}`. Authentication alone enables neither domain. Every protected endpoint needs an explicit `scope: global | organization` when organizations are enabled. See [Authentication](../guides/AUTHENTICATION.md) and [Roles](../guides/ROLES_PERMISSIONS.md) for dynamic catalogs, tenant data ownership, multiple roles, generated interfaces and transactional safeguards.
 
 ## Frontend access and theme
 

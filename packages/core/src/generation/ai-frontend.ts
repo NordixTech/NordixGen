@@ -8,6 +8,42 @@ export function frontendAiFiles(context: FrontendRenderContext): GeneratedFile[]
   if (!ai) return [];
   const root = context.framework.codeRoot;
   const base = `/api/backend/${ai.backend}`;
+  const scoped = (source: string) =>
+    context.api.authentication?.organizations.enabled
+      ? source
+          .replace(
+            '"use client";',
+            '"use client";\nimport {organizationHeaders} from "@/lib/auth/organization-context";',
+          )
+          .replaceAll(
+            "key={session.user.id}",
+            'key={session.user.id+":"+(session.user.organizationId??"global")}',
+          )
+          .replace(
+            "fetch(url,{...init,cache:",
+            "fetch(url,{...init,headers:{...organizationHeaders(),...Object.fromEntries(new Headers(init?.headers))},cache:",
+          )
+          .replace(
+            'headers:{"Content-Type":"application/json",...init?.headers}',
+            'headers:{...organizationHeaders(),"Content-Type":"application/json",...Object.fromEntries(new Headers(init?.headers))}',
+          )
+          .replace(
+            'DefaultChatTransport({api:"/api/chat"})',
+            'DefaultChatTransport({api:"/api/chat",headers:organizationHeaders})',
+          )
+          .replace(
+            "authMethods:string[];permissions:string[];",
+            "authMethods:string[];permissions:string[];organizationId?:string;",
+          )
+          .replace(
+            '...(secret?{headers:{Authorization:"Bearer "+secret}}:{})',
+            '...((secret||connection.organizationId)?{headers:{...(connection.organizationId?{"x-organization-id":connection.organizationId}:{}),...(secret?{Authorization:"Bearer "+secret}:{})}}:{})',
+          )
+          .replace(
+            '{connection&&<div className="ng-ai-url">',
+            '{connection?.organizationId&&<p>To use this organization’s tools, include the organization header shown in the connection configuration. Clients without custom headers can access global tools only.</p>}{connection&&<div className="ng-ai-url">',
+          )
+      : source;
   return [
     ...(ai.chat.enabled || ai.connectPortal.enabled
       ? [
@@ -28,7 +64,7 @@ export async function POST(request:Request){return proxyBackend(${JSON.stringify
           },
           {
             path: `${root}/components/ai/assistant-chat.tsx`,
-            content: chatUiSource.replaceAll("__AI_BASE__", base),
+            content: scoped(chatUiSource.replaceAll("__AI_BASE__", base)),
           },
           ...(ai.chat.placement === "page"
             ? [
@@ -45,7 +81,7 @@ export async function POST(request:Request){return proxyBackend(${JSON.stringify
       ? [
           {
             path: `${root}/components/ai/connect-portal.tsx`,
-            content: portalUiSource.replaceAll("__AI_BASE__", base),
+            content: scoped(portalUiSource.replaceAll("__AI_BASE__", base)),
           },
           {
             path: `${root}/app/connect-ai/page.tsx`,

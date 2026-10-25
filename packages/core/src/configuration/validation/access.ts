@@ -1,7 +1,7 @@
 import { type ConfigDiagnostic, createDiagnostic } from "../../diagnostics.js";
 import { durationSeconds } from "../../project/account-policy.js";
-import { IAM_PERMISSIONS, backendPermissions } from "../../project/permissions.js";
 import type { NordixConfig } from "../schema.js";
+import { validateAuthorization } from "./authorization.js";
 import { entitySlug, routePath, scopedOperationName } from "./shared.js";
 
 export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
@@ -83,62 +83,7 @@ export function validateAccess(config: NordixConfig): ConfigDiagnostic[] {
         `${path}.authorization`,
         "Authorization requires backend authentication. Enable authentication or omit authorization.",
       );
-    if (backend.authorization) {
-      const policy = backend.authorization;
-      const known = new Set(backendPermissions(config, backend.name));
-      if (
-        policy.defaultRole === policy.adminRole ||
-        (policy.rolePermissions[policy.defaultRole] ?? []).some(
-          (permission) =>
-            permission === "*" || IAM_PERMISSIONS.some((system) => system === permission),
-        )
-      )
-        add(
-          "DEFAULT_ROLE_PRIVILEGED",
-          `${path}.authorization.defaultRole`,
-          "The signup default role must differ from the configured administrator role and must not grant IAM administration capabilities.",
-        );
-      for (const [role, grants] of Object.entries(policy.rolePermissions))
-        for (const permission of grants)
-          if (permission !== "*" && !permission.includes("*") && !known.has(permission))
-            add(
-              "PERMISSION_UNKNOWN",
-              `${path}.authorization.rolePermissions.${role}`,
-              `Permission "${permission}" is not an application capability. Declare it on a backend operation or use a built-in IAM/storage permission.`,
-            );
-      if (!policy.roles.includes(policy.defaultRole))
-        add(
-          "DEFAULT_ROLE_UNKNOWN",
-          `${path}.authorization.defaultRole`,
-          `Default role "${policy.defaultRole}" must occur in roles. Choose a declared least-privilege role.`,
-        );
-      if (!policy.roles.includes(policy.adminRole))
-        add(
-          "ADMIN_ROLE_UNKNOWN",
-          `${path}.authorization.adminRole`,
-          `Administrator role "${policy.adminRole}" must occur in roles.`,
-        );
-      if (Object.hasOwn(policy.rolePermissions, policy.adminRole))
-        add(
-          "ADMIN_ROLE_PERMISSIONS_RESERVED",
-          `${path}.authorization.rolePermissions.${policy.adminRole}`,
-          "The administrator role receives all permissions automatically; omit it from rolePermissions.",
-        );
-      for (const [role, grants] of Object.entries(policy.rolePermissions)) {
-        if (!policy.roles.includes(role))
-          add(
-            "ROLE_UNKNOWN",
-            `${path}.authorization.rolePermissions.${role}`,
-            `Grant owner "${role}" is not declared in roles. Correct the role or add its declaration.`,
-          );
-        if (grants.some((p) => p.includes("*") && p !== "*"))
-          add(
-            "PERMISSION_INVALID",
-            `${path}.authorization.rolePermissions.${role}`,
-            "Only an entire '*' grant is supported. Replace partial wildcards with concrete permission tokens.",
-          );
-      }
-    }
+    diagnostics.push(...validateAuthorization(config, backend, bi));
   }
   for (const [fi, frontend] of config.frontends.entries()) {
     const path = `frontends[${fi}]`;

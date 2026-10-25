@@ -204,7 +204,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
         : `import { ${operationName}UseCase } from "${useCaseImport}";`,
       "",
       `export interface ${operationName}ControllerDependencies {`,
-      `  useCase?: ${explicitPort ? `${operationName}Port` : `Pick<${operationName}UseCase,"execute">`};`,
+      `  useCase?: ${endpoint.access.scope === "organization" ? `{execute(input:unknown):ReturnType<${operationName}${explicitPort ? "Port" : "UseCase"}["execute"]>}` : explicitPort ? `${operationName}Port` : `Pick<${operationName}UseCase,"execute">`};`,
       "  authorize?:()=>Promise<void>;",
       "}",
       "",
@@ -353,7 +353,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
       hasAuthentication
         ? "  return isTrustedAuthOrigin(origin,c.env)?origin:null;"
         : '  const allowed=c.env?.CORS_ALLOWED_ORIGINS;return origin && typeof allowed==="string" && allowed.split(",").map((value:string)=>value.trim()).includes(origin)?origin:null;',
-      ' },allowHeaders:["Content-Type","Authorization"],allowMethods:["GET","POST","PUT","PATCH","DELETE","OPTIONS"],credentials:true,maxAge:600,',
+      ' },allowHeaders:["Content-Type","Authorization","x-organization-id"],allowMethods:["GET","POST","PUT","PATCH","DELETE","OPTIONS"],credentials:true,maxAge:600,',
       "}));",
       ...(hasAuthentication
         ? [
@@ -381,7 +381,7 @@ export function generateHonoFiles(context: BackendRenderContext): readonly Gener
                 ]
               : []),
             hasAuthentication
-              ? `  const verifySession=async(headers:Headers)=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers});${hasAudit ? 'audit.actor(session?.user.id??"anonymous");' : ""}return session?(await createIamRepository(createDrizzleDatabase(c.env.DATABASE_URL)).principal(session.user.id)??null):null;};let verified:ReturnType<typeof verifySession>|undefined;const boundary=createOperationBoundary(headers=>verified??=verifySession(headers)${hasAudit ? ",audit.capture" : ""});`
+              ? `  const verifySession=async(headers:Headers)=>{const session=await createAuth(c.env,c.executionCtx).api.getSession({headers});${hasAudit ? 'audit.actor(session?.user.id??"anonymous");' : ""}return session?(await createIamRepository(createDrizzleDatabase(c.env.DATABASE_URL)).principal(session.user.id${context.identity?.organizations.enabled ? ',headers.get("x-organization-id")??(session.session as {activeOrganizationId?:string|null}).activeOrganizationId??undefined' : ""})??null):null;};let verified:ReturnType<typeof verifySession>|undefined;const boundary=createOperationBoundary(headers=>verified??=verifySession(headers)${hasAudit ? ",audit.capture" : ""});`
               : `  const boundary=createOperationBoundary(async()=>null${hasAudit ? ",audit.capture" : ""});`,
             `  const routes = createRoutes(createRouteDependencies(c.env.DATABASE_URL,boundary,c.req.raw.headers${hasStorage ? ",createStorage(c.env)" : ""}));`,
             ...(hasAudit
