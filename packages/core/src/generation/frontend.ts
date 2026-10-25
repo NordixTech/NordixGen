@@ -23,19 +23,21 @@ import { frontendEnvironmentFile } from "./runtime-environment.js";
 import { frontendStorageFiles } from "./storage-frontend.js";
 export const FRONTEND_STACK = {
   runtime: {
+    next: "16.4.3",
+    sharp: "0.35.5",
     "@tanstack/react-query": "^5.80.7",
     zustand: "^5.0.8",
-    zod: "^3.24.2",
-    "react-hook-form": "^7.54.2",
-    "@hookform/resolvers": "^3.10.0",
+    zod: "4.6.7",
+    "react-hook-form": "^7.91.0",
+    "@hookform/resolvers": "6.0.0",
   },
   development: {
     tailwindcss: "^4.0.0",
     "@tailwindcss/postcss": "^4.0.0",
-    "@opennextjs/cloudflare": "1.20.12",
-    wrangler: "4.151.2",
+    "@opennextjs/cloudflare": "1.20.13",
+    wrangler: "4.152.0",
   },
-  identity: { "better-auth": "^1.7.7" },
+  identity: { "better-auth": "1.7.13" },
 } as const;
 export const FRONTEND_SCAFFOLD_OVERLAYS = [
   "src/app/layout.tsx",

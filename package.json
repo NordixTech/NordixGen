@@ -3,10 +3,21 @@
   "private": true,
   "description": "Initialize Nordix full-stack projects from strict YAML v2",
   "engines": {
-    "node": ">=24.0.0",
+    "node": ">=24.22.1",
     "pnpm": ">=10.0.0"
   },
   "packageManager": "pnpm@10.5.2",
+  "pnpm": {
+    "overrides": {
+      "esbuild": "0.28.2",
+      "vite": "7.3.7",
+      "zod": "4.6.7",
+      "body-parser": "2.4.0",
+      "undici@7": "7.30.1",
+      "glob@10": "10.5.0",
+      "drizzle-kit>@esbuild-kit/esm-loader": "-"
+    }
+  },
   "scripts": {
     "build": "pnpm --filter \"./packages/*\" build",
     "test": "pnpm --filter \"./packages/*\" test",
@@ -18,6 +29,7 @@
     "test:acceptance": "node packages/cli/tests/acceptance/run.mjs"
   },
   "devDependencies": {
+    "vite": "7.3.7",
     "@biomejs/biome": "1.9.4",
     "@hono/node-server": "2.1.5",
     "@playwright/test": "1.64.1",

@@ -1,6 +1,6 @@
 # @nordixgen/cli
 
-Initialize and generate Nordix applications from YAML v2. Requires Node.js 24+, pnpm 10.5.2, Git author identity and network access for generation.
+Initialize and generate Nordix applications from YAML v2. Requires Node.js 24.22.1+, pnpm 10.5.2, Git author identity and network access for generation.
 
 From a built source checkout:
 

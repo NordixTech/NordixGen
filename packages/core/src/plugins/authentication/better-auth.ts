@@ -386,7 +386,7 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
         "",
         "IAM is registered as nordixIamPlugin. Unified audit is recorded asynchronously in audit_logs and queried at /api/auth/iam/audit with iam:roles:manage.",
         "The schema.config.ts entrypoint is for offline Better Auth CLI discovery only. Do not serve it.",
-        "From the backend root: pnpm dlx auth@1.7.10 generate --config ./src/platform/auth/schema.config.ts --output ./better-auth-discovered.ts --yes",
+        "From the backend root: pnpm dlx auth@1.7.13 generate --config ./src/platform/auth/schema.config.ts --output ./better-auth-discovered.ts --yes",
         "Review the discovered schema alongside the maintained Drizzle files; do not overwrite business schemas.",
         "IAM writes use request-scoped Neon WebSocket transactions. NEON_HTTP_PROXY_URL also selects the local proxy's WebSocket endpoint.",
         "",

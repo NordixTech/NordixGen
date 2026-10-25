@@ -20,10 +20,14 @@ export type ConfigValidationResult =
       diagnostics: ConfigDiagnostic[];
     }
   | { success: false; diagnostics: ConfigDiagnostic[] };
-export const configurationPath = (segments: readonly (string | number)[]) =>
+export const configurationPath = (segments: readonly PropertyKey[]) =>
   segments.reduce<string>(
     (path, segment) =>
-      typeof segment === "number" ? `${path}[${segment}]` : path ? `${path}.${segment}` : segment,
+      typeof segment === "number"
+        ? `${path}[${segment}]`
+        : path
+          ? `${path}.${String(segment)}`
+          : String(segment),
     "",
   );
 function removed(path: string): string | undefined {
@@ -75,17 +79,42 @@ function structuralDiagnostics(error: z.ZodError): ConfigDiagnostic[] {
           "Declare schemaVersion: 2 (an integer), separate from the project's version. Previous schemas and aliases are not accepted.",
         ),
       ];
-    if (issue.code === "invalid_enum_value" || issue.code === "invalid_union_discriminator")
+    if (issue.code === "invalid_value" && issue.values.length > 1)
       return [
         createDiagnostic(
           path.endsWith(".architecture")
             ? "MODULE_ARCHITECTURE_INVALID"
             : "CONFIG_VALUE_UNSUPPORTED",
           path,
-          `Select one of the supported values: ${issue.options.map(String).join(", ")}. Correct this declaration.`,
+          `Select one of the supported values: ${issue.values.map(String).join(", ")}. Correct this declaration.`,
         ),
       ];
-    if (issue.code === "invalid_union")
+    if (issue.code === "invalid_union" && "discriminator" in issue)
+      return [
+        createDiagnostic(
+          "CONFIG_VALUE_UNSUPPORTED",
+          path,
+          "Select a documented field type: string, number, boolean, date, uuid, json or enum.",
+        ),
+      ];
+    if (issue.code === "invalid_key")
+      return [
+        createDiagnostic(
+          "CONFIG_FIELD_INVALID",
+          path,
+          issue.issues.map((entry) => entry.message).join(" "),
+        ),
+      ];
+    if (issue.code === "invalid_union") {
+      const invalidKeys = issue.errors.flat().filter((entry) => entry.code === "invalid_key");
+      if (invalidKeys.length)
+        return invalidKeys.map((entry) =>
+          createDiagnostic(
+            "CONFIG_FIELD_INVALID",
+            configurationPath([...issue.path, ...entry.path]),
+            entry.issues.map((detail) => detail.message).join(" "),
+          ),
+        );
       return [
         createDiagnostic(
           "CONFIG_FIELD_INVALID",
@@ -97,20 +126,21 @@ function structuralDiagnostics(error: z.ZodError): ConfigDiagnostic[] {
               : "Use the documented field definition/reference, or the strict requestBody useCase entity/create-or-update form. Do not mix forms or add unknown properties.",
         ),
       ];
+    }
     if (issue.code === "invalid_type")
       return [
         createDiagnostic(
-          issue.received === "undefined" ? "CONFIG_FIELD_REQUIRED" : "CONFIG_FIELD_TYPE_INVALID",
+          issue.input === undefined ? "CONFIG_FIELD_REQUIRED" : "CONFIG_FIELD_TYPE_INVALID",
           path,
           `Expected ${issue.expected}. Supply the required value at this configuration path using the documented v2 type.`,
         ),
       ];
-    if (issue.code === "invalid_literal")
+    if (issue.code === "invalid_value")
       return [
         createDiagnostic(
           "CONFIG_VALUE_UNSUPPORTED",
           path,
-          `Use the required literal ${String(issue.expected)} at this configuration path.`,
+          `Use the required literal ${String(issue.values[0])} at this configuration path.`,
         ),
       ];
     return [
@@ -119,7 +149,7 @@ function structuralDiagnostics(error: z.ZodError): ConfigDiagnostic[] {
         path,
         issue.code === "custom"
           ? issue.message
-          : issue.code === "invalid_string"
+          : issue.code === "invalid_format"
             ? path.includes(".theme.")
               ? issue.message
               : "Use the documented identifier, version or path format; names start with a letter and use their permitted characters."
@@ -172,7 +202,7 @@ function ordered(diagnostics: ConfigDiagnostic[]): ConfigDiagnostic[] {
 export function validateNordixConfig(input: unknown): ConfigValidationResult {
   const problem = dataProblem(input);
   if (problem) return { success: false, diagnostics: [problem] };
-  const parsed = NordixConfigSchema.safeParse(input);
+  const parsed = NordixConfigSchema.safeParse(input, { reportInput: true });
   if (!parsed.success)
     return { success: false, diagnostics: ordered(structuralDiagnostics(parsed.error)) };
   const config = isolateConfigurationDictionaries(parsed.data);

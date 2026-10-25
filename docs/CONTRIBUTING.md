@@ -1,6 +1,6 @@
 # Contributing
 
-Use Node.js 24+ and pnpm 10.5.2. The workspace has two packages: [core](../packages/core/README.md) validates/resolves and renders; [CLI](../packages/cli/README.md) owns filesystem changes, processes and publication.
+Use Node.js 24.22.1+ and pnpm 10.5.2. The workspace has two packages: [core](../packages/core/README.md) validates/resolves and renders; [CLI](../packages/cli/README.md) owns filesystem changes, processes and publication.
 
 ## Run checks
 

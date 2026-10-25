@@ -1,27 +1,39 @@
 /** Internal stack versions: runtime and tooling are distinct; no selector or version solver. */
-export const WORKSPACE_TOOLING = Object.freeze({ node: ">=24.0.0", packageManager: "pnpm@10.5.2" });
+export const WORKSPACE_TOOLING = Object.freeze({
+  node: ">=24.22.1",
+  packageManager: "pnpm@10.5.2",
+  overrides: Object.freeze({
+    esbuild: "0.28.2",
+    zod: "4.6.7",
+    "body-parser": "2.4.0",
+    "undici@7": "7.30.1",
+    "glob@10": "10.5.0",
+    "drizzle-kit>@esbuild-kit/esm-loader": "-",
+  }),
+});
 export const BACKEND_STACK = Object.freeze({
   runtime: Object.freeze({
-    hono: "^4.7.2",
+    hono: "^4.13.14",
     "@hono/node-server": "2.1.5",
-    "@hono/zod-validator": "^0.4.3",
-    zod: "^3.24.2",
+    "@hono/zod-validator": "^0.9.1",
+    zod: "4.6.7",
   }),
   persistence: Object.freeze({
     "drizzle-orm": "0.45.4",
     "@neondatabase/serverless": "^0.10.4",
-    "@faker-js/faker": "9.9.0",
+    "@faker-js/faker": "10.6.0",
   }),
   identity: Object.freeze({
-    "better-auth": "1.7.10",
-    "@better-auth/drizzle-adapter": "1.7.10",
+    "better-auth": "1.7.13",
+    "@better-auth/drizzle-adapter": "1.7.13",
     nodemailer: "10.1.7",
   }),
   tooling: Object.freeze({
+    wrangler: "4.152.0",
     typescript: "^5.8.2",
     "@types/node": "^24.0.0",
     tsx: "^4.19.3",
-    esbuild: "0.25.12",
+    esbuild: "0.28.2",
   }),
   databaseTooling: Object.freeze({ "drizzle-kit": "0.31.11" }),
 });

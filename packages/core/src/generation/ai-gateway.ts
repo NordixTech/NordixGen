@@ -66,7 +66,7 @@ for(const signal of ["SIGTERM","SIGINT"])process.on(signal,()=>server.close(()=>
           type: "module",
           scripts: { dev: "wrangler dev --port 8790", typecheck: "tsc --noEmit" },
           dependencies: { "@hono/node-server": "2.1.5" },
-          devDependencies: { typescript: "^5.8.2", wrangler: "4.151.2" },
+          devDependencies: { typescript: "^5.8.2", wrangler: "4.152.0" },
         },
         null,
         2,

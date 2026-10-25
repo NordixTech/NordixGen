@@ -236,7 +236,7 @@ describe("fixed UI assembly and declared features", () => {
     expect(files[`${root}/app/api-explorer/page.tsx`]).toBeUndefined();
     expect(files[`${root}/lib/auth/client.ts`]).toBeUndefined();
     expect(result.frameworkContext.scaffold.argumentsBeforeTarget).toContain(
-      "create-next-app@16.4.2",
+      "create-next-app@16.4.3",
     );
     expect(result.frameworkContext.scaffold.argumentsAfterTarget).toContain("--tailwind");
   });

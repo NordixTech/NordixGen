@@ -5,7 +5,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import * as zod from "zod";
-import * as jsonSchema from "zod-to-json-schema";
 import { validateNordixConfig } from "../src/configuration/validate.js";
 import { generateBackend } from "../src/generation/backend.js";
 import { generateFrontend } from "../src/generation/frontend.js";
@@ -399,7 +398,6 @@ describe("shared tool execution and public gateway", () => {
     };
     const load = generatedRuntime(files, {
       zod,
-      "zod-to-json-schema": jsonSchema,
       "apps/api/src/platform/ai/custom-tools.ts": { default: [custom] },
       "apps/api/src/platform/database/create-route-dependencies.ts": {
         createRouteDependencies: () => ({ modules: {} }),
@@ -454,7 +452,6 @@ describe("shared tool execution and public gateway", () => {
     };
     const load = generatedRuntime(files, {
       zod,
-      "zod-to-json-schema": jsonSchema,
       "apps/api/src/platform/database/create-route-dependencies.ts": composition,
     });
     const { toolRegistry, mcpArguments } = load("apps/api/src/platform/ai/registry.ts") as {

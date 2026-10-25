@@ -62,7 +62,7 @@ export function generateFrontendForms(context: FrontendRenderContext): readonly 
       content: `import {z} from "zod";
 ${operations.map((operation) => `import type {${names[operation.id]}Input} from "./types";`).join("\n")}
 type JsonValue=string|number|boolean|null|JsonValue[]|{[key:string]:JsonValue};
-const JsonValueSchema:z.ZodType<JsonValue>=z.lazy(()=>z.union([z.string(),z.number().finite(),z.boolean(),z.null(),z.array(JsonValueSchema),z.record(JsonValueSchema)]));
+const JsonValueSchema:z.ZodType<JsonValue>=z.lazy(()=>z.union([z.string(),z.number().finite(),z.boolean(),z.null(),z.array(JsonValueSchema),z.record(z.string(),JsonValueSchema)]));
 interface FormField {type:string;optional:boolean;array?:boolean;}
 export function coerceFormValue(value:unknown,field:FormField):unknown {
  if(value===undefined || value===null)return value;

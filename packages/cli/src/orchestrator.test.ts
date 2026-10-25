@@ -160,7 +160,15 @@ describe("canonical configuration initialization and command preflight", () => {
         "QueryClientProvider",
       );
       const pkg = JSON.parse(await readFile(join(output, "apps/api/package.json"), "utf8"));
-      expect(pkg.dependencies).toHaveProperty("hono");
+      expect(pkg.dependencies.hono).toBe("^4.13.14");
+      expect(pkg.dependencies["@hono/zod-validator"]).toBe("^0.9.1");
+      expect(pkg.engines.node).toBe(">=24.22.1");
+      const web = JSON.parse(await readFile(join(output, "apps/web/package.json"), "utf8"));
+      expect(web.dependencies.next).toBe("16.4.3");
+      expect(web.dependencies.sharp).toBe("0.35.5");
+      const workspace = JSON.parse(await readFile(join(output, "package.json"), "utf8"));
+      expect(workspace.pnpm.overrides.esbuild).toBe("0.28.2");
+      expect(workspace.pnpm.overrides.zod).toBe("4.6.7");
       expect(pkg.devDependencies).toHaveProperty("typescript");
       expect(await readFile(file, "utf8")).toBe(source);
       await expect(runGenerate(file, output, runner)).rejects.toThrow(/new or empty/);
@@ -241,7 +249,7 @@ describe("modular generation execution", () => {
         "utf8",
       ),
     ).toContain("interface Invoice");
-    expect(runner.mock.calls.filter((call) => call[1]?.includes("hono@0.19.4"))).toHaveLength(1);
+    expect(runner.mock.calls.filter((call) => call[1]?.includes("hono@0.19.5"))).toHaveLength(1);
     expect(runner.mock.calls.some((call) => call[1]?.join(" ") === "run check:boundaries")).toBe(
       true,
     );
