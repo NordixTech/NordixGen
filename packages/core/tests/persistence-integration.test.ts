@@ -1470,6 +1470,8 @@ describe
           mode,
         );
       },
-      120000,
+      // Full identity/invitation/data-isolation journey plus 40 real concurrent transactions.
+      // The containerized Neon proxy is slower than the local native PostgreSQL bridge.
+      240000,
     );
   });
