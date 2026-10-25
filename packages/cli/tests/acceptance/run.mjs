@@ -337,6 +337,10 @@ if (cleanupId) {
       await pnpmCommand(["run", "typecheck"], web);
       return pnpmCommand(["run", "build"], web);
     });
+    if (process.platform === "linux")
+      await runStage("build-generated-cloudflare-frontend", () =>
+        pnpmCommand(["exec", "opennextjs-cloudflare", "build", "--skipNextBuild"], web),
+      );
     await runStage("start-generated-applications", async () => {
       const backend = await start(
         process.execPath,
