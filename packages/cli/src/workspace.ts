@@ -69,7 +69,7 @@ export function applicationManifest(
           "db:generate": "drizzle-kit generate",
           "db:migrate": "tsx src/platform/database/migrate.ts",
           "db:seed": "tsx src/platform/database/seed.ts",
-          ...(app.runtime["better-auth"]
+          ...(app.globalAuthorization
             ? { "auth:create-admin": "tsx src/platform/authorization/create-admin.ts" }
             : {}),
         }

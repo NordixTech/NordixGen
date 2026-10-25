@@ -51,7 +51,17 @@ export function aiToolFiles(context: BackendRenderContext): GeneratedFile[] {
     return `import {InputSchema as input${index}} from ${JSON.stringify(posix.relative(root, target))};`;
   });
   return [
-    { path: `${root}/define-tool.ts`, content: defineToolSource },
+    {
+      path: `${root}/define-tool.ts`,
+      content: context.identity?.organizations.enabled
+        ? defineToolSource
+            .replace('scope?:"global"|"organization"', 'scope:"global"|"organization"')
+            .replace(
+              "return Object.freeze({...definition,",
+              'if(!definition.scope)throw Error("Declare a global or organization scope for every tool.");\n return Object.freeze({...definition,',
+            )
+        : defineToolSource,
+    },
     {
       path: `${root}/custom-tools.ts`,
       content:
@@ -73,7 +83,7 @@ export function aiToolFiles(context: BackendRenderContext): GeneratedFile[] {
           const module = context.domainModel.modules.find(
             (module) => module.id === operation.moduleId,
           ) as BackendRenderContext["domainModel"]["modules"][number];
-          return `defineTool({name:${JSON.stringify(`${module.name.replaceAll("-", "_")}_${operation.operationId}`)},description:${JSON.stringify(`Tool ${module.name.replaceAll("-", "_")}_${operation.operationId}. ${operation.summary ?? `${operation.operationId.replace(/([a-z])([A-Z])/g, "$1 $2")}: ${context.domainModel.entities[operation.entity].description ?? operation.entity}`}`)},permissions:${JSON.stringify(operation.permissions)},isDestructive:${operation.method !== "GET"},schema:z.object({${Object.values(
+          return `defineTool({name:${JSON.stringify(`${module.name.replaceAll("-", "_")}_${operation.operationId}`)},description:${JSON.stringify(`Tool ${module.name.replaceAll("-", "_")}_${operation.operationId}. ${operation.summary ?? `${operation.operationId.replace(/([a-z])([A-Z])/g, "$1 $2")}: ${context.domainModel.entities[operation.entity].description ?? operation.entity}`}`)},scope:${JSON.stringify(operation.access.scope)},permissions:${JSON.stringify(operation.permissions)},isDestructive:${operation.method !== "GET"},schema:z.object({${Object.values(
             operation.input,
           )
             .map((input) => `${JSON.stringify(input.name)}:${toolInput(input)}`)
@@ -99,10 +109,10 @@ export function aiToolFiles(context: BackendRenderContext): GeneratedFile[] {
 export const defineToolSource = `import type {z} from "zod";
 import type {Principal,OperationContext} from "../application/contracts.js";
 export interface ToolContext {readonly principal:Principal;readonly operationContext:OperationContext;readonly signal:AbortSignal;invoke(module:string,operation:string,input:unknown):Promise<unknown>;}
-export interface AppTool {name:string;description:string;permissions:readonly string[];isDestructive:boolean;schema:z.ZodTypeAny;operationId?:string;module?:string;audit?:boolean;execute(input:unknown,context:ToolContext):Promise<unknown>;}
-export function defineTool<T extends z.ZodTypeAny>(definition:{name:string;description:string;permission?:string;permissions?:readonly string[];isDestructive:boolean;schema:T;operationId?:string;module?:string;audit?:boolean;execute(input:z.output<T>,context:ToolContext):Promise<unknown>}):AppTool {
+export interface AppTool {scope:"global"|"organization";name:string;description:string;permissions:readonly string[];isDestructive:boolean;schema:z.ZodTypeAny;operationId?:string;module?:string;audit?:boolean;execute(input:unknown,context:ToolContext):Promise<unknown>;}
+export function defineTool<T extends z.ZodTypeAny>(definition:{scope?:"global"|"organization";name:string;description:string;permission?:string;permissions?:readonly string[];isDestructive:boolean;schema:T;operationId?:string;module?:string;audit?:boolean;execute(input:z.output<T>,context:ToolContext):Promise<unknown>}):AppTool {
  if(!/^[a-zA-Z0-9_-]{1,64}$/.test(definition.name))throw Error("Tool names must contain 1-64 letters, digits, underscores or hyphens.");
- return Object.freeze({...definition,permissions:Object.freeze([...(definition.permissions??(definition.permission?[definition.permission]:[]))])});
+ return Object.freeze({...definition,scope:definition.scope??"global",permissions:Object.freeze([...(definition.permissions??(definition.permission?[definition.permission]:[]))])});
 }
 `;
 const discoverToolsSource = `import {readdir,readFile,writeFile} from "node:fs/promises";

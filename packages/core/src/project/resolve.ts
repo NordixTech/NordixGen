@@ -1,5 +1,8 @@
 import { resolveGenerationReadiness } from "../configuration/readiness.js";
-import { effectiveAuthorization } from "../configuration/schema.js";
+import {
+  OrganizationAuthorizationSchema,
+  effectiveAuthorization,
+} from "../configuration/schema.js";
 import {
   type ConfigValidationResult,
   parseNordixYaml,
@@ -88,6 +91,14 @@ function resolveValidated(
           ...(backend.authentication
             ? {
                 identity: {
+                  permissionCatalogs: {
+                    global: backendPermissions(config, backend.name, "global"),
+                    organization: backendPermissions(config, backend.name, "organization"),
+                  },
+                  global: policy,
+                  organizations:
+                    backend.authorization?.organizations ??
+                    OrganizationAuthorizationSchema.parse({ enabled: false }),
                   permissions: backendPermissions(config, backend.name),
                   backend: backend.name,
                   ...backend.authentication,

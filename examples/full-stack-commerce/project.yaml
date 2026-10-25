@@ -17,28 +17,37 @@ backends:
     modules:
       customers:
         architecture: clean
-        entities: [Customer, CustomerAddress]
-        exports: [getCustomer]
+        entities: [ Customer, CustomerAddress ]
+        exports: [ getCustomer ]
       billing:
         architecture: clean
-        entities: [Invoice]
+        entities: [ Invoice ]
         imports:
-          customers: [getCustomer]
+          customers: [ getCustomer ]
     authentication:
-      methods: [email-password, phone-number]
+      methods: [ email-password, phone-number ]
     authorization:
-      roles: [admin, viewer, accountant, outsider]
-      adminRole: admin
-      defaultRole: viewer
-      rolePermissions:
-        viewer: [customers:read, invoices:read]
-        accountant: [invoices:read, invoices:write]
-        outsider: []
+      global:
+        roles:
+          - admin
+          - viewer
+          - accountant
+          - outsider
+        adminRole: admin
+        defaultRole: viewer
+        rolePermissions:
+          viewer:
+            - customers:read
+            - invoices:read
+          accountant:
+            - invoices:read
+            - invoices:write
+          outsider: []
 frontends:
   - name: web
     repository: app
     path: apps/web
-    connectsTo: [api]
+    connectsTo: [ api ]
     # Each mode's seven main colors are all-or-none; omitted status colors use defaults.
     theme:
       default: system
@@ -57,9 +66,9 @@ frontends:
     access:
       mode: mixed
       backend: api
-      publicRoutes: ["/", /customer]
+      publicRoutes: [ "/", /customer ]
 enums:
-  CustomerState: [active, archived]
+  CustomerState: [ active, archived ]
 entities:
   Customer:
     backend: api
@@ -88,7 +97,15 @@ entities:
       customerId: { type: uuid }
       total: { type: number, format: decimal, precision: 8, scale: 2, default: 12.5 }
       note: { type: string, required: false, default: null }
-      discount: { type: number, format: decimal, precision: 5, scale: 2, required: false, default: null }
+      discount:
+        {
+          type: number,
+          format: decimal,
+          precision: 5,
+          scale: 2,
+          required: false,
+          default: null
+        }
       issuedAt: { type: date, default: { kind: now } }
       payload: { type: json, default: { currency: USD } }
       enabled: { type: boolean, default: true }
@@ -111,14 +128,14 @@ endpoints:
     joins:
       - entity: CustomerAddress
         type: left
-        fields: [id, street]
+        fields: [ id, street ]
     pagination: standard
   - backend: api
     entity: Customer
     operationId: getCustomer
     method: GET
     path: /api/customers/{customerId}
-    permissions: [customers:read]
+    permissions: [ customers:read ]
     pathParams:
       - name: customerId
         field: { entity: Customer, field: id }
@@ -128,7 +145,7 @@ endpoints:
     audit: true
     method: POST
     path: /api/customers
-    permissions: [customers:write]
+    permissions: [ customers:write ]
     requestBody: { useCase: { entity: Customer, operation: create } }
   - backend: api
     entity: Customer
@@ -136,7 +153,7 @@ endpoints:
     audit: true
     method: PATCH
     path: /api/customers/{customerId}
-    permissions: [customers:write]
+    permissions: [ customers:write ]
     pathParams:
       - name: customerId
         field: { entity: Customer, field: id }
@@ -147,7 +164,7 @@ endpoints:
     audit: true
     method: DELETE
     path: /api/customers/{customerId}
-    permissions: [customers:write]
+    permissions: [ customers:write ]
     pathParams:
       - name: customerId
         field: { entity: Customer, field: id }
@@ -156,7 +173,7 @@ endpoints:
     operationId: listInvoices
     method: GET
     path: /api/invoices
-    permissions: [invoices:read]
+    permissions: [ invoices:read ]
     queryParams:
       - name: search
         field: { entity: Invoice, field: note }
@@ -173,7 +190,7 @@ endpoints:
     audit: true
     method: POST
     path: /api/invoices
-    permissions: [invoices:write]
+    permissions: [ invoices:write ]
     requestBody: { useCase: { entity: Invoice, operation: create } }
   - backend: api
     entity: Invoice
@@ -181,9 +198,10 @@ endpoints:
     audit: true
     method: PATCH
     path: /api/invoices/{invoiceKey}
-    permissions: [invoices:write]
+    permissions: [ invoices:write ]
     pathParams:
       - name: invoiceKey
         field: { entity: Invoice, field: id }
     requestBody: { useCase: { entity: Invoice, operation: update } }
+
 # No Invoice delete and no CustomerAddress HTTP operations are declared.

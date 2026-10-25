@@ -28,10 +28,12 @@ function setup(model?: ai.LanguageModel) {
   Object.assign(config.backends[0], {
     authentication: {},
     authorization: {
-      roles: ["admin", "member"],
-      adminRole: "admin",
-      defaultRole: "member",
-      rolePermissions: { member: ["notes:read"] },
+      global: {
+        roles: ["admin", "member"],
+        adminRole: "admin",
+        defaultRole: "member",
+        rolePermissions: { member: ["notes:read"] },
+      },
     },
     ai: { enabled: true, mcp: { enabled: true, authMethods: ["oauth", "api-key"] } },
   });

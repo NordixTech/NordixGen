@@ -105,6 +105,7 @@ function endpointDtoFiles(
   context: BackendRenderContext,
 ): GeneratedFile[] {
   const name = endpointTypeName(endpoint);
+  const organization = endpoint.access.scope === "organization";
   const endpointDtoDirectory = posix.join(dtoDirectory, "endpoints");
   const dtoPath = posix.join(endpointDtoDirectory, `${name}.dto.ts`);
   const portPath = posix.join(portDirectory, `${name}.query.port.ts`);
@@ -247,9 +248,9 @@ function endpointDtoFiles(
     ...(explicitPort
       ? [`import type {${name}Port} from "${importPath(useCasePath, inboundPath)}";`]
       : []),
-    ...(endpoint.audit
+    ...(endpoint.audit || organization
       ? [
-          `import type {OperationContext} from "${importPath(useCasePath, posix.join(context.platformRoot, "application/contracts.ts"))}";`,
+          `import {${organization ? "requireOrganization," : ""}type OperationContext} from "${importPath(useCasePath, posix.join(context.platformRoot, "application/contracts.ts"))}";`,
         ]
       : []),
     `import { InputSchema, ResponseSchema } from "${importPath(useCasePath, dtoPath)}";`,
@@ -262,7 +263,8 @@ function endpointDtoFiles(
     "",
     `export class ${name}UseCase${explicitPort ? ` implements ${name}Port` : ""} {`,
     `  constructor(private readonly query: ${name}QueryPort${requestBodyDynamicDefaults.length > 0 ? ", private readonly clock: Clock" : ""}) {}`,
-    `  async execute(rawInput: unknown${endpoint.audit ? ",context?:OperationContext" : ""}) {`,
+    `  async execute(rawInput: unknown${organization ? ",context:OperationContext" : endpoint.audit ? ",context?:OperationContext" : ""}) {`,
+    ...(organization ? ["    const organizationId = requireOrganization(context);"] : []),
     "    const input = InputSchema.parse(rawInput);",
     ...(requestBodyDynamicDefaults.length > 0
       ? [
@@ -278,7 +280,7 @@ function endpointDtoFiles(
     "    const filters: { entity: string; field: string; operator: string; value: unknown }[] = [",
     ...filterConditions,
     "    ];",
-    `    const result = await this.query.execute({ request, filters${endpoint.audit ? `,captureAudit:change=>{try{context?.captureAudit?.({operationId:${JSON.stringify(endpoint.operationId)},...change});}catch{console.error("Audit capture failed.");}}` : ""}${pagination ? `, pagination: { offset: (input[${JSON.stringify(pagination.pageParam)}] - 1) * input[${JSON.stringify(pagination.pageSizeParam)}], limit: input[${JSON.stringify(pagination.pageSizeParam)}] }` : ""} });`,
+    `    const result = await this.query.execute(${organization ? "organizationId, " : ""}{ request, filters${endpoint.audit ? `,captureAudit:change=>{try{context?.captureAudit?.({operationId:${JSON.stringify(endpoint.operationId)},...change});}catch{console.error("Audit capture failed.");}}` : ""}${pagination ? `, pagination: { offset: (input[${JSON.stringify(pagination.pageParam)}] - 1) * input[${JSON.stringify(pagination.pageSizeParam)}], limit: input[${JSON.stringify(pagination.pageSizeParam)}] }` : ""} });`,
     ...(endpoint.audit && (endpoint.action === "query" || endpoint.action === "custom")
       ? [
           `    try{context?.captureAudit?.({operationId:${JSON.stringify(endpoint.operationId)},before:null,after:result,resourceIds:[]});}catch{console.error("Audit capture failed.");}`,
@@ -293,7 +295,7 @@ function endpointDtoFiles(
     `import type { QueryExecution, Response } from "${importPath(portPath, dtoPath)}";`,
     "",
     `export interface ${name}QueryPort {`,
-    "  execute(input: QueryExecution): Promise<Response>;",
+    `  execute(${organization ? "organizationId:string, " : ""}input: QueryExecution): Promise<Response>;`,
     "}",
     "",
   ].join("\n");
@@ -308,7 +310,7 @@ function endpointDtoFiles(
             content: [
               `import type {Response} from "${importPath(inboundPath, dtoPath)}";`,
               `import type {OperationContext} from "${importPath(inboundPath, posix.join(context.platformRoot, "application/contracts.ts"))}";`,
-              `export interface ${name}Port {execute(input:unknown,context?:OperationContext):Promise<Response>;}`,
+              `export interface ${name}Port {execute(input:unknown,context${organization ? "" : "?"}:OperationContext):Promise<Response>;}`,
               "",
             ].join("\n"),
           },

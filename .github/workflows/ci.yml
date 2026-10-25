@@ -109,9 +109,17 @@ jobs:
         run: pnpm test
 
   generated-application:
-    name: Generated full-stack application acceptance
+    name: Generated full-stack application acceptance (${{ matrix.scenario }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: commerce
+            arguments: ""
+          - scenario: organizations
+            arguments: --organizations
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -129,12 +137,12 @@ jobs:
       - name: Install isolated acceptance browser
         run: pnpm exec playwright install --with-deps chromium
       - name: Generate, build and verify a fresh connected application
-        run: pnpm test:acceptance
+        run: pnpm test:acceptance ${{ matrix.arguments }}
       - name: Retain acceptance results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: generated-application-acceptance
+          name: generated-application-acceptance-${{ matrix.scenario }}
           if-no-files-found: ignore
           path: |
             tmp/acceptance/commerce/*/report.json
@@ -142,3 +150,4 @@ jobs:
             tmp/acceptance/commerce/*/operation-artifacts.json
             tmp/acceptance/commerce/*/*.png
             tmp/acceptance/commerce/*/*.log
+            tmp/acceptance/commerce/*/*.txt

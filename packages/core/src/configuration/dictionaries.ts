@@ -7,7 +7,11 @@ export function isolateConfigurationDictionaries(config: NordixConfig): NordixCo
   for (const backend of config.backends) {
     records.push(backend.modules);
     for (const module of Object.values(backend.modules)) records.push(module.imports);
-    if (backend.authorization) records.push(backend.authorization.rolePermissions);
+    if (backend.authorization)
+      records.push(
+        backend.authorization.global.rolePermissions,
+        backend.authorization.organizations.rolePermissions,
+      );
   }
   for (const entity of Object.values(config.entities))
     records.push(entity.fields, entity.relations);

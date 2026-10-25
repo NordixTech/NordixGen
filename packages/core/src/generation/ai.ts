@@ -1,7 +1,12 @@
 import type { BackendRenderContext, GeneratedFile } from "../plugins/contracts.js";
 import { aiAuthSource } from "./ai-auth.js";
 import { aiGatewayFiles } from "./ai-gateway.js";
-import { chatHistorySource, chatSchemaSource } from "./ai-history.js";
+import {
+  chatHistorySource,
+  chatSchemaSource,
+  organizationChatHistorySource,
+  organizationChatSchemaSource,
+} from "./ai-history.js";
 import { oauthPagesSource } from "./ai-pages.js";
 import { aiModelSource, aiRegistrySource } from "./ai-runtime.js";
 import { aiSchemaFiles } from "./ai-schema.js";
@@ -28,8 +33,18 @@ export function generateAiFiles(context: BackendRenderContext): GeneratedFile[] 
     { path: `${root}/registry.ts`, content: aiRegistrySource },
     { path: `${root}/model.ts`, content: aiModelSource },
     { path: `${root}/routes.ts`, content: aiRoutes(context) },
-    { path: `${root}/history.ts`, content: chatHistorySource },
-    { path: `${context.platformRoot}/database/schema/chat-schema.ts`, content: chatSchemaSource },
+    {
+      path: `${root}/history.ts`,
+      content: context.identity?.organizations.enabled
+        ? organizationChatHistorySource
+        : chatHistorySource,
+    },
+    {
+      path: `${context.platformRoot}/database/schema/chat-schema.ts`,
+      content: context.identity?.organizations.enabled
+        ? organizationChatSchemaSource
+        : chatSchemaSource,
+    },
     ...(ai.mcp.enabled
       ? [
           { path: `${root}/auth.ts`, content: aiAuthSource },
@@ -56,7 +71,7 @@ import {z} from "zod";
 import {createAuth,isTrustedAuthOrigin,type AuthEnvironment,type AuthExecutionContext} from "../auth/auth.js";
 import {createDrizzleDatabase} from "../database/drizzle-database.js";
 import {createIamRepository} from "../authorization/repository.js";
-import {permissions} from "../authorization/policy.js";
+import {permissions,globalPermissionCatalog,organizationPermissionCatalog} from "../authorization/policy.js";
 import {toolRegistry,mcpArguments,ToolFailure} from "./registry.js";
 import {selectModel} from "./model.js";
 import {createChatStore,reconcileHistory} from "./history.js";
@@ -80,14 +95,14 @@ function tokenFrom(request:Request){const bearer=request.headers.get("authorizat
  return {kind:match[1].startsWith("nordix_live_sk_")?"api-key":"oauth",value:match[1]};
 }
 async function principal(request:Request,env:AuthEnvironment,execution:AuthExecutionContext|undefined,mcp:boolean){
- let id:string|undefined;let grants:readonly string[]|undefined;
+ let id:string|undefined;let organizationId:string|undefined=request.headers.get("x-organization-id")??undefined;let grants:readonly string[]|undefined;
  if(mcp){const token=tokenFrom(request);if(!token||!authMethods.includes(token.kind))return null;
   const auth=mcpAuth(env,execution);
   ${keys ? `if(token.kind==="api-key"){const result=await auth.api.verifyApiKey({body:{key:token.value}}).catch(()=>null);if(!result?.valid||!result.key)return null;id=result.key.referenceId;const allowed=result.key.permissions?.tools;grants=Array.isArray(allowed)?allowed:[];}` : ""}
   ${oauth ? `if(token.kind==="oauth"){try{const result=await auth.api.verifyMcpToken({body:{token:token.value}});id=result?.userId;}catch{return null;}}` : ""}
- }else{const session=await createAuth(env,execution).api.getSession({headers:request.headers});id=session?.user.id;}
- if(!id)return null;const value=await createIamRepository(createDrizzleDatabase(env.DATABASE_URL)).principal(id);if(!value)return null;
- if(grants)value.permissions=(value.permissions.includes("*")?[...permissions]:value.permissions).filter(permission=>grants!.includes(permission));
+ }else{const session=await createAuth(env,execution).api.getSession({headers:request.headers});id=session?.user.id;${identity.organizations.enabled ? "organizationId??=(session?.session as {activeOrganizationId?:string|null}|undefined)?.activeOrganizationId??undefined;" : ""}}
+ if(!id)return null;const value=await createIamRepository(createDrizzleDatabase(env.DATABASE_URL)).principal(id${identity.organizations.enabled ? ",organizationId" : ""});if(!value)return null;${identity.organizations.enabled ? 'if(organizationId&&!value.organizationId)throw new ToolFailure(403,"An active organization membership is required.");' : ""}
+ if(grants){value.permissions=(value.permissions.includes("*")?[...globalPermissionCatalog]:value.permissions).filter(permission=>grants!.includes(permission));${identity.organizations.enabled || identity.global.mode === "multiple" || !identity.global.enabled ? 'value.globalPermissions=value.permissions;value.organizationPermissions=(value.organizationPermissions.includes("*")?[...organizationPermissionCatalog]:value.organizationPermissions).filter(permission=>grants!.includes(permission));' : ""}}
  return value;
 }
 export function createAiRoutes(){const routes=new Hono<{Bindings:AuthEnvironment}>();
@@ -101,17 +116,17 @@ export function createAiRoutes(){const routes=new Hono<{Bindings:AuthEnvironment
   const audit=createAuditService(createAuditWriter(env.DATABASE_URL),execution);
   return toolRegistry(env.DATABASE_URL,request.headers,verify,request.signal,requireConfirmation,${context.domainModel.backend.storage.length ? "createStorage(env as AuthEnvironment & Parameters<typeof createStorage>[0])" : "undefined"},change=>audit.record({actorId:actor,action:"ai."+change.operationId,resourceType:"business",resourceId:change.resourceIds.length===1?change.resourceIds[0]:null,before:change.before,after:change.after,metadata:{transport:mcp?"mcp":"chat",operationId:change.operationId,resourceIds:change.resourceIds}},request.headers));
  }
- routes.get("/api/ai/chats",async c=>{const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);const offset=z.coerce.number().int().min(0).max(100000).parse(c.req.query("offset")??0);const rows=await createChatStore(c.env.DATABASE_URL).list(user.id,offset);return c.json({chats:rows.slice(0,50),hasMore:rows.length>50},{headers:{"Cache-Control":"no-store"}});});
- routes.post("/api/ai/chats",async c=>{if(!isTrustedAuthOrigin(c.req.header("origin"),c.env))return c.json({error:"A trusted Origin is required."},403);const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);return c.json(await createChatStore(c.env.DATABASE_URL).create(user.id),201);});
- routes.get("/api/ai/chats/:id",async c=>{const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);return c.json(await createChatStore(c.env.DATABASE_URL).load(z.string().uuid().parse(c.req.param("id")),user.id),{headers:{"Cache-Control":"no-store"}});});
- routes.delete("/api/ai/chats/:id",async c=>{const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);await createChatStore(c.env.DATABASE_URL).remove(z.string().uuid().parse(c.req.param("id")),user.id);return c.body(null,204);});
+ routes.get("/api/ai/chats",async c=>{const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);const offset=z.coerce.number().int().min(0).max(100000).parse(c.req.query("offset")??0);const rows=await createChatStore(c.env.DATABASE_URL${identity.organizations.enabled ? ",user.organizationId" : ""}).list(user.id,offset);return c.json({chats:rows.slice(0,50),hasMore:rows.length>50},{headers:{"Cache-Control":"no-store"}});});
+ routes.post("/api/ai/chats",async c=>{if(!isTrustedAuthOrigin(c.req.header("origin"),c.env))return c.json({error:"A trusted Origin is required."},403);const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);return c.json(await createChatStore(c.env.DATABASE_URL${identity.organizations.enabled ? ",user.organizationId" : ""}).create(user.id),201);});
+ routes.get("/api/ai/chats/:id",async c=>{const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);return c.json(await createChatStore(c.env.DATABASE_URL${identity.organizations.enabled ? ",user.organizationId" : ""}).load(z.string().uuid().parse(c.req.param("id")),user.id),{headers:{"Cache-Control":"no-store"}});});
+ routes.delete("/api/ai/chats/:id",async c=>{const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);await createChatStore(c.env.DATABASE_URL${identity.organizations.enabled ? ",user.organizationId" : ""}).remove(z.string().uuid().parse(c.req.param("id")),user.id);return c.body(null,204);});
  routes.post("/api/chat",async c=>{
   if(!isTrustedAuthOrigin(c.req.header("origin"),c.env))return c.json({error:"A trusted Origin is required."},403);
   const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);
   let model;try{model=selectModel(c.env);}catch(error){return c.json({error:(error as Error).message},400);}
   if(Number(c.req.header("content-length")??0)>262144)return c.json({error:"Chat request too large."},413);
   const payload=z.object({messages:z.array(z.unknown()).max(100),id:z.string().uuid(),trigger:z.string().optional(),messageId:z.string().optional()}).passthrough().parse(await c.req.json());
-  const store=createChatStore(c.env.DATABASE_URL),token=await store.acquire(payload.id,user.id);
+  const store=createChatStore(c.env.DATABASE_URL${identity.organizations.enabled ? ",user.organizationId" : ""}),token=await store.acquire(payload.id,user.id);
   try{
   const available=registry(c.req.raw,c.env,c.executionCtx,false);
   const tools=Object.fromEntries((await available.list()).map(definition=>[definition.name,tool({description:definition.description,inputSchema:jsonSchema<Record<string,unknown>>(available.schema(definition)),needsApproval:requireConfirmation&&definition.isDestructive,execute:(input,options)=>definition.isDestructive?store.action(payload.id,user.id,token,options.toolCallId,()=>available.execute(definition.name,input,true)):available.execute(definition.name,input,true)})]));
@@ -133,7 +148,7 @@ export function createAiRoutes(){const routes=new Hono<{Bindings:AuthEnvironment
  ${
    ai.mcp.enabled
      ? `
- routes.get("/api/ai/connection",async c=>{const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);return c.json({url:new URL("/mcp",c.env.MCP_PUBLIC_URL).href,authMethods,permissions:user.permissions.includes("*")?[...permissions]:user.permissions},{headers:{"Cache-Control":"no-store"}});});
+ routes.get("/api/ai/connection",async c=>{const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);return c.json({url:new URL("/mcp",c.env.MCP_PUBLIC_URL).href,authMethods,${identity.organizations.enabled ? "organizationId:user.organizationId," : ""}permissions:${identity.organizations.enabled ? '[...new Set([...(user.permissions.includes("*")?[...globalPermissionCatalog]:user.permissions),...(user.organizationPermissions.includes("*")?[...organizationPermissionCatalog]:user.organizationPermissions)])]' : 'user.permissions.includes("*")?[...permissions]:user.permissions'}},{headers:{"Cache-Control":"no-store"}});});
  routes.all("/mcp",async c=>{
   const origin=c.req.header("origin");if(origin && origin!==new URL(c.env.MCP_PUBLIC_URL!).origin&&!isTrustedAuthOrigin(origin,c.env))return c.json({error:"Invalid Origin."},403);
   if(!tokenFrom(c.req.raw)||!await principal(c.req.raw,c.env,c.executionCtx,true))return new Response(null,{status:401,headers:{"WWW-Authenticate":'Bearer resource_metadata="'+new URL("/.well-known/oauth-protected-resource",c.env.MCP_PUBLIC_URL).href+'"',"Cache-Control":"no-store"}});
@@ -171,7 +186,7 @@ export function createAiRoutes(){const routes=new Hono<{Bindings:AuthEnvironment
   if(!isTrustedAuthOrigin(c.req.header("origin"),c.env))return c.json({error:"A trusted Origin is required."},403);
   const user=await principal(c.req.raw,c.env,c.executionCtx,false);if(!user)return c.json({error:"Authentication required."},401);
   const body=z.object({name:z.string().trim().min(1).max(80),permissions:z.array(z.string()).min(1).max(200)}).strict().parse(await c.req.json());
-  const allowed=user.permissions.includes("*")?[...permissions]:user.permissions;
+  const allowed=${identity.organizations.enabled ? '[...new Set([...(user.permissions.includes("*")?[...globalPermissionCatalog]:user.permissions),...(user.organizationPermissions.includes("*")?[...organizationPermissionCatalog]:user.organizationPermissions)])]' : 'user.permissions.includes("*")?[...permissions]:user.permissions'};
   if(body.permissions.some(permission=>!allowed.includes(permission)))return c.json({error:"A key cannot exceed your current permissions."},403);
   const key=await createAuth(c.env,c.executionCtx).api.createApiKey({body:{name:body.name,userId:user.id,expiresIn:2592000,permissions:{tools:body.permissions}}});
   return c.json({id:key.id,key:key.key,expiresAt:key.expiresAt},{headers:{"Cache-Control":"no-store"}});

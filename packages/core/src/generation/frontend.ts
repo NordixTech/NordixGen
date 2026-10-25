@@ -19,6 +19,7 @@ import { collectFiles } from "./files.js";
 import { generateFrontendAccess, protectFrontendPage } from "./frontend-access.js";
 import { generateFrontendForms } from "./frontend-forms.js";
 import { frontendTransportFiles } from "./frontend-transport.js";
+import { generateOrganizationFrontend } from "./organization-frontend.js";
 import { frontendEnvironmentFile } from "./runtime-environment.js";
 import { frontendStorageFiles } from "./storage-frontend.js";
 export const FRONTEND_STACK = {
@@ -61,6 +62,7 @@ export function frontendRenderContext(
 export function generateFrontend(project: ResolvedProject, name: string) {
   const context = frontendRenderContext(project, name);
   const contributions = [
+    { owner: "organizations", files: generateOrganizationFrontend(context) },
     { owner: "storage-manager", files: frontendStorageFiles(context) },
     { owner: "ai", files: frontendAiFiles(context) },
     { owner: "shell", files: generateFrontendShell(context) },

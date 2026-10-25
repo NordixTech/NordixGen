@@ -26,7 +26,8 @@
     "format": "biome format --write .",
     "typecheck": "tsc --build",
     "example:docker": "node packages/cli/tests/docker-acceptance.mjs",
-    "test:acceptance": "node packages/cli/tests/acceptance/run.mjs"
+    "test:acceptance": "node packages/cli/tests/acceptance/run.mjs",
+    "benchmark:authorization": "node packages/core/tests/run-performance.mjs"
   },
   "devDependencies": {
     "vite": "7.3.7",

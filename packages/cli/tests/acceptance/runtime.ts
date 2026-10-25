@@ -51,7 +51,20 @@ const executionContext = {
 };
 const dispatch = (request: Request) => app.fetch(request, environment, executionContext);
 
-if (process.argv[2] === "prepare") {
+if (state.organizations) {
+  if (process.argv[2] === "prepare") {
+    await runMigrations();
+    console.log(
+      "Organization schema and initial global catalog migrated; no privileged accounts seeded.",
+    );
+  } else if (process.argv[2] === "serve") {
+    const server = serve({ hostname: "127.0.0.1", port: state.apiPort, fetch: dispatch });
+    for (const signal of ["SIGTERM", "SIGINT"] as const)
+      process.on(signal, () => {
+        server.close(() => process.exit(0));
+      });
+  } else throw Error("Unknown organization acceptance mode");
+} else if (process.argv[2] === "prepare") {
   // Fresh database owned by this run: no DROP/reset operation exists in this runner.
   await runMigrations();
   const seeds = await seedDatabase({ seed: 19 });

@@ -6,6 +6,7 @@ import { dashboardOverviewSource } from "./dashboard.js";
 
 export function dashboardShellFiles(context: FrontendRenderContext): GeneratedFile[] {
   const auth = Boolean(context.api.authentication);
+  const organizations = Boolean(context.api.authentication?.organizations.enabled);
   const reserved = new Set([
     "/",
     "/api-explorer",
@@ -19,6 +20,9 @@ export function dashboardShellFiles(context: FrontendRenderContext): GeneratedFi
     "/sign-up",
     "/forgot-password",
     "/reset-password",
+    "/organization/settings/roles",
+    "/organization/settings/members",
+    "/organization/invitations/accept",
   ]);
   const links = [
     { href: "/", label: "Home", icon: "home", group: "Workspace" },
@@ -53,10 +57,26 @@ export function dashboardShellFiles(context: FrontendRenderContext): GeneratedFi
     ...(context.frontend.storageBackends.length
       ? [{ href: "/r2", label: "Instancias R2", icon: "storage", group: "Workspace" }]
       : []),
-    ...(auth
+    ...(context.api.authentication?.global.enabled
       ? [
           { href: "/admin/roles", label: "Administration", icon: "shield", group: "Manage" },
           { href: "/audit", label: "Activity", icon: "shield", group: "Manage" },
+        ]
+      : []),
+    ...(organizations
+      ? [
+          {
+            href: "/organization/settings/roles",
+            label: "Organization roles",
+            icon: "shield",
+            group: "Manage",
+          },
+          {
+            href: "/organization/settings/members",
+            label: "Organization members",
+            icon: "shield",
+            group: "Manage",
+          },
         ]
       : []),
   ];
@@ -86,6 +106,7 @@ import {useEffect,useRef,type ReactNode} from "react";
 import Link from "next/link";
 import {usePathname} from "next/navigation";
 import {Brand} from "./brand";
+${organizations ? 'import {OrganizationSwitcher} from "@/components/organization/switcher";' : ""}
 ${auth ? 'import {AuthControls} from "@/components/auth/auth-controls";\nimport {useSessionView} from "@/lib/auth/use-session-view";' : 'import {ThemeSwitcher} from "@/components/ui/theme-switcher";'}
 const links=${JSON.stringify(links)};
 const paths:Record<string,string>={storage:"M3 5h18v15H3zM3 10h18M7 15h3",home:"M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7",code:"m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20",grid:"M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",spark:"m12 3 2.8 6.2L21 12l-6.2 2.8L12 21l-2.8-6.2L3 12l6.2-2.8L12 3Z",link:"m10 14 4-4m-6 6-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m0 12a4 4 0 0 0 6 0l5-5a4 4 0 0 0-6-6l-1 1",shield:"m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Zm-4 9 3 3 5-6"};
@@ -96,8 +117,8 @@ export function AppShell({children}:{children:ReactNode}){
  function close(){drawer.current?.close();}
  useEffect(()=>{close();},[pathname]);
  useEffect(()=>{const media=window.matchMedia("(min-width: 1024px)");const changed=()=>{if(media.matches)close();};media.addEventListener("change",changed);return()=>media.removeEventListener("change",changed);},[]);
- const navigation=(mobile=false)=><nav aria-label={mobile?"Mobile navigation":"Main navigation"}>{["Workspace","Application","Intelligence","Manage"].map(group=>{const items=links.filter(link=>link.group===group&&((link.href!=="/admin/roles"||canAdmin)&&(link.href!=="/audit"||canAudit)));return items.length?<section className="ng-nav-group" key={group}><p>{group}</p>{items.map(link=>link.href==="#assistant"?<button className="ng-nav-link" key={link.href} onClick={()=>{close();window.dispatchEvent(new Event("nordix-open-assistant"));}}><Icon name={link.icon}/><span>{link.label}</span></button>:<Link className="ng-nav-link" key={link.href} href={link.href} prefetch={false} aria-current={(link.href==="/"?pathname==="/":pathname===link.href||pathname.startsWith(link.href+"/"))?"page":undefined} onClick={close}><Icon name={link.icon}/><span>{link.label}</span></Link>)}</section>:null;})}</nav>;
- return <div className="ng-app"><a className="ng-skip-link" href="#workspace-content">Skip to content</a><header className="ng-app-header"><div className="ng-header-start"><button className="ng-icon-button ng-mobile-toggle" type="button" aria-label="Open navigation" aria-haspopup="dialog" ref={trigger} onClick={()=>drawer.current?.showModal()}><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><Brand/></div><div className="ng-header-project">${context.projectName}</div>${auth ? "<AuthControls/>" : '<details className="ng-account-menu" onKeyDown={event=>{if(event.key==="Escape"){event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="Appearance menu"><span className="ng-avatar" aria-hidden="true">◐</span><span className="ng-account-label"><strong>Appearance</strong><small>Your preferences</small></span></summary><div className="ng-account-popover"><div className="ng-menu-theme"><span>Appearance</span><ThemeSwitcher/></div></div></details>'}</header><aside className="ng-sidebar">{navigation()}<div className="ng-sidebar-footer"><span className="ng-status-dot"/>Generated with NordixGen</div></aside><dialog ref={drawer} className="ng-nav-drawer" aria-label="Navigation" onClick={event=>{if(event.target===event.currentTarget)close();}} onClose={()=>trigger.current?.focus()}><div className="ng-drawer-heading"><Brand/><button className="ng-icon-button" type="button" aria-label="Close navigation" onClick={close}>×</button></div>{navigation(true)}<p className="ng-sidebar-footer">Generated with NordixGen</p></dialog><div id="workspace-content" className="ng-app-content" tabIndex={-1}>{children}</div></div>;
+ const navigation=(mobile=false)=><nav aria-label={mobile?"Mobile navigation":"Main navigation"}>{["Workspace","Application","Intelligence","Manage"].map(group=>{const items=links.filter(link=>link.group===group&&((link.href!=="/admin/roles"||canAdmin)&&(link.href!=="/audit"||canAudit)${organizations ? '&&(link.href!=="/organization/settings/roles"||session.hasPermission("org:roles:manage","organization"))&&(link.href!=="/organization/settings/members"||session.hasPermission("org:members:manage","organization"))' : ""}));return items.length?<section className="ng-nav-group" key={group}><p>{group}</p>{items.map(link=>link.href==="#assistant"?<button className="ng-nav-link" key={link.href} onClick={()=>{close();window.dispatchEvent(new Event("nordix-open-assistant"));}}><Icon name={link.icon}/><span>{link.label}</span></button>:<Link className="ng-nav-link" key={link.href} href={link.href} prefetch={false} aria-current={(link.href==="/"?pathname==="/":pathname===link.href||pathname.startsWith(link.href+"/"))?"page":undefined} onClick={close}><Icon name={link.icon}/><span>{link.label}</span></Link>)}</section>:null;})}</nav>;
+ return <div className="ng-app"><a className="ng-skip-link" href="#workspace-content">Skip to content</a><header className="ng-app-header"><div className="ng-header-start"><button className="ng-icon-button ng-mobile-toggle" type="button" aria-label="Open navigation" aria-haspopup="dialog" ref={trigger} onClick={()=>drawer.current?.showModal()}><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><Brand/></div><div className="ng-header-project">${context.projectName}</div>${organizations ? "<OrganizationSwitcher/>" : ""}${auth ? "<AuthControls/>" : '<details className="ng-account-menu" onKeyDown={event=>{if(event.key==="Escape"){event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="Appearance menu"><span className="ng-avatar" aria-hidden="true">◐</span><span className="ng-account-label"><strong>Appearance</strong><small>Your preferences</small></span></summary><div className="ng-account-popover"><div className="ng-menu-theme"><span>Appearance</span><ThemeSwitcher/></div></div></details>'}</header><aside className="ng-sidebar">{navigation()}<div className="ng-sidebar-footer"><span className="ng-status-dot"/>Generated with NordixGen</div></aside><dialog ref={drawer} className="ng-nav-drawer" aria-label="Navigation" onClick={event=>{if(event.target===event.currentTarget)close();}} onClose={()=>trigger.current?.focus()}><div className="ng-drawer-heading"><Brand/><button className="ng-icon-button" type="button" aria-label="Close navigation" onClick={close}>×</button></div>{navigation(true)}<p className="ng-sidebar-footer">Generated with NordixGen</p></dialog><div id="workspace-content" className="ng-app-content" tabIndex={-1}>{children}</div></div>;
 }
 `,
     },

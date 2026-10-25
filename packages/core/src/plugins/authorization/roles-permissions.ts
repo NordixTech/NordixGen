@@ -1,5 +1,6 @@
 import type { BackendRenderContext, GeneratedFile } from "../contracts.js";
 import { generateIamFiles } from "./iam.js";
+import { scopedAuthorizationFiles } from "./scoped.js";
 
 export function generateAuthorizationFiles(
   context: BackendRenderContext,
@@ -35,13 +36,15 @@ export function generateAuthorizationFiles(
           .join(",")}}`,
     )
     .join(",")}}`;
-  return [
+  return scopedAuthorizationFiles(context, [
     {
       path: `${root}/policy.ts`,
       content: `import {createAccessControl} from "better-auth/plugins/access";
 ${context.domainModel.backend.ai ? 'import customTools from "../ai/custom-tools.js";\nimport type {AppTool} from "../ai/define-tool.js";' : ""}
 export const permissions = ${context.domainModel.backend.ai ? `[...new Set([...${JSON.stringify(identity.permissions)},...(customTools as AppTool[]).flatMap(tool=>tool.permissions)])].sort()` : `${JSON.stringify(identity.permissions)} as const`};
 export type Permission = (typeof permissions)[number];
+export const globalPermissionCatalog=${context.domainModel.backend.ai ? `[...new Set([...${JSON.stringify(identity.permissionCatalogs.global)},...(customTools as AppTool[]).filter(tool=>tool.scope!=="organization").flatMap(tool=>tool.permissions)])].sort()` : `${JSON.stringify(identity.permissionCatalogs.global)} as const`};
+export const organizationPermissionCatalog=${context.domainModel.backend.ai ? `[...new Set([...${JSON.stringify(identity.permissionCatalogs.organization)},...(customTools as AppTool[]).filter(tool=>tool.scope==="organization").flatMap(tool=>tool.permissions)])].sort()` : `${JSON.stringify(identity.permissionCatalogs.organization)} as const`};
 ${
   context.domainModel.backend.ai
     ? `const statement:Record<string,string[]>=Object.create(null);const requests:Record<string,Record<string,string[]>>=Object.create(null);
@@ -51,11 +54,13 @@ export const ac=createAccessControl(statement);`
 }
 const catalog=ac.newRole(ac.statements);
 ${context.domainModel.backend.ai ? "" : `const requests=${requestsSource} as const;`}
-export interface AuthorizationPrincipal { role?:string|null; permissions?:readonly string[]; }
-export interface AuthorizationRequirements { permissions:readonly Permission[]; }
+export interface AuthorizationPrincipal { role?:string|null; permissions?:readonly string[]; globalPermissions?:readonly string[]; organizationId?:string; organizationPermissions?:readonly string[]; globalPermissionSet?:ReadonlySet<string>; organizationPermissionSet?:ReadonlySet<string>; }
+export interface AuthorizationRequirements { scope?:"global"|"organization"; permissions:readonly Permission[]; }
 export function isAuthorized(principal:AuthorizationPrincipal,requirements:AuthorizationRequirements):boolean {
- const grants=principal.permissions??[];
- return requirements.permissions.every(permission=>Object.hasOwn(requests,permission)&&catalog.authorize(requests[permission]).success&&(grants.includes(permission)||grants.includes("*")));
+ const organization=requirements.scope==="organization";
+ if(organization&&!principal.organizationId)return false;
+ const grants=organization?(principal.organizationPermissionSet??new Set(principal.organizationPermissions??[])):(principal.globalPermissionSet??new Set(principal.globalPermissions??principal.permissions??[]));
+ return requirements.permissions.every(permission=>Object.hasOwn(requests,permission)&&catalog.authorize(requests[permission]).success&&(grants.has(permission)||grants.has("*")));
 }
 `,
     },
@@ -118,5 +123,5 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).hr
 `,
     },
     ...generateIamFiles(context),
-  ];
+  ]);
 }

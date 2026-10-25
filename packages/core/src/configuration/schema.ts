@@ -183,12 +183,25 @@ export const AuthenticationSchema = z
       .prefault({}),
   })
   .strict();
+export const ScopeSchema = z.enum(["global", "organization"]);
+const RoleNameSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/);
+const authorizationFields = {
+  enabled: z.boolean().default(true),
+  mode: z.enum(["single", "multiple"]).default("single"),
+  roles: unique(RoleNameSchema).default([]),
+  defaultRole: RoleNameSchema.default("user"),
+  rolePermissions: z.record(RoleNameSchema, unique(PermissionSchema)).prefault({}),
+};
+export const GlobalAuthorizationSchema = z
+  .object({ ...authorizationFields, adminRole: RoleNameSchema.default("admin") })
+  .strict();
+export const OrganizationAuthorizationSchema = z
+  .object({ ...authorizationFields, ownerRole: RoleNameSchema.default("owner") })
+  .strict();
 export const AuthorizationSchema = z
   .object({
-    roles: unique(SlugSchema).refine((v) => v.length > 0, "Declare at least one role."),
-    adminRole: SlugSchema,
-    defaultRole: SlugSchema,
-    rolePermissions: z.record(SlugSchema, unique(PermissionSchema)).prefault({}),
+    global: GlobalAuthorizationSchema.prefault({ enabled: false }),
+    organizations: OrganizationAuthorizationSchema.prefault({ enabled: false }),
   })
   .strict();
 export const BackendSchema = z
@@ -314,6 +327,7 @@ const RequestBodySchema = z.union([
 ]);
 export const EndpointSchema = z
   .object({
+    scope: ScopeSchema.optional(),
     backend: SlugSchema,
     path: z.string().startsWith("/"),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
@@ -412,12 +426,5 @@ export type OrganizationDefinition = z.infer<typeof OrganizationSchema>;
 export type RepositoryDefinition = z.infer<typeof RepositorySchema>;
 export type NordixConfig = z.infer<typeof NordixConfigSchema>;
 export function effectiveAuthorization(backend: BackendDefinition) {
-  return (
-    backend.authorization ?? {
-      roles: backend.authentication ? ["admin", "user"] : [],
-      adminRole: backend.authentication ? "admin" : undefined,
-      defaultRole: backend.authentication ? "user" : undefined,
-      rolePermissions: {} as Record<string, string[]>,
-    }
-  );
+  return backend.authorization?.global ?? GlobalAuthorizationSchema.parse({ enabled: false });
 }

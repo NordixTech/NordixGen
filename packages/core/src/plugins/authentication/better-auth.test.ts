@@ -30,11 +30,12 @@ backends:
       identityProviders: [${providers.join(", ")}]
       features: [${features.join(", ")}]
     authorization:
-      roles: [admin, customer]
-      adminRole: admin
-      defaultRole: customer
-      rolePermissions:
-        customer: [orders:read]
+      global:
+        roles: [admin, customer]
+        adminRole: admin
+        defaultRole: customer
+        rolePermissions:
+          customer: [orders:read]
 databases:
   primary: {}
 entities:

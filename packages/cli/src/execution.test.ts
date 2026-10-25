@@ -149,73 +149,83 @@ describe("fixed-stack CLI preparation and execution", () => {
     await expect(runGenerate(f.file, f.output, runner)).rejects.toThrow(/source.yaml/);
     expect(runner).not.toHaveBeenCalled();
   });
-  it("emits independent split workspaces and installs only after all application preparation", async () => {
-    const f = await setup(true);
-    f.config.backends[0].authentication = {
-      methods: ["email-password"],
-      identityProviders: [],
-      features: [],
-    };
-    f.config.repositories = [
-      {
-        name: "backend",
-        path: "backend",
-        initializeGit: true,
-        createRemote: false,
-        visibility: "private",
-      },
-      {
-        name: "frontend",
-        path: "frontend",
-        initializeGit: true,
-        createRemote: false,
-        visibility: "private",
-      },
-    ];
-    f.config.backends[0].repository = "backend";
-    f.config.frontends[0].repository = "frontend";
-    await save(f);
-    const runner = vi.fn(async (file: string, args: string[], cwd: string) => {
-      const result = await fixtureCommand(file, args, cwd);
-      if (args[1]?.startsWith("hono@") || args[1]?.startsWith("create-next-app@")) {
-        expect(args[2]).toBe("app");
-        expect(await readFile(join(cwd, "pnpm-workspace.yaml"), "utf8")).toContain('"app"');
-        await mkdir(join(cwd, "app", "node_modules"));
-        await writeFile(join(cwd, "app", "node_modules", "discard"), "not copied");
-      }
-      return result;
-    });
-    await runGenerate(f.file, f.output, runner);
-    const installs = runner.mock.calls.filter((call) => call[1][0] === "install");
-    expect(installs.map((call) => call[2]).sort()).toEqual(
-      [join(f.output, "backend"), join(f.output, "frontend")].sort(),
-    );
-    const lastScaffold = Math.max(
-      ...runner.mock.calls.map((call, index) =>
-        call[1][0] === "create" || call[1][0] === "dlx" ? index : -1,
-      ),
-    );
-    const firstInstall = runner.mock.calls.findIndex((call) => call[1][0] === "install");
-    expect(lastScaffold).toBeLessThan(firstInstall);
-    const backend = join(f.output, "backend", "apps/api");
-    const manifest = JSON.parse(await readFile(join(backend, "package.json"), "utf8"));
-    expect(manifest.dependencies).toHaveProperty("drizzle-orm");
-    expect(manifest.devDependencies).toHaveProperty("drizzle-kit");
-    expect(manifest.scripts["db:migrate"]).toContain("src/platform/database");
-    expect(manifest.scripts["auth:create-admin"]).toBe(
-      "tsx src/platform/authorization/create-admin.ts",
-    );
-    await expect(readdir(join(backend, "node_modules"))).rejects.toMatchObject({ code: "ENOENT" });
-    expect(await readFile(join(f.output, "backend", "pnpm-workspace.yaml"), "utf8")).toContain(
-      '"apps/api"',
-    );
-    expect(await readFile(join(f.output, "frontend", "pnpm-workspace.yaml"), "utf8")).toContain(
-      '"apps/web"',
-    );
-    expect((await readdir(f.output)).some((name) => name.startsWith(".nordixgen-scaffold-"))).toBe(
-      false,
-    );
-  });
+  it.each([false, true])(
+    "emits split workspaces with explicit global authorization %s after preparation",
+    async (globalAuthorization) => {
+      const f = await setup(true);
+      f.config.backends[0].authentication = {
+        methods: ["email-password"],
+        identityProviders: [],
+        features: [],
+      };
+      f.config.backends[0].authorization = globalAuthorization
+        ? ({
+            global: { roles: ["admin", "user"], adminRole: "admin", defaultRole: "user" },
+          } as never)
+        : undefined;
+      f.config.repositories = [
+        {
+          name: "backend",
+          path: "backend",
+          initializeGit: true,
+          createRemote: false,
+          visibility: "private",
+        },
+        {
+          name: "frontend",
+          path: "frontend",
+          initializeGit: true,
+          createRemote: false,
+          visibility: "private",
+        },
+      ];
+      f.config.backends[0].repository = "backend";
+      f.config.frontends[0].repository = "frontend";
+      await save(f);
+      const runner = vi.fn(async (file: string, args: string[], cwd: string) => {
+        const result = await fixtureCommand(file, args, cwd);
+        if (args[1]?.startsWith("hono@") || args[1]?.startsWith("create-next-app@")) {
+          expect(args[2]).toBe("app");
+          expect(await readFile(join(cwd, "pnpm-workspace.yaml"), "utf8")).toContain('"app"');
+          await mkdir(join(cwd, "app", "node_modules"));
+          await writeFile(join(cwd, "app", "node_modules", "discard"), "not copied");
+        }
+        return result;
+      });
+      await runGenerate(f.file, f.output, runner);
+      const installs = runner.mock.calls.filter((call) => call[1][0] === "install");
+      expect(installs.map((call) => call[2]).sort()).toEqual(
+        [join(f.output, "backend"), join(f.output, "frontend")].sort(),
+      );
+      const lastScaffold = Math.max(
+        ...runner.mock.calls.map((call, index) =>
+          call[1][0] === "create" || call[1][0] === "dlx" ? index : -1,
+        ),
+      );
+      const firstInstall = runner.mock.calls.findIndex((call) => call[1][0] === "install");
+      expect(lastScaffold).toBeLessThan(firstInstall);
+      const backend = join(f.output, "backend", "apps/api");
+      const manifest = JSON.parse(await readFile(join(backend, "package.json"), "utf8"));
+      expect(manifest.dependencies).toHaveProperty("drizzle-orm");
+      expect(manifest.devDependencies).toHaveProperty("drizzle-kit");
+      expect(manifest.scripts["db:migrate"]).toContain("src/platform/database");
+      expect(manifest.scripts["auth:create-admin"]).toBe(
+        globalAuthorization ? "tsx src/platform/authorization/create-admin.ts" : undefined,
+      );
+      await expect(readdir(join(backend, "node_modules"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(await readFile(join(f.output, "backend", "pnpm-workspace.yaml"), "utf8")).toContain(
+        '"apps/api"',
+      );
+      expect(await readFile(join(f.output, "frontend", "pnpm-workspace.yaml"), "utf8")).toContain(
+        '"apps/web"',
+      );
+      expect(
+        (await readdir(f.output)).some((name) => name.startsWith(".nordixgen-scaffold-")),
+      ).toBe(false);
+    },
+  );
   it("supports an application at its repository root without replacing its application scripts", async () => {
     const f = await setup();
     f.config.backends[0].path = ".";

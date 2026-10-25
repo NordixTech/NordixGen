@@ -28,6 +28,10 @@ function authClientContent(context: FrontendRenderContext): string {
   const apiBaseUrl = identityBaseUrl(context);
   const pluginImports: string[] = [];
   const pluginInits: string[] = [];
+  if (config.organizations.enabled) {
+    pluginImports.push('import {organizationClient} from "better-auth/client/plugins";');
+    pluginInits.push("organizationClient()");
+  }
   if (config.methods.includes("phone-number")) {
     pluginImports.push('import {phoneNumberClient} from "better-auth/client/plugins";');
     pluginInits.push("phoneNumberClient()");
@@ -70,34 +74,35 @@ function permissionsContent(config: FrontendAuthenticationContract): string {
     "  username?: string | null;",
     "  role?: string | null;",
     "  permissions?: readonly string[];",
+    "  globalRoles?:readonly string[]; globalPermissions?:readonly string[]; organizationId?:string; organizationRoles?:readonly string[]; organizationPermissions?:readonly string[];",
     "}",
     "",
     `export const knownPermissions = ${JSON.stringify(config.permissions)} as const;`,
     "",
     "// Presentation helper only. Hide or show UI with this function; never treat it as authorization.",
     "// Protected operations remain enforced by the generated backend.",
-    "export function hasPermission(user: SessionUser | null | undefined, permission: string): boolean {",
-    "  const grants = user?.permissions ?? [];",
+    'export function hasPermission(user: SessionUser | null | undefined, permission: string,scope:"global"|"organization"="global"): boolean {',
+    '  if(scope==="organization"&&!user?.organizationId)return false;const grants = scope==="organization"?user?.organizationPermissions??[]:user?.globalPermissions??user?.permissions??[];',
     '  return knownPermissions.includes(permission as (typeof knownPermissions)[number]) && (grants.includes("*") || grants.includes(permission));',
     "}",
     "",
-    "export function hasRole(user: SessionUser | null | undefined, role: string): boolean {",
-    "  return user?.role === role;",
+    'export function hasRole(user: SessionUser | null | undefined, role: string,scope:"global"|"organization"="global"): boolean {',
+    '  return scope==="organization"?Boolean(user?.organizationId&&user.organizationRoles?.includes(role)):(user?.globalRoles??(user?.role?[user.role]:[])).includes(role);',
     "}",
     "",
-    "export interface OperationAccess {authRequired:boolean;roles:readonly string[];permissions:readonly string[];}",
+    'export interface OperationAccess {scope?:"global"|"organization";authRequired:boolean;roles:readonly string[];permissions:readonly string[];}',
     "export function canAccessOperation(user:SessionUser|null,isPending:boolean,policy:OperationAccess):boolean {",
     " if((policy.authRequired || policy.roles.length>0 || policy.permissions.length>0) && (isPending || !user))return false;",
-    " return policy.permissions.every(permission=>hasPermission(user,permission));",
+    ' if(policy.scope==="organization"&&!user?.organizationId)return false;return policy.permissions.every(permission=>hasPermission(user,permission,policy.scope));',
     "}",
     "export function toSessionUser(user: SessionUser | null | undefined): SessionUser | null {",
     "  if (!user?.id) return null;",
-    "  return { id: user.id, email: user.email ?? null, name: user.name ?? null, username: user.username ?? null, role: user.role ?? null, permissions: user.permissions ?? [] };",
+    "  return { ...user,id: user.id, email: user.email ?? null, name: user.name ?? null, username: user.username ?? null, role: user.role ?? null, permissions: user.permissions ?? [] };",
     "}",
   ]);
 }
-function sessionViewContent(): string {
-  return sessionViewSource;
+function sessionViewContent(organizations: boolean, hasSingleGlobalRole: boolean): string {
+  return sessionViewSource(organizations, hasSingleGlobalRole);
 }
 function signOutButtonContent(): string {
   return source([
@@ -160,7 +165,13 @@ export function generateFrontendAuthFiles(
     },
     { path: `${root}/lib/auth/client.ts`, content: authClientContent(context) },
     { path: `${root}/lib/auth/permissions.ts`, content: permissionsContent(config) },
-    { path: `${root}/lib/auth/use-session-view.ts`, content: sessionViewContent() },
+    {
+      path: `${root}/lib/auth/use-session-view.ts`,
+      content: sessionViewContent(
+        config.organizations.enabled,
+        config.global.enabled && config.global.mode === "single",
+      ),
+    },
     { path: `${root}/lib/auth/README.md`, content: authReadme(config) },
     { path: `${root}/components/auth/sign-out-button.tsx`, content: signOutButtonContent() },
   ];
@@ -179,5 +190,36 @@ export function generateFrontendAuthFiles(
       { path: `${root}/app/sign-up/page.tsx`, content: accountPageSource(true) },
     );
   }
+  if (config.organizations.enabled)
+    return files.map((file) => {
+      if (
+        !file.content.includes('router.replace("/")') &&
+        !file.content.includes('callbackURL:"/"')
+      )
+        return file;
+      return {
+        ...file,
+        content:
+          `import {authReturnTarget} from "@/lib/auth/organization-context";\n${file.content}`
+            .replace(
+              'import {authReturnTarget} from "@/lib/auth/organization-context";\n"use client";',
+              '"use client";\nimport {authReturnTarget} from "@/lib/auth/organization-context";',
+            )
+            .replaceAll('router.replace("/")', "router.replace(authReturnTarget())")
+            .replaceAll('callbackURL:"/"', "callbackURL:authReturnTarget()")
+            .replace(
+              'window.location.assign("/sign-in?registered=1")',
+              'window.location.assign("/sign-in?registered=1&returnTo="+encodeURIComponent(authReturnTarget()))',
+            )
+            .replaceAll(
+              'href="/sign-in">',
+              'href={"/sign-in?returnTo="+encodeURIComponent(authReturnTarget())}>',
+            )
+            .replaceAll(
+              'href="/sign-up">',
+              'href={"/sign-up?returnTo="+encodeURIComponent(authReturnTarget())}>',
+            ),
+      };
+    });
   return files;
 }

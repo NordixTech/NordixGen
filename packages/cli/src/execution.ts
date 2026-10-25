@@ -29,6 +29,7 @@ export function prepareApplications(project: ResolvedProject): readonly Prepared
       repository,
       backend,
       database,
+      globalAuthorization: Boolean(backend && project.backends[name]?.identity?.global.enabled),
       files: result.virtualFileSystem,
       scaffold: result.frameworkContext.scaffold,
       runtime: result.runtimeDependencies,
