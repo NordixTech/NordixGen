@@ -6,6 +6,8 @@ export const WORKSPACE_TOOLING = Object.freeze({
     esbuild: "0.28.2",
     zod: "4.6.7",
     "body-parser": "2.4.0",
+    "undici@7": "7.30.1",
+    "glob@10": "10.5.0",
     "drizzle-kit>@esbuild-kit/esm-loader": "-",
   }),
 });
@@ -27,6 +29,7 @@ export const BACKEND_STACK = Object.freeze({
     nodemailer: "10.1.7",
   }),
   tooling: Object.freeze({
+    wrangler: "4.152.0",
     typescript: "^5.8.2",
     "@types/node": "^24.0.0",
     tsx: "^4.19.3",

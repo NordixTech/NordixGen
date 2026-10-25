@@ -34,8 +34,8 @@ export const FRONTEND_STACK = {
   development: {
     tailwindcss: "^4.0.0",
     "@tailwindcss/postcss": "^4.0.0",
-    "@opennextjs/cloudflare": "1.20.12",
-    wrangler: "4.151.2",
+    "@opennextjs/cloudflare": "1.20.13",
+    wrangler: "4.152.0",
   },
   identity: { "better-auth": "1.7.13" },
 } as const;
