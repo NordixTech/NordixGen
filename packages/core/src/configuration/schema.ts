@@ -72,13 +72,13 @@ export const EntitySchema = z
   .object({
     backend: SlugSchema,
     description: z.string().optional(),
-    fields: z.record(IdentifierSchema, FieldSchema).default({}),
-    relations: z.record(IdentifierSchema, RelationSchema).default({}),
+    fields: z.record(IdentifierSchema, FieldSchema).prefault({}),
+    relations: z.record(IdentifierSchema, RelationSchema).prefault({}),
     indexes: z.array(EntityIndexSchema).default([]),
     timestamps: z
       .object({ createdAt: z.boolean().default(false), updatedAt: z.boolean().default(false) })
       .strict()
-      .default({}),
+      .prefault({}),
     softDelete: SoftDeleteSchema.default(false),
   })
   .strict();
@@ -98,7 +98,7 @@ export const ModuleSchema = z
           "Name at least one exported operation.",
         ),
       )
-      .default({}),
+      .prefault({}),
   })
   .strict();
 export const AuthDurationSchema = z.union([
@@ -129,14 +129,14 @@ export const AuthenticationSchema = z
       .default(["email-password"]),
     identityProviders: unique(z.enum(["google", "github", "microsoft", "facebook"])).default([]),
     features: unique(z.enum(["email-verification", "password-recovery", "two-factor"])).default([]),
-    passwordPolicy: PasswordPolicySchema.default({}),
+    passwordPolicy: PasswordPolicySchema.prefault({}),
     session: z
       .object({
         expiresIn: AuthDurationSchema.default("7d"),
         updateAge: AuthDurationSchema.default("1d"),
       })
       .strict()
-      .default({}),
+      .prefault({}),
     allowedEmailDomains: unique(
       z
         .string()
@@ -163,10 +163,10 @@ export const AuthenticationSchema = z
             max: z.number().int().positive().max(1000000).default(10),
           })
           .strict()
-          .default({}),
+          .prefault({}),
       })
       .strict()
-      .default({}),
+      .prefault({}),
     smsOtp: z
       .object({
         dailyLimit: z.number().int().positive().max(1000000).default(10),
@@ -177,10 +177,10 @@ export const AuthenticationSchema = z
             maxDelay: AuthDurationSchema.default("15m"),
           })
           .strict()
-          .default({}),
+          .prefault({}),
       })
       .strict()
-      .default({}),
+      .prefault({}),
   })
   .strict();
 export const AuthorizationSchema = z
@@ -188,7 +188,7 @@ export const AuthorizationSchema = z
     roles: unique(SlugSchema).refine((v) => v.length > 0, "Declare at least one role."),
     adminRole: SlugSchema,
     defaultRole: SlugSchema,
-    rolePermissions: z.record(SlugSchema, unique(PermissionSchema)).default({}),
+    rolePermissions: z.record(SlugSchema, unique(PermissionSchema)).prefault({}),
   })
   .strict();
 export const BackendSchema = z
@@ -220,11 +220,11 @@ export const BackendSchema = z
               .default(["oauth", "api-key"]),
           })
           .strict()
-          .default({}),
+          .prefault({}),
         tools: z
           .object({ requireConfirmationOnMutations: z.boolean().default(true) })
           .strict()
-          .default({}),
+          .prefault({}),
       })
       .strict()
       .optional(),
@@ -243,7 +243,7 @@ export const FrontendSchema = z
     repository: SlugSchema,
     path: z.string().min(1),
     connectsTo: unique(SlugSchema).default([]),
-    access: FrontendAccessSchema.default({}),
+    access: FrontendAccessSchema.prefault({}),
     theme: FrontendThemeSchema.optional(),
     ai: z
       .object({
@@ -255,11 +255,11 @@ export const FrontendSchema = z
             placement: z.enum(["floating", "page"]).default("floating"),
           })
           .strict()
-          .default({}),
+          .prefault({}),
         connectPortal: z
           .object({ enabled: z.boolean().default(false) })
           .strict()
-          .default({}),
+          .prefault({}),
       })
       .strict()
       .optional(),
@@ -376,7 +376,7 @@ export const NordixConfigSchema = z
                 IdentifierSchema,
                 z.object({ visibility: z.enum(["private", "public"]).default("private") }).strict(),
               )
-              .default({}),
+              .prefault({}),
           })
           .strict(),
       })
@@ -384,7 +384,7 @@ export const NordixConfigSchema = z
       .optional(),
     organizations: z.array(OrganizationSchema).default([]),
     repositories: z.array(RepositorySchema).min(1),
-    databases: z.record(SlugSchema, DatabaseSchema).default({}),
+    databases: z.record(SlugSchema, DatabaseSchema).prefault({}),
     backends: z.array(BackendSchema).min(1),
     frontends: z.array(FrontendSchema).default([]),
     enums: z
@@ -392,11 +392,11 @@ export const NordixConfigSchema = z
         IdentifierSchema,
         unique(z.string().min(1)).refine((v) => v.length > 0, "Declare at least one enum value."),
       )
-      .default({}),
+      .prefault({}),
     entities: z
       .record(IdentifierSchema, EntitySchema)
       .refine((v) => Object.keys(v).length > 0, "Declare at least one entity."),
-    pagination: z.record(IdentifierSchema, PaginationSchema).default({}),
+    pagination: z.record(IdentifierSchema, PaginationSchema).prefault({}),
     endpoints: z.array(EndpointSchema).default([]),
   })
   .strict();

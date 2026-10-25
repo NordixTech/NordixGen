@@ -9,7 +9,7 @@ function importPath(fromFile: string, targetFile: string): string {
 
 const JSON_SCHEMA = [
   "type JsonValue=string|number|boolean|null|JsonValue[]|{[key:string]:JsonValue};",
-  "const JsonValueSchema:z.ZodType<JsonValue>=z.lazy(()=>z.union([z.string(),z.number().finite(),z.boolean(),z.null(),z.array(JsonValueSchema),z.record(JsonValueSchema)]));",
+  "const JsonValueSchema:z.ZodType<JsonValue>=z.lazy(()=>z.union([z.string(),z.number().finite(),z.boolean(),z.null(),z.array(JsonValueSchema),z.record(z.string(),JsonValueSchema)]));",
 ];
 
 function fieldSchema(field: ResolvedField, transport = false): string {
@@ -34,7 +34,7 @@ function fieldSchema(field: ResolvedField, transport = false): string {
       break;
     case "json":
       // Unlike z.unknown(), this schema excludes undefined in both runtime validation
-      // and inference, so required JSON properties stay required with Zod 3.
+      // and inference, so required JSON properties stay required.
       schema =
         'JsonValueSchema.refine(value=>value!==null,{message:"Expected a non-null JSON value."})';
       break;
@@ -72,6 +72,8 @@ function inputSchema(
   if (!input.optional) return schema;
   if (input.definition.defaultValue.kind === "literal") {
     const value = input.definition.defaultValue.value;
+    if (transport && input.definition.type === "date" && value !== null)
+      return `${schema}.prefault(${JSON.stringify(value)})`;
     return `${schema}.default(${input.definition.type === "date" && value !== null && !transport ? `() => new Date(${JSON.stringify(value)})` : JSON.stringify(value)})`;
   }
   return `${schema}.optional()`;

@@ -133,6 +133,7 @@ export async function finishWorkspace(
     );
   const manifestPath = join(directory, "package.json");
   const rootManifest = JSON.parse(await readFile(manifestPath, "utf8")) as Manifest;
+  rootManifest.pnpm = { overrides: WORKSPACE_TOOLING.overrides };
   const scripts = stringRecord(rootManifest.scripts, "scripts");
   for (const [name, command] of Object.entries({
     ...dockerScripts,

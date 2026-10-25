@@ -6,7 +6,7 @@ NordixGen is built by Nordix to make client-project setup consistent. Define the
 
 ## Get started
 
-Use Node.js 24+, pnpm 10.5.2 and Git with a configured author name and email.
+Use Node.js 24.22.1+, pnpm 10.5.2 and Git with a configured author name and email.
 
 ```bash
 pnpm install --frozen-lockfile

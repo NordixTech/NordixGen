@@ -13,12 +13,11 @@ export const AI_STACK = {
   "@ai-sdk/anthropic": "4.0.84",
   "@ai-sdk/google": "4.0.101",
   "@ai-sdk/groq": "4.0.67",
-  "zod-to-json-schema": "3.25.2",
 } as const;
 export const MCP_STACK = {
   "@modelcontextprotocol/sdk": "1.32.1",
-  "@better-auth/oauth-provider": "1.7.10",
-  "@better-auth/api-key": "1.7.10",
+  "@better-auth/oauth-provider": "1.7.13",
+  "@better-auth/api-key": "1.7.13",
 } as const;
 export function generateAiFiles(context: BackendRenderContext): GeneratedFile[] {
   const ai = context.domainModel.backend.ai;

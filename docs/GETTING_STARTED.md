@@ -4,7 +4,7 @@ Create a small notes application, then add the features you need.
 
 ## 1. Prepare your tools
 
-Install Node.js 24+, pnpm 10.5.2 and Git. Set a Git author name and email; generation creates an initial commit. Network access is required to download scaffolders and dependencies.
+Install Node.js 24.22.1+, pnpm 10.5.2 and Git. Set a Git author name and email; generation creates an initial commit. Network access is required to download scaffolders and dependencies.
 
 In the NordixGen checkout:
 

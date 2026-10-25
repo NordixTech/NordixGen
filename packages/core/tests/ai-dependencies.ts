@@ -9,11 +9,9 @@ import * as mcpHttp from "@modelcontextprotocol/sdk/server/webStandardStreamable
 import * as mcpTypes from "@modelcontextprotocol/sdk/types.js";
 import * as ai from "ai";
 import * as bodyLimit from "hono/body-limit";
-import * as jsonSchema from "zod-to-json-schema";
 import * as zod4 from "zod/v4";
 export const aiDependencies = {
   "zod/v4": zod4,
-  "zod-to-json-schema": jsonSchema,
   "@better-auth/api-key": apiKeys,
   "@better-auth/oauth-provider": oauth,
   "hono/body-limit": bodyLimit,

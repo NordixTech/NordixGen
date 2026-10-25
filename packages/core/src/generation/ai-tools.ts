@@ -67,7 +67,7 @@ export function aiToolFiles(context: BackendRenderContext): GeneratedFile[] {
         'import {z} from "zod";',
         'import {defineTool} from "./define-tool.js";',
         ...imports,
-        "type Json=string|number|boolean|null|Json[]|{[key:string]:Json};const jsonValue:z.ZodType<Json>=z.lazy(()=>z.union([z.string(),z.number().finite(),z.boolean(),z.null(),z.array(jsonValue),z.record(jsonValue)]));void jsonValue;",
+        "type Json=string|number|boolean|null|Json[]|{[key:string]:Json};const jsonValue:z.ZodType<Json>=z.lazy(()=>z.union([z.string(),z.number().finite(),z.boolean(),z.null(),z.array(jsonValue),z.record(z.string(),jsonValue)]));void jsonValue;",
         "export const generatedTools=[",
         ...operations.map((operation, index) => {
           const module = context.domainModel.modules.find(

@@ -8,10 +8,12 @@ import { runGenerate, runInit } from "./orchestrator.js";
 
 export const CLI_VERSION = "0.1.0";
 
-export function checkNodeRuntime(): boolean {
-  const major = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
-  if (major < 24) {
-    console.error(pc.yellow(`NordixGen requires Node.js >= 24.0.0 (current: ${process.version}).`));
+export function checkNodeRuntime(version = process.versions.node): boolean {
+  const [major, minor, patch] = version.split(".").map(Number);
+  if (major < 24 || (major === 24 && (minor < 22 || (minor === 22 && patch < 1)))) {
+    console.error(
+      pc.yellow(`NordixGen requires Node.js >= 24.22.1 (current: ${process.version}).`),
+    );
     return false;
   }
   return true;
