@@ -1,12 +1,55 @@
 name: CI
 
 on:
+  workflow_call:
   push:
-    branches: [develop, main]
+    branches: [develop]
   pull_request:
     branches: [develop, main]
 
 jobs:
+  package-distribution:
+    name: Install and generate from npm tarballs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GIT_AUTHOR_NAME: NordixGen package test
+      GIT_AUTHOR_EMAIL: package-test@nordixgen.invalid
+      GIT_COMMITTER_NAME: NordixGen package test
+      GIT_COMMITTER_EMAIL: package-test@nordixgen.invalid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Verify a clean installation and generation
+        run: |
+          git config --global user.name "$GIT_AUTHOR_NAME"
+          git config --global user.email "$GIT_AUTHOR_EMAIL"
+          pnpm release:pack
+          pnpm test:package
+  windows-lint:
+    name: Windows lint (autocrlf enabled)
+    runs-on: windows-latest
+    steps:
+      - name: Enable automatic CRLF before checkout
+        run: git config --global core.autocrlf true
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: git diff --check
   local-docker:
     name: Generated Docker environment (${{ matrix.layout }})
     runs-on: ubuntu-latest
@@ -22,7 +65,7 @@ jobs:
           version: 10.5.2
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.22.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -73,7 +116,7 @@ jobs:
       - name: Setup Node.js (Active LTS 24)
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.22.1
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -89,12 +132,22 @@ jobs:
         run: pnpm build
 
       - name: Run automated unit tests (Vitest)
-        run: pnpm test
+        run: |
+          pnpm test:release
+          pnpm test
 
   generated-application:
-    name: Generated full-stack application acceptance
+    name: Generated full-stack application acceptance (${{ matrix.scenario }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: commerce
+            arguments: ""
+          - scenario: organizations
+            arguments: --organizations
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -105,19 +158,19 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.22.1
           cache: pnpm
       - name: Install verification dependencies
         run: pnpm install --frozen-lockfile
       - name: Install isolated acceptance browser
         run: pnpm exec playwright install --with-deps chromium
       - name: Generate, build and verify a fresh connected application
-        run: pnpm test:acceptance
+        run: pnpm test:acceptance ${{ matrix.arguments }}
       - name: Retain acceptance results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: generated-application-acceptance
+          name: generated-application-acceptance-${{ matrix.scenario }}
           if-no-files-found: ignore
           path: |
             tmp/acceptance/commerce/*/report.json
@@ -125,3 +178,4 @@ jobs:
             tmp/acceptance/commerce/*/operation-artifacts.json
             tmp/acceptance/commerce/*/*.png
             tmp/acceptance/commerce/*/*.log
+            tmp/acceptance/commerce/*/*.txt

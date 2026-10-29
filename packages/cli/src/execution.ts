@@ -5,7 +5,7 @@ import {
   formatDiagnostic,
   generateBackend,
   generateFrontend,
-} from "@nordixgen/core";
+} from "@nordix-tech/nordixgen-core";
 import { ensureNewOrEmpty, existingParent, inside } from "./filesystem.js";
 import type { PreparedApplication } from "./generation-types.js";
 import { type CommandRunner, checkedCommand } from "./process.js";
@@ -29,6 +29,7 @@ export function prepareApplications(project: ResolvedProject): readonly Prepared
       repository,
       backend,
       database,
+      globalAuthorization: Boolean(backend && project.backends[name]?.identity?.global.enabled),
       files: result.virtualFileSystem,
       scaffold: result.frameworkContext.scaffold,
       runtime: result.runtimeDependencies,

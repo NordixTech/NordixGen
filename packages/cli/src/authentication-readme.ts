@@ -1,4 +1,4 @@
-import type { ResolvedProject } from "@nordixgen/core";
+import type { ResolvedProject } from "@nordix-tech/nordixgen-core";
 
 export function authenticationReadme(
   project: ResolvedProject,

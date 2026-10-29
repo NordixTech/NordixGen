@@ -26,8 +26,8 @@ function fixture() {
       required: false,
     },
   );
-  config.backends[0].authorization.roles.push("outsider");
-  config.backends[0].authorization.rolePermissions.outsider = [];
+  config.backends[0].authorization.global.roles.push("outsider");
+  config.backends[0].authorization.global.rolePermissions.outsider = [];
   config.backends.push({
     name: "reports",
     repository: "app",

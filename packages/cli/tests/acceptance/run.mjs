@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { verifyOrganizationApplication } from "./organizations.mjs";
 import { cleanup, command, freePort, images, names, ready, start } from "./resources.mjs";
 import { verifyApplication } from "./verify.mjs";
 
@@ -19,7 +20,7 @@ if (cleanupId) {
   console.log(`Commerce example ${cleanupId} resources stopped.`);
 } else {
   assert.ok(
-    process.argv.slice(2).every((arg) => arg === "--keep"),
+    process.argv.slice(2).every((arg) => ["--keep", "--organizations"].includes(arg)),
     "Use pnpm test:acceptance [--keep] or --cleanup <run-id>.",
   );
   assert.ok(Number(process.versions.node.split(".")[0]) >= 24, "Node.js 24+ is required.");
@@ -37,6 +38,7 @@ if (cleanupId) {
   await mkdir(directory, { recursive: true });
   assert.ok(directory.startsWith(`${parent}${sep}`));
   const state = {
+    organizations: process.argv.includes("--organizations"),
     id,
     output: join(directory, "project"),
     databaseName: `nordixgen_acceptance_${id}`,
@@ -138,7 +140,41 @@ if (cleanupId) {
     );
     await runStage("validate-generate", async () => {
       const cli = join(root, "packages/cli/dist/index.js");
-      const fixture = join(root, "examples/full-stack-commerce/project.yaml");
+      let fixture = join(root, "examples/full-stack-commerce/project.yaml");
+      if (state.organizations) {
+        const { parseNordixYaml, stringifyNordixYaml } = await import(
+          pathToFileURL(join(root, "packages/core/dist/index.js")).href
+        );
+        const parsed = parseNordixYaml(await readFile(fixture, "utf8"));
+        assert.ok(parsed.success);
+        const config = parsed.config;
+        config.backends[0].authorization.global.mode = "multiple";
+        config.backends[0].authorization.global.rolePermissions = {};
+        config.backends[0].authorization.organizations = {
+          enabled: true,
+          mode: "multiple",
+          roles: ["owner", "editor", "viewer"],
+          ownerRole: "owner",
+          defaultRole: "viewer",
+          rolePermissions: {
+            editor: [...new Set(config.endpoints.flatMap((endpoint) => endpoint.permissions))],
+            viewer: [
+              ...new Set(
+                config.endpoints
+                  .filter((endpoint) => endpoint.method === "GET")
+                  .flatMap((endpoint) => endpoint.permissions),
+              ),
+            ],
+          },
+        };
+        for (const endpoint of config.endpoints) {
+          endpoint.scope = "organization";
+          endpoint.authRequired = true;
+        }
+        config.frontends[0].access = { mode: "authenticated" };
+        fixture = join(directory, "organization.yaml");
+        await writeFile(fixture, stringifyNordixYaml(config));
+      }
       const validated = await command(
         process.execPath,
         [cli, "validate", "-f", fixture],
@@ -337,6 +373,10 @@ if (cleanupId) {
       await pnpmCommand(["run", "typecheck"], web);
       return pnpmCommand(["run", "build"], web);
     });
+    if (process.platform === "linux")
+      await runStage("build-generated-cloudflare-frontend", () =>
+        pnpmCommand(["exec", "opennextjs-cloudflare", "build", "--skipNextBuild"], web),
+      );
     await runStage("start-generated-applications", async () => {
       const backend = await start(
         process.execPath,
@@ -367,9 +407,11 @@ if (cleanupId) {
       await ready(`http://localhost:${state.webPort}/`, frontend);
     });
     await runStage("http-browser-acceptance", async () => {
-      report.behaviors = await verifyApplication(state, directory, () =>
-        command(process.execPath, [tsx, runtime, "expire-accountant"], api, env),
-      );
+      report.behaviors = state.organizations
+        ? await verifyOrganizationApplication(state, directory)
+        : await verifyApplication(state, directory, () =>
+            command(process.execPath, [tsx, runtime, "expire-accountant"], api, env),
+          );
       return `${report.behaviors.length} integrated behaviors verified without mocked HTTP/database/session responses.`;
     });
     success = true;

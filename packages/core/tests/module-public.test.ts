@@ -71,7 +71,7 @@ function makeFixture(
     const path = posix.relative(posix.dirname(previewPath), target);
     return path.startsWith(".") ? path : `./${path}`;
   };
-  Object.assign(config.backends[0].authorization, {
+  Object.assign(config.backends[0].authorization.global, {
     roles: ["admin", "viewer", "auditor", "accountant"],
     rolePermissions: {
       viewer: ["customers:read", "invoices:read"],
@@ -128,9 +128,9 @@ function makeFixture(
           id: "server-user",
           role,
           permissions:
-            role === config.backends[0].authorization.adminRole
+            role === config.backends[0].authorization.global.adminRole
               ? ["*"]
-              : (config.backends[0].authorization.rolePermissions[role] ?? []),
+              : (config.backends[0].authorization.global.rolePermissions[role] ?? []),
         }
       : null;
   });

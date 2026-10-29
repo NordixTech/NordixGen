@@ -1,5 +1,5 @@
 export const aiRegistrySource = `import {z} from "zod";
-import {zodToJsonSchema} from "zod-to-json-schema";
+
 import {generatedTools} from "./generated-tools.js";
 import customTools from "./custom-tools.js";
 import type {AppTool} from "./define-tool.js";
@@ -12,10 +12,10 @@ export class ToolFailure extends Error{constructor(readonly status:number,messag
 export function toolRegistry(connection:string,headers:Headers,verify:()=>Promise<Principal|null>,signal:AbortSignal,requireConfirmation:boolean,storage:unknown,capture?:(change:AuditChange)=>void){
  const tools=new Map<string,AppTool>();
  for(const tool of [...generatedTools,...customTools] as AppTool[]){if(tools.has(tool.name))throw Error("Duplicate AI tool name: "+tool.name);tools.set(tool.name,tool);}
- const permitted=(principal:Principal,tool:AppTool)=>isAuthorized(principal,{permissions:tool.permissions as Permission[]});
+ const permitted=(principal:Principal,tool:AppTool)=>isAuthorized(principal,{scope:tool.scope,permissions:tool.permissions as Permission[]});
  return {
  async list(){const principal=await verify();if(!principal)throw new ToolFailure(401,"Authentication required.");return [...tools.values()].filter(tool=>permitted(principal,tool));},
- schema(tool:AppTool,mcp=false){const schema=zodToJsonSchema(tool.schema,{$refStrategy:"none"}) as Record<string,unknown>;delete schema.$schema;
+ schema(tool:AppTool,mcp=false){const schema=z.toJSONSchema(tool.schema,{target:"draft-7",io:"input",unrepresentable:"any"}) as Record<string,unknown>;delete schema.$schema;
   if(mcp&&tool.isDestructive&&requireConfirmation){schema.properties={...(schema.properties as object),confirm:{type:"boolean",const:true,description:"Set true only after the user approves this mutation."}};schema.required=[...((schema.required as string[])??[]),"confirm"];}
   return schema;
  },
@@ -40,7 +40,7 @@ export function toolRegistry(connection:string,headers:Headers,verify:()=>Promis
  },
  };
 }
-export function mcpArguments(value:unknown){const input=z.record(z.unknown()).parse(value??{});const {confirm,...args}=input;return {args,confirmed:confirm===true};}
+export function mcpArguments(value:unknown){const input=z.record(z.string(),z.unknown()).parse(value??{});const {confirm,...args}=input;return {args,confirmed:confirm===true};}
 `;
 export const aiModelSource = `import {createOpenAI} from "@ai-sdk/openai";
 import {createAnthropic} from "@ai-sdk/anthropic";

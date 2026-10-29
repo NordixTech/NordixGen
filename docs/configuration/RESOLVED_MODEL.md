@@ -1,41 +1,56 @@
-# Shared resolved project model
+# Core API
 
-`resolveProjectYaml(source, filename?, options?)` parses and validates YAML v2 once, then constructs `ResolvedProject` format version 5. `resolveProject(input, options?)` provides the same object API. Failure returns English, actionable path diagnostics; YAML diagnostics include the source node or nearest parent. The raw configuration parser is available separately and does not build renderer models.
+Use `@nordix-tech/nordixgen-core` to validate configuration, resolve a typed project and prepare generated files in memory. The CLI adds filesystem changes and external commands.
 
-## Model and consumers
+## Resolve YAML
 
-The model contains project/resources, backend-qualified modules and operations, effective entities/fields/relations, public application contracts, frontend transport contracts and precomputed page/feature metadata. `backendView(project, name)`, `moduleView(project, backendQualifiedModuleId)` and `frontendView(project, name)` select existing resolved data. They never reparse, revalidate or reconstruct configuration. Unknown targets fail explicitly.
+```ts
+import { readFile } from "node:fs/promises";
+import { resolveProjectYaml, backendView, formatDiagnostic } from "@nordix-tech/nordixgen-core";
 
-Each resolved database records its exclusive owner in optional `backend`. An absent owner marks an unused declared resource. Multiple backends selecting the same resource fail semantic validation before a model can be built; backend database references point to the same resolved resource record.
+const filename = "nordix.config.yaml";
+const result = resolveProjectYaml(await readFile(filename, "utf8"), filename, {
+  requireGeneration: true,
+});
 
-All data is deeply frozen and typed readonly, including nested defaults and collections. Resolving an object does not mutate or freeze caller-owned defaults. Dictionaries have no inherited keys, so an undeclared reference such as `constructor` is an unknown reference. Serialization sorts object keys, preserves meaningful array order and includes source metadata; identical source/model input produces identical output.
+if (!result.success) {
+  for (const diagnostic of result.diagnostics) {
+    console.error(formatDiagnostic(diagnostic));
+  }
+} else {
+  const backend = backendView(result.project, "api");
+  console.log(backend);
+}
+```
 
-Effective fields include generated identity/audit/soft-delete fields, SQL names, nullability, write visibility and absent/literal/trusted-clock defaults. Numeric fields have resolved numeric formats and decimal precision/scale. Relations carry resolved owning entity, target, foreign key and deletion semantics; scalar identifiers never create module dependencies. Generated fields cannot silently become caller-writable fields.
+`resolveProject(input, options?)` accepts an object instead of YAML. It reports configuration paths without source coordinates. Resolution does not mutate/freeze the caller's input.
 
-| Value | Application contract | HTTP/frontend contract |
+Use `parseNordixYaml` or `validateNordixConfig` for configuration-only APIs. Set `requireGeneration: true` when you also need supported-generation checks.
+
+## Scoped views
+
+| Function | Selects |
+| --- | --- |
+| `backendView(project, "api")` | Backend-owned modules, platform and operations |
+| `moduleView(project, "api.notes")` | A backend-qualified business module |
+| `frontendView(project, "web")` | Connected operation contracts and frontend metadata |
+
+Views select existing resolved data; they do not parse or validate again. Unknown targets fail explicitly. The resolved project is deeply readonly/frozen and contains ownership, defaults, policies and separate module/FK dependency graphs.
+
+## Value mapping
+
+| Value | Application | HTTP/frontend |
 | --- | --- | --- |
-| Date | `Date`; trusted clock or normalized literal instant | Timezone ISO string, serialized UTC |
-| Number | Finite number with resolved integer/float/decimal constraints | JSON number; query text decoded and checked |
-| Optional stored value | Value or `null` | Required response property containing value or `null` |
-| Optional/defaulted input | Independently marked optional and/or nullable | Omission and explicit null remain different |
-| Enum | Declared literal union | Same literals |
-| JSON | JSON descriptor and JSON-compatible defaults | JSON value; JSON query text decoded |
+| Date | `Date` | UTC ISO string |
+| Number | Finite JavaScript number | JSON number |
+| Nullable stored field | Value or null | Required property with value or null |
+| Optional input | Omission distinct from null | Same distinction |
+| JSON | JSON-compatible value | JSON value |
 
-Path/query/body declarations remain transport bindings. Application inputs are flat named values, without `{ params, query, body }` wrappers. Create defaults, update inputs, generated values and inline argument aliases are resolved separately. Pagination retains its selected profile, effective values and source origin. Consumers receive operation names, access requirements, response cardinality/projections and frontend invalidation/record-ID metadata instead of inferring them from HTTP verbs or route strings. A custom POST does not imply a create screen.
+Application inputs are flat named values, with trusted context separate. Frontend contracts expose declared HTTP operations, not private module implementations.
 
-## Public contracts and graphs
+## Prepare output
 
-Module exports/imports reference application signatures with flat input, output, effective access, trusted backend context and a fixed application-error vocabulary. These signatures contain no private entity/repository objects, SQL mapping or Hono request types. Frontend contracts contain only exposed entities and declared join projections, transport values and page/access metadata. Full related entities are not exposed by an inline projection.
+`generateBackend(project, backendName)` and `generateFrontend(project, frontendName)` return files/dependency information without starting commands or writing output. The package also exposes diagnostics, JSON Schema and virtual-file collection/emission APIs.
 
-Generated context issuance, callee guards, result handling and architecture-boundary enforcement consume these contracts. Declaring an import allows a typed application dependency; it never creates an automatic workflow, HTTP route, ORM join or transaction.
-
-Module dependencies and stored-foreign-key dependencies have independent graphs and deterministic orders. Only actual owning foreign keys create entity edges; inverse relations and scalar identifiers do not. Stored cycles, including self-cycles, return `RELATION_CYCLE` at the relevant YAML relation rather than a fallback seed/migration order.
-
-## Readiness and direct generation
-
-Both CLI `validate` and `generate` call resolution with `{ requireGeneration: true }`. Invalid configuration or resolution fails before readiness. One or multiple Clean, Hexagonal and Onion modules generate through the [direct backend pipeline](../generation/DIRECT_BACKEND.md). Many-to-many reports `RELATION_MAPPING_UNIMPLEMENTED`. No output, installation or publication starts on those failures.
-
-Backend and frontend generation call concrete typed renderers over resolved views. The internal `plugins/` directory contains those renderers and small path/context types, not a selectable plugin protocol. There is no registry, composer, capability negotiation, planner, legacy normalizer or second authoritative model. Package exports expose configuration, model views, generation and file APIs; concrete renderers remain internal.
-
-Internal acceptance checks verify fresh CLI generation, compilation, PostgreSQL persistence, authorization and browser behavior. Run `pnpm test:acceptance`; isolated run artifacts are written under ignored `tmp/acceptance/commerce/`.
-Frontend views include a resolved theme: the initial mode and complete independent light/dark palettes. Schema validation enforces all-or-none main palettes before resolution; only omitted palettes and individual status colors receive defaults. Renderers consume these values without reinterpreting raw YAML.
+Concrete framework/ORM/UI renderers are internal. There is no public alternate-stack plugin registry. For normal application use, prefer the [CLI](../GETTING_STARTED.md).

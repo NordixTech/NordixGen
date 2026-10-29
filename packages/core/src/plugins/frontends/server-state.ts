@@ -24,6 +24,7 @@ export function generateQueryFiles(context: FrontendRenderContext): readonly Gen
     const privateData =
       operation.authRequired || operation.roles.length > 0 || operation.permissions.length > 0;
     const policy = JSON.stringify({
+      scope: operation.scope,
       authRequired: operation.authRequired,
       roles: operation.roles,
       permissions: operation.permissions,
@@ -33,7 +34,7 @@ export function generateQueryFiles(context: FrontendRenderContext): readonly Gen
       : "const allowed=true;";
     if (operation.method === "GET")
       return `export function ${hook}(input:${name}Input${inputRequired(operation) ? "" : "={}"}) {${access}
-return useQuery({queryKey:[...${JSON.stringify(scopedKey(operation))},${privateData ? '["private",session.user?.id??null,session.user?.role??null]' : '["public"]'},input] as const,enabled:allowed,staleTime:10000,queryFn:({signal})=>${name}(input,{signal})});}`;
+return useQuery({queryKey:[...${JSON.stringify(scopedKey(operation))},${privateData ? "privateQueryIdentity(session.user)" : '["public"]'},input] as const,enabled:allowed,staleTime:10000,queryFn:({signal})=>${name}(input,{signal})});}`;
     const affected = operation.invalidates.map((id) =>
       scopedKey(operations.find((candidate) => candidate.id === id) as typeof operation),
     );
@@ -47,6 +48,7 @@ return useQuery({queryKey:[...${JSON.stringify(scopedKey(operation))},${privateD
 import {headers} from "next/headers";
 import {QueryClient,dehydrate} from "@tanstack/react-query";
 import {backendFetch} from "@/lib/backend/transport";
+import {privateQueryIdentity} from "./cache";
 ${context.api.authentication ? 'import {getInitialIdentity} from "@/lib/auth/server";' : ""}
 /** A new cache for each render; the backend rechecks authorization for the actual read. */
 export async function initialData(backend:string,path:string,key:readonly string[],input:{query?:Record<string,unknown>},privateData:boolean){
@@ -55,8 +57,8 @@ export async function initialData(backend:string,path:string,key:readonly string
  if(privateData&&!user)return dehydrate(client);
  const cookie=(await headers()).get("cookie")??"";
  const search=new URLSearchParams();for(const [name,value] of Object.entries(input.query??{}))if(value!==undefined)search.set(name,String(value));
- try{const response=await backendFetch(backend,path+(search.size?"?"+search:""),{headers:{cookie},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});
- if(response.ok)client.setQueryData([...key,${context.api.authentication ? 'privateData?["private",user!.id,user!.role??null]:["public"]' : '["public"]'},input],await response.json());
+ try{const response=await backendFetch(backend,path+(search.size?"?"+search:""),{headers:{cookie,...(${context.api.authentication ? 'user?.organizationId?{"x-organization-id":user.organizationId}:{}' : "{}"})},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(5000)});
+ if(response.ok)client.setQueryData([...key,${context.api.authentication ? 'privateData?privateQueryIdentity(user):["public"]' : '["public"]'},input],await response.json());
  }catch{/* Leave the query empty so the normal client error/retry UI handles a failed read. */}
  return dehydrate(client);
 }
@@ -64,13 +66,15 @@ export async function initialData(backend:string,path:string,key:readonly string
     },
     {
       path: `${root}/lib/api/hooks.ts`,
-      content: `"use client";\n${imports.join("\n")}\nimport {useQuery,useMutation,useQueryClient} from "@tanstack/react-query";\n${context.api.authentication ? 'import {useSessionView} from "@/lib/auth/use-session-view";' : ""}\n${hooks.join("\n")}\n`,
+      content: `"use client";\n${imports.join("\n")}\nimport {useQuery,useMutation,useQueryClient} from "@tanstack/react-query";\nimport {privateQueryIdentity} from "./cache";\n${context.api.authentication ? 'import {useSessionView} from "@/lib/auth/use-session-view";' : ""}\n${hooks.join("\n")}\n`,
     },
     {
       path: `${root}/lib/api/cache.ts`,
       content: `import {QueryClient} from "@tanstack/react-query";
 /** Scalar presentation scope only; Better Auth remains the session source. A new keyed provider owns each cache. */
-export function sessionCacheIdentity(session:{isPending:boolean;user:{id:string;role?:string|null;permissions?:readonly string[]}|null}):string {return session.isPending?"pending":session.user?JSON.stringify(["user",session.user.id,session.user.role??null,[...(session.user.permissions??[])].sort()]):"anonymous";}
+interface Identity{id:string;role?:string|null;permissions?:readonly string[];globalRoles?:readonly string[];globalPermissions?:readonly string[];organizationId?:string;organizationRoles?:readonly string[];organizationPermissions?:readonly string[];}
+export function privateQueryIdentity(user:Identity|null|undefined){return ["private",user?.id??null,[...(user?.globalRoles??(user?.role?[user.role]:[]))].sort(),user?.organizationId??null,[...(user?.organizationRoles??[])].sort(),[...(user?.globalPermissions??user?.permissions??[])].sort(),[...(user?.organizationPermissions??[])].sort()] as const;}
+export function sessionCacheIdentity(session:{isPending:boolean;user:Identity|null}):string {return session.isPending?"pending":session.user?JSON.stringify(["user",...privateQueryIdentity(session.user)]):"anonymous";}
 export function createSessionQueryCache(){const client=new QueryClient();return {client,dispose:()=>{void client.cancelQueries().finally(()=>client.clear());}};}
 `,
     },

@@ -4,7 +4,7 @@ import {
   BACKEND_SCAFFOLD_OVERLAYS,
   FRONTEND_SCAFFOLD_OVERLAYS,
   WORKSPACE_TOOLING,
-} from "@nordixgen/core";
+} from "@nordix-tech/nordixgen-core";
 import { exists, inside, rejectLinks } from "./filesystem.js";
 import type { PreparedApplication } from "./generation-types.js";
 import { type CommandRunner, checkedCommand, safeFailure } from "./process.js";

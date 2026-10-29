@@ -8,21 +8,21 @@ describe("backend identity policies and frontend access validation", () => {
     [
       "undeclared administrator role",
       (c) => {
-        c.backends[0].authorization.adminRole = "missing-admin";
+        c.backends[0].authorization.global.adminRole = "missing-admin";
       },
       "ADMIN_ROLE_UNKNOWN",
     ],
     [
       "administrator role cannot be configured with grants",
       (c) => {
-        c.backends[0].authorization.rolePermissions.admin = ["customers:read"];
+        c.backends[0].authorization.global.rolePermissions.admin = ["customers:read"];
       },
       "ADMIN_ROLE_PERMISSIONS_RESERVED",
     ],
     [
       "administrator and default role must differ",
       (c) => {
-        c.backends[0].authorization.defaultRole = "admin";
+        c.backends[0].authorization.global.defaultRole = "admin";
       },
       "DEFAULT_ROLE_PRIVILEGED",
     ],
@@ -57,21 +57,21 @@ describe("backend identity policies and frontend access validation", () => {
     [
       "unknown default role",
       (c) => {
-        c.backends[0].authorization.defaultRole = "ghost";
+        c.backends[0].authorization.global.defaultRole = "ghost";
       },
       "DEFAULT_ROLE_UNKNOWN",
     ],
     [
       "unknown grant owner",
       (c) => {
-        c.backends[0].authorization.rolePermissions.ghost = ["customers:read"];
+        c.backends[0].authorization.global.rolePermissions.ghost = ["customers:read"];
       },
       "ROLE_UNKNOWN",
     ],
     [
       "partial wildcard grant",
       (c) => {
-        c.backends[0].authorization.rolePermissions.admin = ["customers:*"];
+        c.backends[0].authorization.global.rolePermissions.admin = ["customers:*"];
       },
       "PERMISSION_INVALID",
     ],

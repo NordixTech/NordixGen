@@ -26,6 +26,7 @@ import { aiDependencies } from "./ai-dependencies.js";
 import { resolvedFixture } from "./fixtures.js";
 import { frontendRuntime } from "./frontend-runtime.js";
 import { generatedRuntime } from "./generated-runtime.js";
+import { verifyOrganizationIntegration } from "./organization-integration.js";
 import { constrainedPersistenceFixture, persistenceFixture } from "./persistence-fixture.js";
 const databaseUrl = process.env.NORDIXGEN_TEST_DATABASE_URL;
 const parent = url.fileURLToPath(new URL("../", import.meta.url));
@@ -73,8 +74,10 @@ describe
       auth = true,
       architecture: "clean" | "hexagonal" | "onion" = "clean",
       enableAi = false,
+      configure?: (config: ReturnType<typeof persistenceFixture>) => void,
     ) {
       const config = auth ? persistenceFixture() : constrainedPersistenceFixture();
+      configure?.(config);
       if (enableAi) {
         Object.assign(config.backends[0], {
           ai: { enabled: true, mcp: { enabled: true, authMethods: ["oauth", "api-key"] } },
@@ -954,8 +957,8 @@ describe
       ).toBe(0);
       // New YAML roles are initialized without changing existing roles, metadata or grants.
       const updated = persistenceFixture();
-      updated.backends[0].authorization.roles.push("newteam");
-      updated.backends[0].authorization.rolePermissions.newteam = ["invoices:read"];
+      updated.backends[0].authorization.global.roles.push("newteam");
+      updated.backends[0].authorization.global.rolePermissions.newteam = ["invoices:read"];
       const regenerated = generateBackend(resolvedFixture(updated), "api");
       if (!regenerated.success) throw Error("Invalid updated seed fixture");
       const updatedLoad = generatedRuntime(
@@ -1413,5 +1416,62 @@ describe
         expect((await page("/api/invoices?search=Architecture")).total).toBe(0);
       },
       60_000,
+    );
+    it.each(["single", "multiple"] as const)(
+      "isolates organizations and protects dynamic %s roles through real Better Auth and PostgreSQL",
+      async (mode) => {
+        if (directory) await rm(directory, { recursive: true, force: true });
+        directory = "";
+        await reset();
+        await prepare(true, "clean", false, (config) => {
+          const authentication = config.backends[0].authentication;
+          if (!authentication) throw Error("Scoped fixture requires authentication");
+          authentication.rateLimit.max = 1000;
+          config.backends[0].ai = { enabled: true, mcp: { enabled: false } } as never;
+          config.backends[0].authorization = {
+            global: {
+              enabled: true,
+              mode,
+              roles: ["admin", "viewer"],
+              adminRole: "admin",
+              defaultRole: "viewer",
+              rolePermissions: {},
+            },
+            organizations: {
+              enabled: true,
+              mode,
+              roles: ["owner", "editor", "viewer"],
+              ownerRole: "owner",
+              defaultRole: "viewer",
+              rolePermissions: {
+                editor: [
+                  ...new Set(config.endpoints.flatMap((endpoint) => endpoint.permissions ?? [])),
+                ],
+                viewer: [
+                  ...new Set(
+                    config.endpoints
+                      .filter((endpoint) => endpoint.method === "GET")
+                      .flatMap((endpoint) => endpoint.permissions ?? []),
+                  ),
+                ],
+              },
+            },
+          };
+          for (const endpoint of config.endpoints) {
+            endpoint.scope = "organization";
+            endpoint.authRequired = true;
+          }
+        });
+        await verifyOrganizationIntegration(
+          generatedFiles,
+          databaseUrl ?? "",
+          sql,
+          auditTasks,
+          mode,
+        );
+      },
+      // Full identity/invitation/data-isolation journey plus 40 real concurrent transactions.
+      // The containerized Neon proxy is slower than the local native PostgreSQL bridge.
+      240000,
     );
   });

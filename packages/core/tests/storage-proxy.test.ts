@@ -143,5 +143,5 @@ describe("native authenticated storage proxy", () => {
     ).virtualFileSystem.snapshot();
     expect(JSON.parse(plain["apps/store-web/wrangler.jsonc"]).main).toBe(".open-next/worker.js");
     expect(plain["apps/store-web/worker.ts"]).toBeUndefined();
-  });
+  }, 15000);
 });

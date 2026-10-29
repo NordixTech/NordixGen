@@ -70,7 +70,7 @@ function generateFeatureView(
         : "This action permanently removes this record.";
   const permissionStart = (endpoint: TransportOperation | undefined) =>
     hasAuth && endpoint
-      ? `{canAccess(${JSON.stringify({ authRequired: endpoint.authRequired, roles: endpoint.roles, permissions: endpoint.permissions })}) && (`
+      ? `{canAccess(${JSON.stringify({ scope: endpoint.scope, authRequired: endpoint.authRequired, roles: endpoint.roles, permissions: endpoint.permissions })}) && (`
       : "";
   const permissionEnd = (endpoint: TransportOperation | undefined) =>
     permissionStart(endpoint) ? ")}" : "";
@@ -215,8 +215,8 @@ function generateFeatureView(
     `type FeatureRow={readonly entity:${entityName}Response};`,
     "",
     `export function ${entityName}FeatureScreen() {`,
-    `  const createSchema:z.ZodType<Record<string,unknown>>=${createOp ? `${createOp}FormSchema` : "z.object({})"};`,
-    `  const updateSchema:z.ZodType<Record<string,unknown>>=${updateOp ? `${updateOp}FormSchema` : "z.object({})"};`,
+    `  const createSchema:z.ZodType<Record<string,unknown>,Record<string,unknown>>=${createOp ? `${createOp}FormSchema` : "z.object({})"};`,
+    `  const updateSchema:z.ZodType<Record<string,unknown>,Record<string,unknown>>=${updateOp ? `${updateOp}FormSchema` : "z.object({})"};`,
     queryState,
     "  const [isCreateOpen, setIsCreateOpen] = useState(false);",
     "  const [editingItem, setEditingItem] = useState<FeatureRow | null>(null);",
@@ -225,7 +225,7 @@ function generateFeatureView(
     "  const [isSubmitting, setIsSubmitting] = useState(false);",
     "  const featureForm = useForm<Record<string, unknown>>({ resolver: zodResolver(editingItem ? updateSchema : createSchema) });",
     hasAuth ? "  const {canAccess,isPending:isSessionPending} = useSessionView();" : "",
-    `  const readAllowed=${hasAuth && group.listEndpoint ? `canAccess(${JSON.stringify({ authRequired: group.listEndpoint.authRequired, roles: group.listEndpoint.roles, permissions: group.listEndpoint.permissions })})` : "true"};`,
+    `  const readAllowed=${hasAuth && group.listEndpoint ? `canAccess(${JSON.stringify({ scope: group.listEndpoint.scope, authRequired: group.listEndpoint.authRequired, roles: group.listEndpoint.roles, permissions: group.listEndpoint.permissions })})` : "true"};`,
     "",
     ...hookCalls,
     "",

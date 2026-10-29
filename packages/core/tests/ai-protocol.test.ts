@@ -17,7 +17,6 @@ import * as hono from "hono";
 import * as bodyLimit from "hono/body-limit";
 import { describe, expect, it, vi } from "vitest";
 import * as zod from "zod";
-import * as jsonSchema from "zod-to-json-schema";
 import * as zod4 from "zod/v4";
 import { generateBackend } from "../src/generation/backend.js";
 import { reconcileHistory } from "./ai-history-runtime.js";
@@ -29,10 +28,12 @@ function setup(model?: ai.LanguageModel) {
   Object.assign(config.backends[0], {
     authentication: {},
     authorization: {
-      roles: ["admin", "member"],
-      adminRole: "admin",
-      defaultRole: "member",
-      rolePermissions: { member: ["notes:read"] },
+      global: {
+        roles: ["admin", "member"],
+        adminRole: "admin",
+        defaultRole: "member",
+        rolePermissions: { member: ["notes:read"] },
+      },
     },
     ai: { enabled: true, mcp: { enabled: true, authMethods: ["oauth", "api-key"] } },
   });
@@ -106,7 +107,6 @@ function setup(model?: ai.LanguageModel) {
     ...(model ? { "apps/api/src/platform/ai/model.ts": { selectModel: () => model } } : {}),
     zod,
     "zod/v4": zod4,
-    "zod-to-json-schema": jsonSchema,
     "better-auth/api": authApi,
     "@better-auth/api-key": apiKeys,
     "@better-auth/oauth-provider": oauth,

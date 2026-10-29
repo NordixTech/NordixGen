@@ -30,13 +30,14 @@ backends:
     persistence: { database: primary }
     authentication: { methods: [email-password] }
     authorization:
-      roles: [admin, editor, viewer, outsider]
-      adminRole: admin
-      defaultRole: viewer
-      rolePermissions:
-        editor: ${withEndpoints ? "[sample-items:create]" : "[]"}
-        viewer: []
-        outsider: ${withEndpoints ? "[sample-items:create]" : "[]"}
+      global:
+        roles: [admin, editor, viewer, outsider]
+        adminRole: admin
+        defaultRole: viewer
+        rolePermissions:
+          editor: ${withEndpoints ? "[sample-items:create]" : "[]"}
+          viewer: []
+          outsider: ${withEndpoints ? "[sample-items:create]" : "[]"}
 frontends:
   - name: web
     repository: app
@@ -137,7 +138,8 @@ function generatedApplication(
             ? {
                 id: "test-user",
                 role: currentRole,
-                permissions: config.backends[0].authorization.rolePermissions[currentRole] ?? [],
+                permissions:
+                  config.backends[0].authorization.global.rolePermissions[currentRole] ?? [],
               }
             : undefined,
       }),
@@ -485,9 +487,9 @@ describe("declared business routes in generated Hono applications", () => {
 
   it("checks every permission, accepts either allowed role and ignores client identity claims", async () => {
     const f = generatedApplication(true, undefined, (config) => {
-      config.backends[0].authorization.rolePermissions.editor.push("sample-items:approve");
+      config.backends[0].authorization.global.rolePermissions.editor.push("sample-items:approve");
       config.endpoints[0].permissions.push("sample-items:approve");
-      config.backends[0].authorization.rolePermissions.outsider.push("sample-items:approve");
+      config.backends[0].authorization.global.rolePermissions.outsider.push("sample-items:approve");
     });
     expect(
       (
@@ -503,7 +505,7 @@ describe("declared business routes in generated Hono applications", () => {
     expect((await f.request("/api/sample-items", "POST", undefined, {})).status).toBe(401);
     const partial = generatedApplication(true, undefined, (config) => {
       config.endpoints[0].permissions.push("sample-items:approve");
-      config.backends[0].authorization.rolePermissions.outsider.push("sample-items:approve");
+      config.backends[0].authorization.global.rolePermissions.outsider.push("sample-items:approve");
     });
     expect(
       (await partial.request("/api/sample-items", "POST", "verified=editor", { name: "Test" }))

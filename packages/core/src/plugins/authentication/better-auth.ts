@@ -2,9 +2,12 @@ import { posix } from "node:path";
 import { authAuditPlugin } from "../../generation/audit.js";
 import { authAbusePlugin, authAbuseStore } from "../../generation/auth-abuse.js";
 import { authDeliverySource } from "../../generation/auth-delivery.js";
+import { authInstancesSource } from "../../generation/auth-instances.js";
 import { authPolicyPlugin, passwordPolicySource } from "../../generation/auth-policy.js";
 import { DEFAULT_PASSWORD_POLICY, durationSeconds } from "../../project/account-policy.js";
+import type { ResolvedIdentity } from "../../project/types.js";
 import { iamPlugin } from "../authorization/iam-plugin.js";
+import { scopedIamPlugin } from "../authorization/scoped.js";
 import type { BackendRenderContext, GeneratedFile } from "../contracts.js";
 
 interface BetterAuthSelection {
@@ -20,8 +23,10 @@ function relativeImport(fromFile: string, toFile: string): string {
 function authSchemaContent(
   methods: readonly string[],
   features: readonly string[],
-  defaultRole: string,
+  identity: ResolvedIdentity,
 ): string {
+  const defaultRole = identity.defaultRole;
+  const single = identity.global.enabled && identity.global.mode === "single";
   const userColumns = [
     '  id: text("id").primaryKey(),',
     '  name: text("name").notNull(),',
@@ -30,7 +35,11 @@ function authSchemaContent(
     '  image: text("image"),',
     '  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),',
     '  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),',
-    `  role: text("role").notNull().default(${JSON.stringify(defaultRole)}).references(() => authRoles.id, {onDelete:"restrict"}),`,
+    ...(single
+      ? [
+          `  role: text("role").notNull().default(${JSON.stringify(defaultRole)}).references(() => authRoles.id, {onDelete:"restrict"}),`,
+        ]
+      : []),
   ];
   if (methods.includes("username-password")) {
     userColumns.push('  username: text("username").unique(),');
@@ -59,6 +68,9 @@ function authSchemaContent(
       '  ipAddress: text("ip_address"),',
       '  userAgent: text("user_agent"),',
       '  userId: text("user_id").notNull().references(() => authUser.id, { onDelete: "cascade" }),',
+      ...(identity.organizations.enabled
+        ? ['  activeOrganizationId: text("active_organization_id"),']
+        : []),
       '}, (table) => [index("session_user_id_idx").on(table.userId)]);',
     ].join("\n"),
     [
@@ -107,7 +119,7 @@ function authSchemaContent(
   return [
     'import {relations} from "drizzle-orm";',
     'import { bigint, boolean, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";',
-    'import {authRoles} from "./iam-schema.js";',
+    ...(single ? ['import {authRoles} from "./iam-schema.js";'] : []),
     "",
     ...tables.flatMap((table) => [table, ""]),
     "export const authUserRelations=relations(authUser,({many})=>({sessions:many(session),accounts:many(account)}));",
@@ -130,7 +142,8 @@ function authRuntimeContent(
   const policy = identity.passwordPolicy ?? DEFAULT_PASSWORD_POLICY;
   const domains = identity.allowedEmailDomains ?? [];
   const emailVerification = features.includes("email-verification") || domains.length > 0;
-  const emailDelivery = emailVerification || methods.includes("email-password");
+  const emailDelivery =
+    emailVerification || methods.includes("email-password") || identity.organizations.enabled;
   const limit = identity.rateLimit ?? { enabled: true, window: "60s", max: 10 };
   const limitRule = {
     window: durationSeconds(limit.ip?.window ?? limit.window),
@@ -157,6 +170,16 @@ function authRuntimeContent(
   const keys = ai?.mcp.enabled && ai.mcp.authMethods.includes("api-key");
   const defaultRole = config.authorization.defaultRole;
   const lines = [
+    ...(identity.organizations.enabled
+      ? [
+          'import {organization} from "better-auth/plugins";',
+          'import * as organizationSchema from "../database/schema/organization-schema.js";',
+          'import {nordixOrganizationPlugin} from "./nordix-organization-plugin.js";',
+        ]
+      : []),
+    ...(identity.global.enabled && identity.global.mode === "multiple"
+      ? ['import {assignDefaultGlobalRole} from "../authorization/mutations.js";']
+      : []),
     ...(ai?.mcp.enabled
       ? [
           'import * as aiSchema from "../database/schema/ai-schema.js";',
@@ -164,6 +187,7 @@ function authRuntimeContent(
         ]
       : []),
     'import { betterAuth } from "better-auth";',
+    'import {createAuthInstanceCache} from "./instances.js";',
     'import {nordixAuthPolicy,assertAllowedEmail} from "./nordix-auth-policy.js";',
     'import {nordixAbuseProtection} from "./abuse-protection.js";',
     'import {sendAuthEmail,sendSmsOtp,assertEmailDelivery,type DeliveryEnvironment} from "./delivery.js";',
@@ -185,6 +209,11 @@ function authRuntimeContent(
     'import * as iamSchema from "../database/schema/iam-schema.js";',
     `import { createDrizzleDatabase } from "${relativeImport(authFilePath, databasePath)}";`,
     "",
+    ...(identity.organizations.enabled
+      ? [
+          `const organizationIntegration=organization({creatorRole:${JSON.stringify(identity.organizations.ownerRole)},schema:{member:{additionalFields:{active:{type:"boolean",required:true,defaultValue:true,input:false}}},invitation:{additionalFields:{tokenHash:{type:"string",required:false,input:false}}}}});`,
+        ]
+      : []),
     "export interface AuthEnvironment extends DeliveryEnvironment {",
     ...(ai
       ? [
@@ -205,6 +234,14 @@ function authRuntimeContent(
     "",
   ];
   const pluginValues = [
+    ...(identity.organizations.enabled
+      ? [
+          // Native endpoints cannot enforce our dynamic catalog and last-administrator rules.
+          // Retain Better Auth's schema/session integration without publishing duplicate routes.
+          "{...organizationIntegration,endpoints:{}}",
+          `nordixOrganizationPlugin({connectionString:env.DATABASE_URL,trustedOrigins:getTrustedAuthOrigins(env),publicOrigin:getTrustedAuthOrigins(env).find(origin=>origin!==new URL(env.BETTER_AUTH_URL).origin)??env.BETTER_AUTH_URL,sendInvitation:(email,url)=>queueAuthEmail(email,"Organization invitation",url),audit})`,
+        ]
+      : []),
     ...(oauth ? ["mcpOAuth(env)", "mcpVerifier(env)"] : []),
     ...(keys ? ["mcpApiKeys()"] : []),
     `nordixAuthPolicy({domains:${JSON.stringify(domains)},emailPassword:${methods.includes("email-password")},phone:${methods.includes("phone-number")},emailDelivery:()=>assertEmailDelivery(env),verifyEmail:${emailVerification}})`,
@@ -240,7 +277,7 @@ function authRuntimeContent(
     "  return origin !== undefined && getTrustedAuthOrigins(env).includes(origin);",
     "}",
     "",
-    "export function createAuth(env: AuthEnvironment, executionContext?: AuthExecutionContext) {",
+    "function buildAuth(env: AuthEnvironment, executionContext?: AuthExecutionContext) {",
     '  if (!env.DATABASE_URL) throw new Error("Set DATABASE_URL in the runtime environment.");',
     '  if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) throw new Error("Set BETTER_AUTH_SECRET to a random value with at least 32 characters.");',
     '  if (!env.BETTER_AUTH_URL) throw new Error("Set BETTER_AUTH_URL in the runtime environment.");',
@@ -267,9 +304,9 @@ function authRuntimeContent(
     `    account: {accountLinking:{enabled:true,trustedProviders:${JSON.stringify(providers)},allowDifferentEmails:false}},`,
     `    rateLimit: {enabled:${limit.enabled},storage:"database",window:${limitRule.window},max:${limitRule.max},customRules:${JSON.stringify({ "/get-session": false, "/iam/*": false, ...Object.fromEntries(["/sign-in/*", "/sign-up/*", "/request-password-reset", "/reset-password", "/set-password", "/change-password", "/send-verification-email", "/phone-number/*", "/two-factor/*"].map((path) => [path, limitRule])) })}},`,
     '    advanced: {database:{joins:true},ipAddress:{ipAddressHeaders:["x-nordix-client-ip"]}},',
-    `    databaseHooks:{user:{create:{before:async (user,ctx)=>{assertAllowedEmail(user.email,${JSON.stringify(domains)});const name=ctx?.path==="/phone-number/verify"&&typeof ctx.body?.name==="string"?ctx.body.name.trim().slice(0,100):"";return {data:name?{...user,name}:user};}},update:{before:async user=>{if(user.email!==undefined)assertAllowedEmail(user.email,${JSON.stringify(domains)});return {data:user};}}}},`,
-    `    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema: { ...schema, ...iamSchema, ${ai?.mcp.enabled ? "...aiSchema," : ""} user: schema.authUser, auth_roles: iamSchema.authRoles, auth_role_permissions: iamSchema.authRolePermissions } }),`,
-    `    user: {validateUserInfo:async ({user,source})=>{if(source.method==="oauth"&&source.action==="link-account"&&!user.emailVerified)return {error:"oauth_email_not_verified",errorDescription:"Verify your provider email before signing in."};if(${JSON.stringify(domains)}.length&&(!user.email||!(${JSON.stringify(domains)} as string[]).includes(user.email.split("@")[1]?.toLowerCase()??"")))return {error:"email_domain_restricted",errorDescription:"Registration restricted to authorized company domains"};}, additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } } },`,
+    `    databaseHooks:{user:{create:{before:async (user,ctx)=>{assertAllowedEmail(user.email,${JSON.stringify(domains)});const name=ctx?.path==="/phone-number/verify"&&typeof ctx.body?.name==="string"?ctx.body.name.trim().slice(0,100):"";return {data:name?{...user,name}:user};}${identity.global.enabled && identity.global.mode === "multiple" ? `,after:async user=>{await assignDefaultGlobalRole(env.DATABASE_URL,user.id,${JSON.stringify(defaultRole)});}` : ""}},update:{before:async user=>{if(user.email!==undefined)assertAllowedEmail(user.email,${JSON.stringify(domains)});return {data:user};}}}},`,
+    `    database: drizzleAdapter(createDrizzleDatabase(env.DATABASE_URL), { provider: "pg", schema: { ...schema, ...iamSchema, ${identity.organizations.enabled ? "...organizationSchema," : ""}${ai?.mcp.enabled ? "...aiSchema," : ""} user: schema.authUser, ${identity.global.enabled ? "auth_roles: iamSchema.authRoles, auth_role_permissions: iamSchema.authRolePermissions" : ""} } }),`,
+    `    user: {validateUserInfo:async ({user,source})=>{if(source.method==="oauth"&&source.action==="link-account"&&!user.emailVerified)return {error:"oauth_email_not_verified",errorDescription:"Verify your provider email before signing in."};if(${JSON.stringify(domains)}.length&&(!user.email||!(${JSON.stringify(domains)} as string[]).includes(user.email.split("@")[1]?.toLowerCase()??"")))return {error:"email_domain_restricted",errorDescription:"Registration restricted to authorized company domains"};}, ${identity.global.enabled && identity.global.mode === "single" ? `additionalFields: { role: { type: "string", required: true, defaultValue: ${JSON.stringify(defaultRole)}, input: false } }` : ""} },`,
     "    emailAndPassword: {",
     `      enabled: ${methods.includes("email-password")},`,
     `      minPasswordLength: ${policy.minLength},`,
@@ -291,6 +328,7 @@ function authRuntimeContent(
     ...(pluginValues.length > 0 ? [`    plugins: [${pluginValues.join(", ")}],`] : []),
     "  });",
     "}",
+    "export const createAuth=createAuthInstanceCache(buildAuth);",
     "",
   );
   void context;
@@ -316,7 +354,6 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
   const databasePath = posix.join(persistence.directories.adapter, "drizzle-database.ts");
   const methods = config.authentication.methods;
   const features = config.authentication.features;
-  const defaultRole = config.authorization.defaultRole;
   return [
     {
       path: posix.join(infrastructure, "auth/password-policy.ts"),
@@ -324,13 +361,17 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
     },
     { path: posix.join(infrastructure, "auth/nordix-auth-policy.ts"), content: authPolicyPlugin },
     { path: posix.join(infrastructure, "auth/delivery.ts"), content: authDeliverySource },
+    { path: posix.join(infrastructure, "auth/instances.ts"), content: authInstancesSource },
     { path: posix.join(infrastructure, "auth/abuse-store.ts"), content: authAbuseStore },
     { path: posix.join(infrastructure, "auth/abuse-protection.ts"), content: authAbusePlugin },
-    { path: posix.join(infrastructure, "auth/nordix-iam-plugin.ts"), content: iamPlugin },
+    {
+      path: posix.join(infrastructure, "auth/nordix-iam-plugin.ts"),
+      content: scopedIamPlugin(config.authentication, iamPlugin),
+    },
     { path: posix.join(infrastructure, "auth/nordix-audit-plugin.ts"), content: authAuditPlugin },
     {
       path: schemaPath,
-      content: authSchemaContent(methods, features, defaultRole),
+      content: authSchemaContent(methods, features, config.authentication),
     },
     {
       path: authFilePath,
@@ -386,7 +427,7 @@ export function generateBetterAuthFiles(context: BackendRenderContext): readonly
         "",
         "IAM is registered as nordixIamPlugin. Unified audit is recorded asynchronously in audit_logs and queried at /api/auth/iam/audit with iam:roles:manage.",
         "The schema.config.ts entrypoint is for offline Better Auth CLI discovery only. Do not serve it.",
-        "From the backend root: pnpm dlx auth@1.7.10 generate --config ./src/platform/auth/schema.config.ts --output ./better-auth-discovered.ts --yes",
+        "From the backend root: pnpm dlx auth@1.7.13 generate --config ./src/platform/auth/schema.config.ts --output ./better-auth-discovered.ts --yes",
         "Review the discovered schema alongside the maintained Drizzle files; do not overwrite business schemas.",
         "IAM writes use request-scoped Neon WebSocket transactions. NEON_HTTP_PROXY_URL also selects the local proxy's WebSocket endpoint.",
         "",

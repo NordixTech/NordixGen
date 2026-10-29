@@ -1,4 +1,8 @@
-import { parseNordixYaml, resolveProjectYaml, stringifyNordixYaml } from "@nordixgen/core";
+import {
+  parseNordixYaml,
+  resolveProjectYaml,
+  stringifyNordixYaml,
+} from "@nordix-tech/nordixgen-core";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { dockerFiles } from "./docker.js";
@@ -52,6 +56,8 @@ describe("local Docker topology", () => {
     expect(files["apps/api/Dockerfile"]).toContain("test -f drizzle/meta/_journal.json");
     expect(files["apps/api/Dockerfile"]).not.toContain("pnpm db:generate");
     expect(files["apps/api/Dockerfile"]).toContain("--legacy --prod /out");
+    for (const app of ["apps/api", "apps/web"])
+      expect(files[`${app}/Dockerfile`]).toContain("FROM node:24.22.1-bookworm-slim");
     expect(files[".dockerignore"]).toContain("**/.dev.vars");
   });
   it("connects split repositories over the shared private bridge", () => {

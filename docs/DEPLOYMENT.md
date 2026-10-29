@@ -1,11 +1,56 @@
-# Generated Cloudflare deployment
+# Deployment and CI/CD
 
-Generated repositories include a standalone `pnpm cicd:setup` assistant and a project-specific `DEPLOYMENT.md`. Setup connects the GitHub repository to native Cloudflare Workers Builds, creates staging/production Workers and persistent Neon branches, and configures build/runtime secrets. No GitHub Actions workflow is generated.
+Generated applications deploy to Cloudflare Workers. Next.js uses OpenNext; Hono remains a private backend Worker. PostgreSQL is hosted by Neon.
 
-Pushes to `develop` build staging; pushes to `main` build production. Each frontend/backend has its own native build trigger. Cloudflare checks out the triggering revision in a build container, runs the generated build command and then deploys the Worker. The application Worker itself does not pull Git or run CI.
+## Connect the repository
 
-Frontends use Next.js/OpenNext on Workers. Backends are Workers with public workers.dev and preview URLs disabled. Frontend browser calls use same-origin `/api/backend/<backend>`, `/api/auth` and `/api/auth/iam` routes; server calls use explicit service bindings. Authentication remains in the selected backend. Cloud execution has no public HTTP fallback. Local Docker explicitly opts into internal bridge URLs.
+Each generated repository starts with `main` and `develop` at the initial commit. Publish both branches to GitHub, then run from its root:
 
-When R2 infrastructure is declared, the build first applies OpenTofu changes and synchronizes bindings. See [infrastructure lifecycle and permissions](INFRASTRUCTURE.md). Existing deployment behavior remains available for projects without infrastructure. Database migrations use committed SQL; Neon PITR remains covered by each generated `DISASTER_RECOVERY.md`.
+```bash
+pnpm cicd:setup
+```
 
-Verify both environments after setup: frontend renders, backend health works through the frontend proxy, backend public URLs deny access, business requests reach the correct database, sessions survive protected server navigation, logout revokes access, and storage supports authenticated and signed downloads. Keep production/staging auth secrets separate and keep all keys out of Git and screenshots.
+The standalone assistant selects your Cloudflare account, GitHub repository, build token and Neon project, or creates a Neon project. To configure another destination, use:
+
+```bash
+pnpm cicd:setup --profile client-name
+```
+
+Account profiles are ignored by Git; credentials use masked input or shell variables. The generator itself does not need to be installed in the generated project.
+
+Prefer manual configuration? Follow that repository's generated `docs/DEPLOYMENT.md`, which lists its exact build/deploy commands and required secrets.
+
+## Branch workflow
+
+| Branch | Environment |
+| --- | --- |
+| `develop` | Staging |
+| `main` | Production |
+
+Native Cloudflare Workers Builds checks out the triggering revision, runs the repository's build command and deploys the Worker. Each application has its own trigger. No GitHub Actions deployment runner is generated, and application Workers do not run CI themselves.
+
+Backend checks run before committed migrations and deployment. Frontends build through OpenNext. Keep SQL/journals in Git and review destructive migrations before merging. Setup creates persistent Neon branches for the destination environments; Better Auth stays inside the backend rather than using Neon Managed Auth.
+
+## Private connections and public integrations
+
+Browsers call the frontend's same-origin API routes. Frontend server requests use named Service Bindings to the correct backend. Backend `workers.dev` and preview URLs are disabled; cloud execution has no public HTTP fallback.
+
+An enabled MCP gateway is a separate public Worker with a private backend binding. Set its public origin and backend `MCP_PUBLIC_URL`. [R2 infrastructure](INFRASTRUCTURE.md) applies before consumer deployment; split repositories must deploy the infrastructure owner first when resources change.
+
+Store database/auth/provider/signing credentials in their intended backend/build secrets. Use different staging and production secrets and exact frontend trusted origins.
+
+## Backend placement
+
+Backend Workers initially use Smart Placement; frontend Workers remain at the edge. Setup can choose an independent Cloudflare backend region reference while showing the Neon region. It preserves the selection through `NORDIX_WORKER_PLACEMENT`.
+
+For manual configuration, set the environment's `placement.region`, such as `aws:us-east-1`, or retain Smart Placement. Selecting placement does not move an existing Neon project, increase Worker CPU/memory or guarantee lower latency. Measure the actual workload.
+
+## Verify a deployment
+
+Check the frontend, proxied backend health, database reads/writes, anonymous denial, login/logout, protected server navigation and insufficient-permission denial. Backend public URLs should remain inaccessible. Test configured email/SMS/OAuth, storage transfers and AI/MCP in the destination environment as applicable.
+
+## Recovery
+
+Every generated repository includes `docs/DISASTER_RECOVERY.md` for Neon point-in-time recovery. Retention depends on the account plan. Rehearse restores and measure recovery objectives for the application. Committed migration history does not replace data recovery.
+
+Back up OpenTofu state independently. Off-site R2 database backups and automatic cross-module rollback are not generated.

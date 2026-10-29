@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { type ResolvedProject, cloudflareWorkerName } from "@nordixgen/core";
+import { type ResolvedProject, cloudflareWorkerName } from "@nordix-tech/nordixgen-core";
 import type { DeploymentManifest } from "./deployment-model.js";
 import { infrastructureFiles, infrastructureManifest } from "./infrastructure.js";
 

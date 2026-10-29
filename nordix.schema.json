@@ -1,6 +1,5 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "NordixGen Configuration",
   "type": "object",
   "properties": {
     "schemaVersion": {
@@ -29,25 +28,26 @@
           "type": "object",
           "properties": {
             "r2_storage": {
+              "default": {},
               "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
               "additionalProperties": {
                 "type": "object",
                 "properties": {
                   "visibility": {
+                    "default": "private",
                     "type": "string",
                     "enum": [
                       "private",
                       "public"
-                    ],
-                    "default": "private"
+                    ]
                   }
                 },
                 "additionalProperties": false
-              },
-              "propertyNames": {
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
-              },
-              "default": {}
+              }
             }
           },
           "additionalProperties": false
@@ -59,6 +59,7 @@
       "additionalProperties": false
     },
     "organizations": {
+      "default": [],
       "type": "array",
       "items": {
         "type": "object",
@@ -77,10 +78,10 @@
           "handle"
         ],
         "additionalProperties": false
-      },
-      "default": []
+      }
     },
     "repositories": {
+      "minItems": 1,
       "type": "array",
       "items": {
         "type": "object",
@@ -98,21 +99,21 @@
             "pattern": "^[a-z][a-z0-9-]*$"
           },
           "initializeGit": {
+            "default": true,
             "type": "boolean",
-            "const": true,
-            "default": true
+            "const": true
           },
           "createRemote": {
-            "type": "boolean",
-            "default": false
+            "default": false,
+            "type": "boolean"
           },
           "visibility": {
+            "default": "private",
             "type": "string",
             "enum": [
               "private",
               "public"
-            ],
-            "default": "private"
+            ]
           }
         },
         "required": [
@@ -120,22 +121,23 @@
           "path"
         ],
         "additionalProperties": false
-      },
-      "minItems": 1
+      }
     },
     "databases": {
+      "default": {},
       "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
       "additionalProperties": {
         "type": "object",
         "properties": {},
         "additionalProperties": false
-      },
-      "propertyNames": {
-        "pattern": "^[a-z][a-z0-9-]*$"
-      },
-      "default": {}
+      }
     },
     "backends": {
+      "minItems": 1,
       "type": "array",
       "items": {
         "type": "object",
@@ -169,18 +171,22 @@
             "type": "object",
             "properties": {
               "r2_storage": {
+                "default": [],
                 "type": "array",
                 "items": {
                   "type": "string",
                   "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
-                },
-                "default": []
+                }
               }
             },
             "additionalProperties": false
           },
           "modules": {
             "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
             "additionalProperties": {
               "type": "object",
               "properties": {
@@ -200,26 +206,27 @@
                   }
                 },
                 "exports": {
+                  "default": [],
                   "type": "array",
                   "items": {
                     "type": "string",
                     "pattern": "^[a-z][A-Za-z0-9]*$"
-                  },
-                  "default": []
+                  }
                 },
                 "imports": {
+                  "default": {},
                   "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                  },
                   "additionalProperties": {
                     "type": "array",
                     "items": {
                       "type": "string",
                       "pattern": "^[a-z][A-Za-z0-9]*$"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^[a-z][a-z0-9-]*$"
-                  },
-                  "default": {}
+                  }
                 }
               },
               "required": [
@@ -227,15 +234,15 @@
                 "entities"
               ],
               "additionalProperties": false
-            },
-            "propertyNames": {
-              "pattern": "^[a-z][a-z0-9-]*$"
             }
           },
           "authentication": {
             "type": "object",
             "properties": {
               "methods": {
+                "default": [
+                  "email-password"
+                ],
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -244,12 +251,10 @@
                     "username-password",
                     "phone-number"
                   ]
-                },
-                "default": [
-                  "email-password"
-                ]
+                }
               },
               "identityProviders": {
+                "default": [],
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -259,10 +264,10 @@
                     "microsoft",
                     "facebook"
                   ]
-                },
-                "default": []
+                }
               },
               "features": {
+                "default": [],
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -271,52 +276,53 @@
                     "password-recovery",
                     "two-factor"
                   ]
-                },
-                "default": []
+                }
               },
               "passwordPolicy": {
+                "default": {},
                 "type": "object",
                 "properties": {
                   "minLength": {
+                    "default": 8,
                     "type": "integer",
                     "minimum": 4,
-                    "maximum": 128,
-                    "default": 8
+                    "maximum": 128
                   },
                   "maxLength": {
+                    "default": 128,
                     "type": "integer",
                     "minimum": 4,
-                    "maximum": 128,
-                    "default": 128
+                    "maximum": 128
                   },
                   "numericOnly": {
-                    "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "type": "boolean"
                   },
                   "requireUppercase": {
-                    "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "type": "boolean"
                   },
                   "requireLowercase": {
-                    "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "type": "boolean"
                   },
                   "requireNumber": {
-                    "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "type": "boolean"
                   },
                   "requireSpecialChar": {
-                    "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "type": "boolean"
                   }
                 },
-                "additionalProperties": false,
-                "default": {}
+                "additionalProperties": false
               },
               "session": {
+                "default": {},
                 "type": "object",
                 "properties": {
                   "expiresIn": {
+                    "default": "7d",
                     "anyOf": [
                       {
                         "type": "integer",
@@ -327,10 +333,10 @@
                         "type": "string",
                         "pattern": "^[1-9]\\d*[smhd]$"
                       }
-                    ],
-                    "default": "7d"
+                    ]
                   },
                   "updateAge": {
+                    "default": "1d",
                     "anyOf": [
                       {
                         "type": "integer",
@@ -341,12 +347,10 @@
                         "type": "string",
                         "pattern": "^[1-9]\\d*[smhd]$"
                       }
-                    ],
-                    "default": "1d"
+                    ]
                   }
                 },
-                "additionalProperties": false,
-                "default": {}
+                "additionalProperties": false
               },
               "allowedEmailDomains": {
                 "type": "array",
@@ -356,13 +360,15 @@
                 }
               },
               "rateLimit": {
+                "default": {},
                 "type": "object",
                 "properties": {
                   "enabled": {
-                    "type": "boolean",
-                    "default": true
+                    "default": true,
+                    "type": "boolean"
                   },
                   "window": {
+                    "default": "60s",
                     "anyOf": [
                       {
                         "type": "integer",
@@ -373,19 +379,19 @@
                         "type": "string",
                         "pattern": "^[1-9]\\d*[smhd]$"
                       }
-                    ],
-                    "default": "60s"
+                    ]
                   },
                   "max": {
+                    "default": 10,
                     "type": "integer",
                     "exclusiveMinimum": 0,
-                    "maximum": 1000000,
-                    "default": 10
+                    "maximum": 1000000
                   },
                   "ip": {
                     "type": "object",
                     "properties": {
                       "window": {
+                        "default": "60s",
                         "anyOf": [
                           {
                             "type": "integer",
@@ -396,22 +402,23 @@
                             "type": "string",
                             "pattern": "^[1-9]\\d*[smhd]$"
                           }
-                        ],
-                        "default": "60s"
+                        ]
                       },
                       "max": {
+                        "default": 10,
                         "type": "integer",
                         "exclusiveMinimum": 0,
-                        "maximum": 1000000,
-                        "default": 10
+                        "maximum": 1000000
                       }
                     },
                     "additionalProperties": false
                   },
                   "account": {
+                    "default": {},
                     "type": "object",
                     "properties": {
                       "window": {
+                        "default": "15m",
                         "anyOf": [
                           {
                             "type": "integer",
@@ -422,36 +429,36 @@
                             "type": "string",
                             "pattern": "^[1-9]\\d*[smhd]$"
                           }
-                        ],
-                        "default": "15m"
+                        ]
                       },
                       "max": {
+                        "default": 10,
                         "type": "integer",
                         "exclusiveMinimum": 0,
-                        "maximum": 1000000,
-                        "default": 10
+                        "maximum": 1000000
                       }
                     },
-                    "additionalProperties": false,
-                    "default": {}
+                    "additionalProperties": false
                   }
                 },
-                "additionalProperties": false,
-                "default": {}
+                "additionalProperties": false
               },
               "smsOtp": {
+                "default": {},
                 "type": "object",
                 "properties": {
                   "dailyLimit": {
+                    "default": 10,
                     "type": "integer",
                     "exclusiveMinimum": 0,
-                    "maximum": 1000000,
-                    "default": 10
+                    "maximum": 1000000
                   },
                   "cooldown": {
+                    "default": {},
                     "type": "object",
                     "properties": {
                       "initialDelay": {
+                        "default": "60s",
                         "anyOf": [
                           {
                             "type": "integer",
@@ -462,16 +469,16 @@
                             "type": "string",
                             "pattern": "^[1-9]\\d*[smhd]$"
                           }
-                        ],
-                        "default": "60s"
+                        ]
                       },
                       "multiplier": {
+                        "default": 2,
                         "type": "number",
                         "minimum": 1,
-                        "maximum": 10,
-                        "default": 2
+                        "maximum": 10
                       },
                       "maxDelay": {
+                        "default": "15m",
                         "anyOf": [
                           {
                             "type": "integer",
@@ -482,16 +489,13 @@
                             "type": "string",
                             "pattern": "^[1-9]\\d*[smhd]$"
                           }
-                        ],
-                        "default": "15m"
+                        ]
                       }
                     },
-                    "additionalProperties": false,
-                    "default": {}
+                    "additionalProperties": false
                   }
                 },
-                "additionalProperties": false,
-                "default": {}
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
@@ -499,58 +503,137 @@
           "authorization": {
             "type": "object",
             "properties": {
-              "roles": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "pattern": "^[a-z][a-z0-9-]*$"
-                }
-              },
-              "adminRole": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]*$"
-              },
-              "defaultRole": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]*$"
-              },
-              "rolePermissions": {
+              "global": {
+                "default": {
+                  "enabled": false
+                },
                 "type": "object",
-                "additionalProperties": {
-                  "type": "array",
-                  "items": {
+                "properties": {
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "mode": {
+                    "default": "single",
                     "type": "string",
-                    "pattern": "^\\S+$"
+                    "enum": [
+                      "single",
+                      "multiple"
+                    ]
+                  },
+                  "roles": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    }
+                  },
+                  "defaultRole": {
+                    "default": "user",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "rolePermissions": {
+                    "default": {},
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^\\S+$"
+                      }
+                    }
+                  },
+                  "adminRole": {
+                    "default": "admin",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]*$"
                   }
                 },
-                "propertyNames": {
-                  "pattern": "^[a-z][a-z0-9-]*$"
+                "additionalProperties": false
+              },
+              "organizations": {
+                "default": {
+                  "enabled": false
                 },
-                "default": {}
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "mode": {
+                    "default": "single",
+                    "type": "string",
+                    "enum": [
+                      "single",
+                      "multiple"
+                    ]
+                  },
+                  "roles": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    }
+                  },
+                  "defaultRole": {
+                    "default": "user",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "rolePermissions": {
+                    "default": {},
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^\\S+$"
+                      }
+                    }
+                  },
+                  "ownerRole": {
+                    "default": "owner",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  }
+                },
+                "additionalProperties": false
               }
             },
-            "required": [
-              "roles",
-              "adminRole",
-              "defaultRole"
-            ],
             "additionalProperties": false
           },
           "ai": {
             "type": "object",
             "properties": {
               "enabled": {
-                "type": "boolean",
-                "default": true
+                "default": true,
+                "type": "boolean"
               },
               "mcp": {
+                "default": {},
                 "type": "object",
                 "properties": {
                   "enabled": {
-                    "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "type": "boolean"
                   },
                   "authMethods": {
+                    "default": [
+                      "oauth",
+                      "api-key"
+                    ],
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -558,26 +641,21 @@
                         "oauth",
                         "api-key"
                       ]
-                    },
-                    "default": [
-                      "oauth",
-                      "api-key"
-                    ]
+                    }
                   }
                 },
-                "additionalProperties": false,
-                "default": {}
+                "additionalProperties": false
               },
               "tools": {
+                "default": {},
                 "type": "object",
                 "properties": {
                   "requireConfirmationOnMutations": {
-                    "type": "boolean",
-                    "default": true
+                    "default": true,
+                    "type": "boolean"
                   }
                 },
-                "additionalProperties": false,
-                "default": {}
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
@@ -590,10 +668,10 @@
           "modules"
         ],
         "additionalProperties": false
-      },
-      "minItems": 1
+      }
     },
     "frontends": {
+      "default": [],
       "type": "array",
       "items": {
         "type": "object",
@@ -611,24 +689,25 @@
             "minLength": 1
           },
           "connectsTo": {
+            "default": [],
             "type": "array",
             "items": {
               "type": "string",
               "pattern": "^[a-z][a-z0-9-]*$"
-            },
-            "default": []
+            }
           },
           "access": {
+            "default": {},
             "type": "object",
             "properties": {
               "mode": {
+                "default": "public",
                 "type": "string",
                 "enum": [
                   "public",
                   "authenticated",
                   "mixed"
-                ],
-                "default": "public"
+                ]
               },
               "backend": {
                 "type": "string",
@@ -641,20 +720,19 @@
                 }
               }
             },
-            "additionalProperties": false,
-            "default": {}
+            "additionalProperties": false
           },
           "theme": {
             "type": "object",
             "properties": {
               "default": {
+                "default": "system",
                 "type": "string",
                 "enum": [
                   "light",
                   "dark",
                   "system"
-                ],
-                "default": "system"
+                ]
               },
               "light": {
                 "anyOf": [
@@ -833,42 +911,42 @@
             "type": "object",
             "properties": {
               "enabled": {
-                "type": "boolean",
-                "default": true
+                "default": true,
+                "type": "boolean"
               },
               "backend": {
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]*$"
               },
               "chat": {
+                "default": {},
                 "type": "object",
                 "properties": {
                   "enabled": {
-                    "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "type": "boolean"
                   },
                   "placement": {
+                    "default": "floating",
                     "type": "string",
                     "enum": [
                       "floating",
                       "page"
-                    ],
-                    "default": "floating"
+                    ]
                   }
                 },
-                "additionalProperties": false,
-                "default": {}
+                "additionalProperties": false
               },
               "connectPortal": {
+                "default": {},
                 "type": "object",
                 "properties": {
                   "enabled": {
-                    "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "type": "boolean"
                   }
                 },
-                "additionalProperties": false,
-                "default": {}
+                "additionalProperties": false
               }
             },
             "required": [
@@ -883,25 +961,29 @@
           "path"
         ],
         "additionalProperties": false
-      },
-      "default": []
+      }
     },
     "enums": {
+      "default": {},
       "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+      },
       "additionalProperties": {
         "type": "array",
         "items": {
           "type": "string",
           "minLength": 1
         }
-      },
-      "propertyNames": {
-        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
-      },
-      "default": {}
+      }
     },
     "entities": {
       "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+      },
       "additionalProperties": {
         "type": "object",
         "properties": {
@@ -913,9 +995,14 @@
             "type": "string"
           },
           "fields": {
+            "default": {},
             "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+            },
             "additionalProperties": {
-              "anyOf": [
+              "oneOf": [
                 {
                   "type": "object",
                   "properties": {
@@ -923,12 +1010,12 @@
                       "type": "string"
                     },
                     "required": {
-                      "type": "boolean",
-                      "default": true
+                      "default": true,
+                      "type": "boolean"
                     },
                     "unique": {
-                      "type": "boolean",
-                      "default": false
+                      "default": false,
+                      "type": "boolean"
                     },
                     "default": {},
                     "type": {
@@ -937,11 +1024,13 @@
                     },
                     "minLength": {
                       "type": "integer",
-                      "minimum": 0
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     },
                     "maxLength": {
                       "type": "integer",
-                      "exclusiveMinimum": 0
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -956,12 +1045,12 @@
                       "type": "string"
                     },
                     "required": {
-                      "type": "boolean",
-                      "default": true
+                      "default": true,
+                      "type": "boolean"
                     },
                     "unique": {
-                      "type": "boolean",
-                      "default": false
+                      "default": false,
+                      "type": "boolean"
                     },
                     "default": {},
                     "type": {
@@ -978,11 +1067,13 @@
                     },
                     "precision": {
                       "type": "integer",
-                      "exclusiveMinimum": 0
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
                     },
                     "scale": {
                       "type": "integer",
-                      "minimum": 0
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -997,12 +1088,12 @@
                       "type": "string"
                     },
                     "required": {
-                      "type": "boolean",
-                      "default": true
+                      "default": true,
+                      "type": "boolean"
                     },
                     "unique": {
-                      "type": "boolean",
-                      "default": false
+                      "default": false,
+                      "type": "boolean"
                     },
                     "default": {},
                     "type": {
@@ -1022,12 +1113,12 @@
                       "type": "string"
                     },
                     "required": {
-                      "type": "boolean",
-                      "default": true
+                      "default": true,
+                      "type": "boolean"
                     },
                     "unique": {
-                      "type": "boolean",
-                      "default": false
+                      "default": false,
+                      "type": "boolean"
                     },
                     "default": {},
                     "type": {
@@ -1047,12 +1138,12 @@
                       "type": "string"
                     },
                     "required": {
-                      "type": "boolean",
-                      "default": true
+                      "default": true,
+                      "type": "boolean"
                     },
                     "unique": {
-                      "type": "boolean",
-                      "default": false
+                      "default": false,
+                      "type": "boolean"
                     },
                     "default": {},
                     "type": {
@@ -1072,12 +1163,12 @@
                       "type": "string"
                     },
                     "required": {
-                      "type": "boolean",
-                      "default": true
+                      "default": true,
+                      "type": "boolean"
                     },
                     "unique": {
-                      "type": "boolean",
-                      "default": false
+                      "default": false,
+                      "type": "boolean"
                     },
                     "default": {},
                     "type": {
@@ -1097,12 +1188,12 @@
                       "type": "string"
                     },
                     "required": {
-                      "type": "boolean",
-                      "default": true
+                      "default": true,
+                      "type": "boolean"
                     },
                     "unique": {
-                      "type": "boolean",
-                      "default": false
+                      "default": false,
+                      "type": "boolean"
                     },
                     "default": {},
                     "type": {
@@ -1121,14 +1212,15 @@
                   "additionalProperties": false
                 }
               ]
-            },
-            "propertyNames": {
-              "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
-            },
-            "default": {}
+            }
           },
           "relations": {
+            "default": {},
             "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+            },
             "additionalProperties": {
               "type": "object",
               "properties": {
@@ -1163,8 +1255,8 @@
                   ]
                 },
                 "required": {
-                  "type": "boolean",
-                  "default": false
+                  "default": false,
+                  "type": "boolean"
                 },
                 "description": {
                   "type": "string"
@@ -1175,13 +1267,10 @@
                 "target"
               ],
               "additionalProperties": false
-            },
-            "propertyNames": {
-              "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
-            },
-            "default": {}
+            }
           },
           "indexes": {
+            "default": [],
             "type": "array",
             "items": {
               "type": "object",
@@ -1198,25 +1287,25 @@
                 "fields"
               ],
               "additionalProperties": false
-            },
-            "default": []
+            }
           },
           "timestamps": {
+            "default": {},
             "type": "object",
             "properties": {
               "createdAt": {
-                "type": "boolean",
-                "default": false
+                "default": false,
+                "type": "boolean"
               },
               "updatedAt": {
-                "type": "boolean",
-                "default": false
+                "default": false,
+                "type": "boolean"
               }
             },
-            "additionalProperties": false,
-            "default": {}
+            "additionalProperties": false
           },
           "softDelete": {
+            "default": false,
             "anyOf": [
               {
                 "type": "boolean",
@@ -1229,69 +1318,77 @@
                   "timestamp"
                 ]
               }
-            ],
-            "default": false
+            ]
           }
         },
         "required": [
           "backend"
         ],
         "additionalProperties": false
-      },
-      "propertyNames": {
-        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
       }
     },
     "pagination": {
+      "default": {},
       "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+      },
       "additionalProperties": {
         "type": "object",
         "properties": {
           "strategy": {
+            "default": "offset",
             "type": "string",
-            "const": "offset",
-            "default": "offset"
+            "const": "offset"
           },
           "pageParam": {
+            "default": "page",
             "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
-            "default": "page"
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
           },
           "pageSizeParam": {
+            "default": "pageSize",
             "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
-            "default": "pageSize"
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
           },
           "defaultPageSize": {
+            "default": 25,
             "type": "integer",
             "exclusiveMinimum": 0,
-            "default": 25
+            "maximum": 9007199254740991
           },
           "maxPageSize": {
+            "default": 100,
             "type": "integer",
             "exclusiveMinimum": 0,
-            "default": 100
+            "maximum": 9007199254740991
           }
         },
         "additionalProperties": false
-      },
-      "propertyNames": {
-        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
-      },
-      "default": {}
+      }
     },
     "endpoints": {
+      "default": [],
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "organization"
+            ]
+          },
           "backend": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
           },
           "path": {
             "type": "string",
-            "pattern": "^\\/"
+            "format": "starts_with",
+            "pattern": "^\\/.*"
           },
           "method": {
             "type": "string",
@@ -1321,23 +1418,24 @@
             "type": "boolean"
           },
           "roles": {
+            "default": [],
+            "description": "Deprecated for business endpoints: only an empty list is accepted. Declare required permissions instead.",
             "type": "array",
             "items": {
               "type": "string",
               "pattern": "^[a-z][a-z0-9-]*$"
-            },
-            "default": [],
-            "description": "Deprecated for business endpoints: only an empty list is accepted. Declare required permissions instead."
+            }
           },
           "permissions": {
+            "default": [],
             "type": "array",
             "items": {
               "type": "string",
               "pattern": "^\\S+$"
-            },
-            "default": []
+            }
           },
           "queryParams": {
+            "default": [],
             "type": "array",
             "items": {
               "type": "object",
@@ -1377,8 +1475,8 @@
                   "additionalProperties": false
                 },
                 "required": {
-                  "type": "boolean",
-                  "default": true
+                  "default": true,
+                  "type": "boolean"
                 },
                 "enumName": {
                   "type": "string",
@@ -1402,10 +1500,10 @@
                 "name"
               ],
               "additionalProperties": false
-            },
-            "default": []
+            }
           },
           "pathParams": {
+            "default": [],
             "type": "array",
             "items": {
               "type": "object",
@@ -1445,9 +1543,9 @@
                   "additionalProperties": false
                 },
                 "required": {
+                  "default": true,
                   "type": "boolean",
-                  "const": true,
-                  "default": true
+                  "const": true
                 },
                 "enumName": {
                   "type": "string",
@@ -1471,8 +1569,7 @@
                 "name"
               ],
               "additionalProperties": false
-            },
-            "default": []
+            }
           },
           "requestBody": {
             "anyOf": [
@@ -1508,10 +1605,14 @@
               },
               {
                 "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^(?!useCase$)[A-Za-z][A-Za-z0-9_]*$"
+                },
                 "additionalProperties": {
                   "anyOf": [
                     {
-                      "anyOf": [
+                      "oneOf": [
                         {
                           "type": "object",
                           "properties": {
@@ -1519,12 +1620,12 @@
                               "type": "string"
                             },
                             "required": {
-                              "type": "boolean",
-                              "default": true
+                              "default": true,
+                              "type": "boolean"
                             },
                             "unique": {
-                              "type": "boolean",
-                              "default": false
+                              "default": false,
+                              "type": "boolean"
                             },
                             "default": {},
                             "type": {
@@ -1533,11 +1634,13 @@
                             },
                             "minLength": {
                               "type": "integer",
-                              "minimum": 0
+                              "minimum": 0,
+                              "maximum": 9007199254740991
                             },
                             "maxLength": {
                               "type": "integer",
-                              "exclusiveMinimum": 0
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
                             }
                           },
                           "required": [
@@ -1552,12 +1655,12 @@
                               "type": "string"
                             },
                             "required": {
-                              "type": "boolean",
-                              "default": true
+                              "default": true,
+                              "type": "boolean"
                             },
                             "unique": {
-                              "type": "boolean",
-                              "default": false
+                              "default": false,
+                              "type": "boolean"
                             },
                             "default": {},
                             "type": {
@@ -1574,11 +1677,13 @@
                             },
                             "precision": {
                               "type": "integer",
-                              "exclusiveMinimum": 0
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
                             },
                             "scale": {
                               "type": "integer",
-                              "minimum": 0
+                              "minimum": 0,
+                              "maximum": 9007199254740991
                             }
                           },
                           "required": [
@@ -1593,12 +1698,12 @@
                               "type": "string"
                             },
                             "required": {
-                              "type": "boolean",
-                              "default": true
+                              "default": true,
+                              "type": "boolean"
                             },
                             "unique": {
-                              "type": "boolean",
-                              "default": false
+                              "default": false,
+                              "type": "boolean"
                             },
                             "default": {},
                             "type": {
@@ -1618,12 +1723,12 @@
                               "type": "string"
                             },
                             "required": {
-                              "type": "boolean",
-                              "default": true
+                              "default": true,
+                              "type": "boolean"
                             },
                             "unique": {
-                              "type": "boolean",
-                              "default": false
+                              "default": false,
+                              "type": "boolean"
                             },
                             "default": {},
                             "type": {
@@ -1643,12 +1748,12 @@
                               "type": "string"
                             },
                             "required": {
-                              "type": "boolean",
-                              "default": true
+                              "default": true,
+                              "type": "boolean"
                             },
                             "unique": {
-                              "type": "boolean",
-                              "default": false
+                              "default": false,
+                              "type": "boolean"
                             },
                             "default": {},
                             "type": {
@@ -1668,12 +1773,12 @@
                               "type": "string"
                             },
                             "required": {
-                              "type": "boolean",
-                              "default": true
+                              "default": true,
+                              "type": "boolean"
                             },
                             "unique": {
-                              "type": "boolean",
-                              "default": false
+                              "default": false,
+                              "type": "boolean"
                             },
                             "default": {},
                             "type": {
@@ -1693,12 +1798,12 @@
                               "type": "string"
                             },
                             "required": {
-                              "type": "boolean",
-                              "default": true
+                              "default": true,
+                              "type": "boolean"
                             },
                             "unique": {
-                              "type": "boolean",
-                              "default": false
+                              "default": false,
+                              "type": "boolean"
                             },
                             "default": {},
                             "type": {
@@ -1749,9 +1854,6 @@
                       "additionalProperties": false
                     }
                   ]
-                },
-                "propertyNames": {
-                  "pattern": "^(?!useCase$)[A-Za-z][A-Za-z0-9_]*$"
                 }
               }
             ]
@@ -1761,6 +1863,7 @@
             "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
           },
           "joins": {
+            "default": [],
             "type": "array",
             "items": {
               "type": "object",
@@ -1777,12 +1880,12 @@
                   ]
                 },
                 "fields": {
+                  "default": [],
                   "type": "array",
                   "items": {
                     "type": "string",
                     "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
-                  },
-                  "default": []
+                  }
                 }
               },
               "required": [
@@ -1790,8 +1893,7 @@
                 "type"
               ],
               "additionalProperties": false
-            },
-            "default": []
+            }
           }
         },
         "required": [
@@ -1802,8 +1904,7 @@
           "entity"
         ],
         "additionalProperties": false
-      },
-      "default": []
+      }
     }
   },
   "required": [
@@ -1814,5 +1915,6 @@
     "backends",
     "entities"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "title": "NordixGen Configuration"
 }

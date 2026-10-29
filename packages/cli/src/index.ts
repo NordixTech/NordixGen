@@ -1,17 +1,21 @@
+import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { intro, outro, spinner } from "@clack/prompts";
-import { formatDiagnostic, getCoreInfo, resolveProjectYaml } from "@nordixgen/core";
-import { Command } from "commander";
+import { formatDiagnostic, getCoreInfo, resolveProjectYaml } from "@nordix-tech/nordixgen-core";
+import { Command, Option } from "commander";
 import pc from "picocolors";
 import { runGenerate, runInit } from "./orchestrator.js";
 
-export const CLI_VERSION = "0.1.0";
+export const CLI_VERSION = process.env.NORDIXGEN_PACKAGE_VERSION ?? "0.1.0";
 
-export function checkNodeRuntime(): boolean {
-  const major = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
-  if (major < 24) {
-    console.error(pc.yellow(`NordixGen requires Node.js >= 24.0.0 (current: ${process.version}).`));
+export function checkNodeRuntime(version = process.versions.node): boolean {
+  const [major, minor, patch] = version.split(".").map(Number);
+  if (major < 24 || (major === 24 && (minor < 22 || (minor === 22 && patch < 1)))) {
+    console.error(
+      pc.yellow(`NordixGen requires Node.js >= 24.22.1 (current: ${process.version}).`),
+    );
     return false;
   }
   return true;
@@ -78,9 +82,15 @@ export function createProgram(): Command {
   program
     .command("init")
     .description("Create a starter nordix.config.yaml interactively")
-    .action(async () => {
+    .option("--name <name>", "Project name (skip the name prompt)")
+    .addOption(new Option("--frontend <choice>", "Include a frontend").choices(["yes", "no"]))
+    .option("--file <file>", "Configuration destination (skip the path prompt)")
+    .action(async (options: { name?: string; frontend?: string; file?: string }) => {
       try {
-        await runInit();
+        await runInit({
+          ...options,
+          frontend: options.frontend === undefined ? undefined : options.frontend === "yes",
+        });
       } catch (error) {
         console.error(pc.red(error instanceof Error ? error.message : String(error)));
         process.exitCode = 1;
@@ -105,7 +115,11 @@ export function createProgram(): Command {
   return program;
 }
 
-if (process.argv[1]?.endsWith("index.js") || process.argv[1]?.endsWith("index.ts")) {
+if (
+  process.argv[1] &&
+  existsSync(process.argv[1]) &&
+  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
   if (!checkNodeRuntime()) process.exitCode = 1;
   else void createProgram().parseAsync(process.argv);
 }

@@ -1,20 +1,22 @@
-# @nordixgen/cli
+# @nordix-tech/nordixgen
 
-Generated repositories include a standalone CI/CD assistant: `pnpm cicd:setup` (or `pnpm cicd:setup --profile client-name`). Their README also offers manual Cloudflare/Neon setup in `docs/DEPLOYMENT.md` and PITR procedures in `docs/DISASTER_RECOVERY.md`. Both paths use native Cloudflare builds for `develop`/staging and `main`/production. Local Git initialization is mandatory; GitHub remote creation remains optional.
+Initialize and generate Nordix applications from YAML v2. Requires Node.js 24.22.1+, pnpm 10.5.2, Git author identity and network access for generation.
 
-Initialize new Nordix projects from strict YAML v2 using the fixed TypeScript/Hono/Next.js/Drizzle/Neon/Better Auth stack. Node.js 24+ and pnpm 10.5.2 are required. Install Git and authenticate GitHub CLI only when the configuration opts into repository publication.
+Install from npm with `npm install -g @nordix-tech/nordixgen`, or run `npx @nordix-tech/nordixgen@latest init` without a global install.
 
-From a source checkout, install with `pnpm install --frozen-lockfile`, then `pnpm build`:
+After installing:
 
 ```bash
-node packages/cli/dist/index.js --help
-node packages/cli/dist/index.js init
-node packages/cli/dist/index.js validate -f nordix.config.yaml
-node packages/cli/dist/index.js generate -f nordix.config.yaml -o ./new-project
+nordixgen init
+nordixgen validate -f nordix.config.yaml
+nordixgen generate -f nordix.config.yaml -o ./my-project
+nordixgen info
 ```
 
-An installed package exposes the same commands as `nordixgen`. `validate` checks configuration, resolution and generation readiness. `generate` requires a new/empty directory, prepares files, runs pinned official scaffolds, installs dependencies and checks application types and module boundaries before optional Git/GitHub publication. Failures return a nonzero exit status and may leave output for inspection; the CLI does not overwrite or regenerate edited applications.
+For noninteractive setup, use `nordixgen init --name my-project --frontend yes --file nordix.config.yaml`. Pin a published generator version with `npx @nordix-tech/nordixgen@0.1.0 init`.
 
-One or multiple Clean, Hexagonal and Onion modules are supported in the same backend. Many-to-many generation fails before effects. Endpoints explicitly declare business operations; entity declarations do not create implicit CRUD. Generated environment examples and README files explain runtime origins, database migrations and startup. Configure secrets outside YAML.
+`validate` checks configuration and generation support. `generate` requires new/empty output, runs scaffolds/installations, checks application types/boundaries and initializes Git with `main`/`develop`. Optional GitHub publication needs authenticated GitHub CLI and a configured destination. External failures return nonzero status and may leave partial local output.
 
-Use the [performance configuration](../../examples/performance/project.yaml) as a complete generation input. Internal acceptance checks run with `pnpm test:acceptance`. See [CLI workflow](../../docs/generation/CLI_WORKFLOW.md) for details and limits.
+Generated repositories include Docker workflows and a standalone `pnpm cicd:setup` assistant. Their README and deployment/recovery guides contain project-specific commands. Generation itself makes no cloud changes and does not regenerate edited applications.
+
+Read [Quick start](https://github.com/NordixTech/NordixGen/blob/main/docs/GETTING_STARTED.md), [Local development](https://github.com/NordixTech/NordixGen/blob/main/docs/guides/LOCAL_DEVELOPMENT.md) and [Deployment](https://github.com/NordixTech/NordixGen/blob/main/docs/DEPLOYMENT.md).

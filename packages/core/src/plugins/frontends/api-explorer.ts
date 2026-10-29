@@ -15,7 +15,7 @@ import { Notice } from "@/components/ui/notice";
 ${authenticated ? 'import { useSessionView } from "@/lib/auth/use-session-view";' : ""}
 
 type FieldInfo = { name: string; type?: string; required?: boolean; nullable?: boolean; array?: boolean; enumValues?: readonly string[]; constraints?: readonly string[]; operator?: string };
-type EndpointInfo = { name: string; id: string; backend: string; moduleId: string; method: string; path: string; summary: string; entity: string; authRequired: boolean; roles: readonly string[]; permissions: readonly string[]; pathParams: readonly FieldInfo[]; queryParams: readonly FieldInfo[]; requestBody: Record<string, Omit<FieldInfo, "name">> | null; bodyExample: Record<string, unknown>; pagination: { pageParam: string; pageSizeParam: string; defaultPageSize: number; maxPageSize: number } | null };
+type EndpointInfo = { name: string; id: string; backend: string; moduleId: string; scope:"global"|"organization"; method: string; path: string; summary: string; entity: string; authRequired: boolean; roles: readonly string[]; permissions: readonly string[]; pathParams: readonly FieldInfo[]; queryParams: readonly FieldInfo[]; requestBody: Record<string, Omit<FieldInfo, "name">> | null; bodyExample: Record<string, unknown>; pagination: { pageParam: string; pageSizeParam: string; defaultPageSize: number; maxPageSize: number } | null };
 const endpoints: readonly EndpointInfo[] = ${metadata};
 const invoke: Record<string, (input: unknown) => Promise<unknown>> = {
 ${dispatch}

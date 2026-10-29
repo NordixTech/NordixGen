@@ -5,9 +5,17 @@ import { expect as baseExpect, chromium, request } from "@playwright/test";
 import { verifyDashboard } from "./dashboard.mjs";
 import { verifyTheme } from "./theme.mjs";
 
+import { verifyAccessDialog } from "./access-dialog.mjs";
 const expect = baseExpect.configure({ timeout: 15_000 });
 const password = "acceptance-local-password-2026";
 const missing = "00000000-0000-4000-8000-000000000000";
+async function changePlatformRole(page, email, role) {
+  const dialog = page.getByRole("dialog", { name: "Change platform roles", exact: true });
+  if (!(await dialog.isVisible()))
+    await page.getByRole("button", { name: `Change roles for ${email}`, exact: true }).click();
+  await dialog.locator(`input[value="${role}"]`).check();
+  await dialog.getByRole("button", { name: "Save roles", exact: true }).click();
+}
 export async function verifyApplication(state, directory, expireAccountant) {
   const api = `http://localhost:${state.apiPort}`;
   const web = `http://localhost:${state.webPort}`;
@@ -538,6 +546,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     });
     await iamPage.getByRole("button", { name: "Create role", exact: true }).click();
     const iamDialog = iamPage.getByRole("dialog");
+    await verifyAccessDialog(iamPage, directory, "verified-platform-role-fields.png");
     await iamDialog.getByLabel("ID", { exact: true }).fill("ui-reviewer");
     await iamDialog.getByLabel("Name", { exact: true }).fill("UI reviewer");
     await iamDialog.getByLabel("invoices:read", { exact: false }).check();
@@ -570,8 +579,8 @@ export async function verifyApplication(state, directory, expireAccountant) {
     const viewerRow = iamPage
       .getByRole("row")
       .filter({ hasText: "viewer@acceptance.example.test" });
-    await viewerRow.getByRole("combobox").selectOption("ui-reviewer");
-    await expect(viewerRow.getByRole("combobox")).toHaveValue("ui-reviewer");
+    await changePlatformRole(iamPage, "viewer@acceptance.example.test", "ui-reviewer");
+    await expect(viewerRow).toContainText("UI reviewer");
     expect((await viewer.get("/api/invoices")).status()).toBe(200);
     await iamPage.getByRole("tab", { name: /Roles/ }).click();
     await iamPage.getByRole("button", { name: "Edit ui-reviewer", exact: true }).click();
@@ -639,9 +648,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await iamPage.bringToFront();
     // The sole full administrator cannot demote itself, even with a forged confirmation.
     await iamPage.getByRole("tab", { name: /Users/ }).click();
-    await iamPage
-      .getByRole("combobox", { name: "Role for admin@acceptance.example.test" })
-      .selectOption("viewer");
+    await changePlatformRole(iamPage, "admin@acceptance.example.test", "viewer");
     await expect(
       iamPage.getByRole("alert").filter({ hasText: "Keep at least one user" }),
     ).toBeVisible();
@@ -666,9 +673,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     });
     await iamPage.reload();
     await iamPage.getByRole("tab", { name: /Users/ }).click();
-    await iamPage
-      .getByRole("combobox", { name: "Role for outsider@acceptance.example.test" })
-      .selectOption("outsider");
+    await changePlatformRole(iamPage, "outsider@acceptance.example.test", "outsider");
     const otherWarning = iamPage.getByRole("dialog", {
       name: "Remove administrative access?",
       exact: true,
@@ -677,9 +682,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await expect(otherWarning.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
     await otherWarning.getByRole("button", { name: "Cancel", exact: true }).click();
     expect((await outsider.get("/api/auth/iam/me")).status()).toBe(200);
-    await iamPage
-      .getByRole("combobox", { name: "Role for outsider@acceptance.example.test" })
-      .selectOption("outsider");
+    await changePlatformRole(iamPage, "outsider@acceptance.example.test", "outsider");
     await otherWarning.getByRole("button", { name: "Confirm access change" }).click();
     await expect(otherWarning).toHaveCount(0);
     expect((await outsider.get("/api/auth/iam/roles")).status()).toBe(403);
@@ -713,9 +716,7 @@ export async function verifyApplication(state, directory, expireAccountant) {
     await expect(supportPage.getByRole("button", { name: "Create role", exact: true })).toHaveCount(
       0,
     );
-    await supportPage
-      .getByRole("combobox", { name: "Role for outsider@acceptance.example.test" })
-      .selectOption("outsider");
+    await changePlatformRole(supportPage, "outsider@acceptance.example.test", "outsider");
     await expect(selfWarning).toBeVisible();
     await expect(selfWarning).toContainText("Assign user roles");
     await selfWarning.getByRole("button", { name: "Confirm access change" }).click();

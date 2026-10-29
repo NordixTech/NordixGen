@@ -20,7 +20,7 @@ import {headers} from "next/headers";
 import {backendFetch} from "@/lib/backend/transport";
 import {redirect} from "next/navigation";
 const protectedPages:Readonly<Record<string,boolean>>=${JSON.stringify(pages)};
-export interface VerifiedPageSession {user:{id:string;name?:string;email?:string;role?:string|null;permissions?:string[]};session:Record<string,unknown>;}
+export interface VerifiedPageSession {user:{id:string;name?:string;email?:string;role?:string|null;permissions?:string[];globalRoles?:string[];globalPermissions?:string[];organizationId?:string;organizationRoles?:string[];organizationPermissions?:string[]};session:Record<string,unknown>;}
 export class IdentityUnavailable extends Error {constructor(){super("The identity service is unavailable. Please try again.");this.name="IdentityUnavailable";}}
 /** Called at each protected page boundary, including server navigation. No cookie-presence authorization. */
 const readPageSession=cache(async():Promise<VerifiedPageSession|null>=>{
@@ -62,6 +62,7 @@ export async function requireIamAccess(requiredPermission?:"iam:roles:manage"):P
  const principal:unknown=await response.json().catch(()=>null);
  if(!principal||typeof principal!=="object"||!("permissions" in principal)||!Array.isArray(principal.permissions)||!principal.permissions.some(value=>value==="*"||(requiredPermission?value===requiredPermission:value==="iam:roles:manage"||value==="iam:users:manage-roles")))redirect("/");
 }
+${context.api.authentication?.organizations.enabled ? `export async function requireOrganizationAccess(permission:"org:roles:manage"|"org:members:manage"):Promise<void>{const identity=await readPageSession();if(!identity)redirect("/sign-in");const grants=identity.user.organizationPermissions;if(!identity.user.organizationId||!grants?.some(value=>value==="*"||value===permission))redirect("/");}` : ""}
 `,
     },
   ];
@@ -72,8 +73,17 @@ export function protectFrontendPage(
   context: FrontendRenderContext,
   file: GeneratedFile,
 ): GeneratedFile {
-  if (file.path.endsWith("/app/admin/roles/page.tsx") || file.path.endsWith("/app/audit/page.tsx"))
-    return { ...file, content: `export const dynamic="force-dynamic";\n${file.content}` };
+  if (
+    file.path.endsWith("/app/admin/roles/page.tsx") ||
+    file.path.endsWith("/app/audit/page.tsx") ||
+    file.path.includes("/app/organization/settings/")
+  )
+    return {
+      ...file,
+      content: file.content.includes("export const dynamic=")
+        ? file.content
+        : `export const dynamic="force-dynamic";\n${file.content}`,
+    };
   const page = context.frontend.pages.find(
     (page) =>
       file.path ===

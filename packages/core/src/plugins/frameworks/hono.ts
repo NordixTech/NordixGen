@@ -8,7 +8,7 @@ export function backendPaths(applicationRoot: string): BackendPaths {
     entryPoints: { worker: posix.join(codeRoot, "index.ts") },
     scaffold: {
       executable: "pnpm",
-      argumentsBeforeTarget: ["create", "hono@0.19.4"],
+      argumentsBeforeTarget: ["create", "hono@0.19.5"],
       argumentsAfterTarget: ["--template", "cloudflare-workers", "--pm", "pnpm", "--install"],
     },
   };

@@ -202,7 +202,10 @@ describe("generated dynamic IAM", () => {
           fetch: (path: string, init: RequestInit) =>
             fetch(`http://127.0.0.1:${address.port}${path}`, {
               ...init,
-              headers: { ...init.headers, origin: "https://web.example.test" },
+              headers: {
+                ...Object.fromEntries(new Headers(init.headers)),
+                origin: "https://web.example.test",
+              },
             }),
         },
       )("client.ts").iamRequest as (path: string, init?: RequestInit) => Promise<unknown>;
@@ -245,7 +248,7 @@ describe("generated dynamic IAM", () => {
   });
   it("uses the configured administrator role throughout seed, CLI, and IAM protections", () => {
     const config = targetConfig();
-    Object.assign(config.backends[0].authorization, {
+    Object.assign(config.backends[0].authorization.global, {
       roles: ["root-chief", "viewer"],
       adminRole: "root-chief",
       defaultRole: "viewer",
@@ -396,16 +399,16 @@ describe("generated dynamic IAM", () => {
   it("rejects privileged signup defaults, unknown seed permissions, business role locks and platform collisions", () => {
     for (const grant of ["*", "iam:roles:manage", "iam:users:manage-roles"]) {
       const f = fixture();
-      f.config.backends[0].authorization.rolePermissions.viewer = [grant];
+      f.config.backends[0].authorization.global.rolePermissions.viewer = [grant];
       expect(validateNordixConfig(f.config).diagnostics).toContainEqual(
         expect.objectContaining({ code: "DEFAULT_ROLE_PRIVILEGED" }),
       );
     }
     const f = fixture();
-    f.config.backends[0].authorization.defaultRole = "admin";
+    f.config.backends[0].authorization.global.defaultRole = "admin";
     expect(validateNordixConfig(f.config).success).toBe(false);
-    f.config.backends[0].authorization.defaultRole = "viewer";
-    f.config.backends[0].authorization.rolePermissions.admin = ["not:declared"];
+    f.config.backends[0].authorization.global.defaultRole = "viewer";
+    f.config.backends[0].authorization.global.rolePermissions.admin = ["not:declared"];
     expect(validateNordixConfig(f.config).diagnostics).toContainEqual(
       expect.objectContaining({ code: "PERMISSION_UNKNOWN" }),
     );

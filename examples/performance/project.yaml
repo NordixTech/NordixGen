@@ -1,4 +1,4 @@
-# Performance fixture: synthetic workload, one backend and two frontends.
+# Performance fixture: paired global-single and organization single/multiple workloads.
 # Generate into ./generated; generated code, credentials and measurements are not versioned.
 schemaVersion: 2
 name: ng-perf117-1021
@@ -61,57 +61,76 @@ backends:
           window: 15m
           max: 100
     authorization:
-      roles:
-        - admin
-        - manager
-        - operator
-        - customer
-        - guest
-      adminRole: admin
-      defaultRole: guest
-      rolePermissions:
-        manager:
-          - customer:read
-          - customer:write
-          - address:read
-          - address:write
-          - category:read
-          - category:write
-          - product:read
-          - product:write
-          - order:read
-          - order:write
-          - orderitem:read
-          - orderitem:write
-          - payment:read
-          - payment:write
-          - shipment:read
-          - shipment:write
-          - storage:documents:read
-          - storage:assets:read
-          - storage:documents:write
-          - storage:assets:write
-        operator:
-          - customer:read
-          - address:read
-          - category:read
-          - product:read
-          - order:read
-          - orderitem:read
-          - payment:read
-          - shipment:read
-          - storage:documents:read
-          - storage:assets:read
-        customer:
-          - customer:read
-          - address:read
-          - category:read
-          - product:read
-          - order:read
-          - orderitem:read
-          - payment:read
-          - shipment:read
-        guest: []
+      global:
+        enabled: true
+        mode: multiple
+        roles:
+          - admin
+          - manager
+          - operator
+          - customer
+          - guest
+        defaultRole: guest
+        rolePermissions:
+          manager:
+            - storage:documents:read
+            - storage:assets:read
+            - storage:documents:write
+            - storage:assets:write
+          operator:
+            - storage:documents:read
+            - storage:assets:read
+          customer: []
+          guest: []
+        adminRole: admin
+      organizations:
+        enabled: true
+        mode: multiple
+        roles:
+          - owner
+          - manager
+          - operator
+          - customer
+          - guest
+        ownerRole: owner
+        defaultRole: guest
+        rolePermissions:
+          manager:
+            - customer:read
+            - customer:write
+            - address:read
+            - address:write
+            - category:read
+            - category:write
+            - product:read
+            - product:write
+            - order:read
+            - order:write
+            - orderitem:read
+            - orderitem:write
+            - payment:read
+            - payment:write
+            - shipment:read
+            - shipment:write
+          operator:
+            - customer:read
+            - address:read
+            - category:read
+            - product:read
+            - order:read
+            - orderitem:read
+            - payment:read
+            - shipment:read
+          customer:
+            - customer:read
+            - address:read
+            - category:read
+            - product:read
+            - order:read
+            - orderitem:read
+            - payment:read
+            - shipment:read
+          guest: []
 frontends:
   - name: web
     repository: app
@@ -346,6 +365,8 @@ endpoints:
           field: name
         required: false
         operator: contains
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Customer
     operationId: getCustomer
@@ -358,6 +379,8 @@ endpoints:
         field:
           entity: Customer
           field: id
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Customer
     operationId: createCustomer
@@ -370,6 +393,8 @@ endpoints:
       useCase:
         entity: Customer
         operation: create
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Customer
     operationId: updateCustomer
@@ -387,6 +412,8 @@ endpoints:
       useCase:
         entity: Customer
         operation: update
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Address
     operationId: listAddresss
@@ -402,6 +429,8 @@ endpoints:
           field: street
         required: false
         operator: contains
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Address
     operationId: getAddress
@@ -414,6 +443,8 @@ endpoints:
         field:
           entity: Address
           field: id
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Address
     operationId: createAddress
@@ -426,6 +457,8 @@ endpoints:
       useCase:
         entity: Address
         operation: create
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Address
     operationId: updateAddress
@@ -443,6 +476,8 @@ endpoints:
       useCase:
         entity: Address
         operation: update
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Category
     operationId: listCategorys
@@ -458,6 +493,8 @@ endpoints:
           field: name
         required: false
         operator: contains
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Category
     operationId: getCategory
@@ -470,6 +507,8 @@ endpoints:
         field:
           entity: Category
           field: id
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Category
     operationId: createCategory
@@ -482,6 +521,8 @@ endpoints:
       useCase:
         entity: Category
         operation: create
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Category
     operationId: updateCategory
@@ -499,12 +540,14 @@ endpoints:
       useCase:
         entity: Category
         operation: update
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Product
     operationId: listProducts
     method: GET
     path: /api/products
-    authRequired: false
+    authRequired: true
     pagination: standard
     queryParams:
       - name: search
@@ -513,6 +556,7 @@ endpoints:
           field: name
         required: false
         operator: contains
+    scope: organization
   - backend: api
     entity: Product
     operationId: getProduct
@@ -525,6 +569,8 @@ endpoints:
         field:
           entity: Product
           field: id
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Product
     operationId: createProduct
@@ -537,6 +583,8 @@ endpoints:
       useCase:
         entity: Product
         operation: create
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Product
     operationId: updateProduct
@@ -554,6 +602,8 @@ endpoints:
       useCase:
         entity: Product
         operation: update
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Order
     operationId: listOrders
@@ -588,6 +638,8 @@ endpoints:
           field: reference
         required: false
         operator: contains
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Order
     operationId: getOrder
@@ -600,6 +652,8 @@ endpoints:
         field:
           entity: Order
           field: id
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Order
     operationId: createOrder
@@ -612,6 +666,8 @@ endpoints:
       useCase:
         entity: Order
         operation: create
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Order
     operationId: updateOrder
@@ -629,6 +685,8 @@ endpoints:
       useCase:
         entity: Order
         operation: update
+    scope: organization
+    authRequired: true
   - backend: api
     entity: OrderItem
     operationId: listOrderItems
@@ -644,6 +702,8 @@ endpoints:
           field: quantity
         required: false
         operator: eq
+    scope: organization
+    authRequired: true
   - backend: api
     entity: OrderItem
     operationId: getOrderItem
@@ -656,6 +716,8 @@ endpoints:
         field:
           entity: OrderItem
           field: id
+    scope: organization
+    authRequired: true
   - backend: api
     entity: OrderItem
     operationId: createOrderItem
@@ -668,6 +730,8 @@ endpoints:
       useCase:
         entity: OrderItem
         operation: create
+    scope: organization
+    authRequired: true
   - backend: api
     entity: OrderItem
     operationId: updateOrderItem
@@ -685,6 +749,8 @@ endpoints:
       useCase:
         entity: OrderItem
         operation: update
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Payment
     operationId: listPayments
@@ -700,6 +766,8 @@ endpoints:
           field: amount
         required: false
         operator: eq
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Payment
     operationId: getPayment
@@ -712,6 +780,8 @@ endpoints:
         field:
           entity: Payment
           field: id
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Payment
     operationId: createPayment
@@ -724,6 +794,8 @@ endpoints:
       useCase:
         entity: Payment
         operation: create
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Payment
     operationId: updatePayment
@@ -741,6 +813,8 @@ endpoints:
       useCase:
         entity: Payment
         operation: update
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Shipment
     operationId: listShipments
@@ -756,6 +830,8 @@ endpoints:
           field: trackingCode
         required: false
         operator: contains
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Shipment
     operationId: getShipment
@@ -768,6 +844,8 @@ endpoints:
         field:
           entity: Shipment
           field: id
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Shipment
     operationId: createShipment
@@ -780,6 +858,8 @@ endpoints:
       useCase:
         entity: Shipment
         operation: create
+    scope: organization
+    authRequired: true
   - backend: api
     entity: Shipment
     operationId: updateShipment
@@ -797,3 +877,5 @@ endpoints:
       useCase:
         entity: Shipment
         operation: update
+    scope: organization
+    authRequired: true

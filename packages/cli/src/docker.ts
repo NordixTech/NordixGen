@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import type { ResolvedProject } from "@nordixgen/core";
+import type { ResolvedProject } from "@nordix-tech/nordixgen-core";
 import { stringify } from "yaml";
 
 type Repository = ResolvedProject["repositories"][number];
@@ -20,7 +20,7 @@ const copy = (source: string, target: string, stage?: string) =>
   `COPY ${stage ? `--from=${stage} --chown=nextjs:nodejs ` : ""}${JSON.stringify([source, target])}`;
 const base = [
   "# Local development image. Build with the repository root as context.",
-  "FROM node:24-bookworm-slim AS deps",
+  "FROM node:24.22.1-bookworm-slim AS deps",
   "RUN npm install --global pnpm@10.5.2",
   "WORKDIR /workspace",
   "COPY . .",
@@ -30,7 +30,7 @@ const base = [
 ];
 const runner = [
   "",
-  "FROM node:24-bookworm-slim AS runner",
+  "FROM node:24.22.1-bookworm-slim AS runner",
   "ENV NODE_ENV=production",
   "RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nextjs",
   "WORKDIR /app",

@@ -201,10 +201,12 @@ export function createSecuredConfig() {
   Object.assign(config.backends[0], {
     authentication: {},
     authorization: {
-      roles: ["admin", "viewer"],
-      adminRole: "admin",
-      defaultRole: "viewer",
-      rolePermissions: { viewer: [] },
+      global: {
+        roles: ["admin", "viewer"],
+        adminRole: "admin",
+        defaultRole: "viewer",
+        rolePermissions: { viewer: [] },
+      },
     },
   });
   return config;

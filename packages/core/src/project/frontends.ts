@@ -68,6 +68,7 @@ export function transportOperation(operation: ResolvedOperation): TransportOpera
     path: operation.path,
     ...(operation.summary === undefined ? {} : { summary: operation.summary }),
     authRequired: operation.authRequired,
+    scope: operation.access.scope,
     roles: operation.roles,
     permissions: operation.permissions,
     pathParams: operation.pathParams.map(parameter),
@@ -216,8 +217,15 @@ export function resolveFrontend(
   if (storageBackends.length) inventory.add("/r2");
   for (const operation of visible) inventory.add(entities[operation.entity].page);
   if (identity) {
-    inventory.add("/admin/roles");
-    inventory.add("/audit");
+    if (identity.global.enabled) {
+      inventory.add("/admin/roles");
+      inventory.add("/audit");
+    }
+    if (identity.organizations.enabled) {
+      inventory.add("/organization/settings/roles");
+      inventory.add("/organization/settings/members");
+      inventory.add("/organization/invitations/accept");
+    }
     inventory.add("/sign-in");
     inventory.add("/sign-up");
     if (identity.methods.includes("email-password")) {
@@ -232,6 +240,7 @@ export function resolveFrontend(
     path === "/sign-up" ||
     path === "/forgot-password" ||
     path === "/reset-password" ||
+    path === "/organization/invitations/accept" ||
     (frontend.access.mode === "mixed" &&
       (frontend.access.publicRoutes ?? []).some((pattern) =>
         pattern.endsWith("/**")
@@ -264,6 +273,7 @@ export function resolveFrontend(
         path === "/admin/roles" ||
         path === "/audit" ||
         path === "/profile" ||
+        path.startsWith("/organization/settings/") ||
         (path === "/r2" && Boolean(identity)) ||
         !publicPage(path),
     })),

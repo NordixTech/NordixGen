@@ -1,67 +1,47 @@
-# Configuration validation and evidence
+# Validation
 
-The approved [YAML v2 contract](YAML_V2.md) is implemented by the core Zod schema and semantic validators. Internal test fixtures cover single and mixed architecture scenarios. Acceptance of a configuration does not imply that its project can currently be generated.
-
-## Current generation boundary
-
-`parseNordixYaml(source, filename)` and `validateNordixConfig(input)` check configuration independently of generation readiness. `resolveProjectYaml` and `resolveProject` additionally build the [shared resolved model](RESOLVED_MODEL.md). Both CLI `validate` and `generate` require the same resolution and readiness. Supported generation and failure behavior:
-
-- One or multiple Clean, Hexagonal and Onion modules per backend generate through the [direct flow](../generation/DIRECT_BACKEND.md), including explicit typed public module calls.
-- Architecture choices select explicit built-in layouts and ports; there is no fallback or plugin discovery.
-- Many-to-many reports `RELATION_MAPPING_UNIMPLEMENTED`; no partial join table is emitted.
-- Syntax, structure, reference and stored-cycle errors precede readiness. Unsupported or invalid input exits with status 1.
-
-For invalid or unsupported input, the CLI creates no output directory and starts no scaffolding, dependency installation, Git command or remote publication. `init` writes a canonical ready starter and refuses overwrites. Supported input uses the direct modular pipeline; no legacy backend-wide path or architecture fallback exists.
-
-## Diagnostic categories
-
-Messages are English, identify a configuration path, explain the failure and provide a corrective action. YAML input additionally supplies source file, line and column at the offending node or nearest existing parent. Object API input provides paths without source coordinates. Parser errors omit source excerpts and raw internal exceptions.
-
-| Contract category | Implemented codes / behavior |
-| --- | --- |
-| Syntax, duplicate YAML keys | `YAML_SYNTAX_ERROR`, with parser location |
-| Unsupported mapping key, merge, tag, excessive alias expansion | `YAML_MAPPING_KEY_INVALID`, `YAML_MERGE_UNSUPPORTED`, `YAML_TAG_UNSUPPORTED`, `YAML_CONVERSION_ERROR` |
-| Cyclic or excessive configuration data | `CONFIG_DATA_CYCLE`, `CONFIG_DATA_LIMIT` |
-| Version, required/type/unknown/removed fields | `CONFIG_VERSION_UNSUPPORTED`, `CONFIG_FIELD_REQUIRED`, `CONFIG_FIELD_TYPE_INVALID`, `CONFIG_FIELD_UNKNOWN`, `CONFIG_FIELD_REMOVED` |
-| Unsupported enum/literal, malformed shape/identifier | `CONFIG_VALUE_UNSUPPORTED`, `CONFIG_FIELD_INVALID`; architecture spelling uses `MODULE_ARCHITECTURE_INVALID` |
-| Database ownership | `DATABASE_SHARED_ACROSS_BACKENDS` rejects every colliding `backends[i].persistence.database` reference, names all owners and recommends distinct resources or one modular monolith; unknown resources retain `UNKNOWN_BACKEND_DATABASE` |
-| Ownership | `ENTITY_OWNER_MISSING`, `ENTITY_OWNER_DUPLICATE`, `ENTITY_OWNER_BACKEND_MISMATCH`, `UNKNOWN_MODULE_ENTITY` |
-| Imports/exports and module graph | `MODULE_IMPORT_UNKNOWN`, `MODULE_IMPORT_NOT_EXPORTED`, `MODULE_IMPORT_SELF`, `MODULE_EXPORT_UNKNOWN`, `MODULE_EXPORT_OWNER_MISMATCH`, `MODULE_DEPENDENCY_CYCLE` |
-| Cross-module data access | `CROSS_MODULE_RELATION`, `CROSS_MODULE_JOIN`, `CROSS_MODULE_FIELD_REFERENCE` |
-| Generated names, explicit routes and inputs | `GENERATED_NAME_COLLISION`, `DUPLICATE_OPERATION_ID`, `DUPLICATE_ENDPOINT`, `OPERATION_INPUT_COLLISION`, `ENDPOINT_PATH_PARAMETERS_INVALID` |
-| Pagination and writes | `UNKNOWN_PAGINATION_PROFILE`, `PAGINATION_PROFILE_INVALID`, `PAGINATION_PARAMETER_CONFLICT`, `MUTATION_GUARD_REQUIRED`, `OPERATION_MAPPING_UNSUPPORTED` |
-| Identity and policies | `AUTHENTICATION_REQUIRED`, `ACCESS_POLICY_CONFLICT`, `ENDPOINT_ROLES_REMOVED`, `ROLE_UNKNOWN`, `PERMISSION_UNKNOWN`, `DEFAULT_ROLE_UNKNOWN`, `DEFAULT_ROLE_PRIVILEGED`, plus specific method, grant and persistence errors |
-| Frontend authority/pages | `FRONTEND_BACKEND_UNKNOWN`, `FRONTEND_IDENTITY_REQUIRED`, `FRONTEND_IDENTITY_INVALID`, `FRONTEND_IDENTITY_AMBIGUOUS`, `FRONTEND_IDENTITY_MISMATCH`, `FRONTEND_ACCESS_ROUTE_INVALID` |
-
-The reference's `MODULE_PRIVATE_IMPORT`, `MODULE_DEPENDENCY_UNDECLARED` and `ARCHITECTURE_DEPENDENCY_INVALID` concern generated/authored source boundaries, not YAML declarations. Those source checks belong with module generation. Module cycles and stored-foreign-key cycles have separate resolved graphs. `RELATION_CYCLE` identifies an actual stored cycle, including self-cycles, at its source relation; inverse relations and scalar identifiers do not create stored dependencies.
-
-Unused declared databases are allowed. Their resolved database record omits `backend`; used resources record their exclusive backend name. Shared resources fail configuration validation and project resolution before readiness, regardless of `requireGeneration`.
-
-## Executable evidence
-
-Run from the repository root using Node.js 24 and pnpm 10.5.2:
+Validate a configuration before generating:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm lint
-pnpm typecheck
-pnpm build
-pnpm test
+node packages/cli/dist/index.js validate -f nordix.config.yaml
 ```
 
-| Checks | Evidence supplied |
+A successful result means the configuration can be resolved and its requested mappings are supported for generation. It does not test your cloud credentials, provider availability or production application behavior.
+
+## What is checked?
+
+1. **YAML:** syntax, duplicate keys and unsafe constructs.
+2. **Structure:** required fields, types, defaults, supported values and unknown keys.
+3. **References:** repositories, databases, entities, modules, routes and permissions.
+4. **Generation support:** whether requested operations/relations have supported mappings.
+
+`generate` uses the same checks. Invalid/unsupported input fails before creating output or starting scaffold/install/publication commands. External tools may still fail later and leave partial output for inspection.
+
+## Read diagnostics
+
+Diagnostics use English messages with a configuration path and corrective action. YAML input also includes file, line and column; object API input has paths without source coordinates.
+
+| Code / category | Common correction |
 | --- | --- |
-| `schema`, `validation`, `entity-validation`, `operation-validation`, `persistence`, `access-validation` | Approved examples; strict selectors/defaults; safe project placement; ownership/import/export/cycle rules; relationship/FK/name conflicts; typed/default values; explicit endpoint mappings, pagination, policies and page access; deterministic multiple failures and no structural cascades; YAML safety and source mapping |
-| `json-schema` | Exact equality of generated editor schema and runtime definitions, modules/families present and retired selectors absent |
-| CLI initialization/preflight | Starter round trip, prompt cancellation, overwrite protection, invalid input and unavailable generation exit status/messages; no output/runner side effects |
-| `resolved-project`, `resolution-contract-cases`, `reference-dictionaries` | Ownership and stable scoped views; deep immutability without mutating caller defaults; concrete fields/defaults, flat inputs, public signatures, policies, projections and separate graphs; canonical serialization; prototype-name references and unknown roles |
-| Concrete renderer suites | Executable generated Hono handlers: decoded flat inputs, Date/UTC round trips, explicit nullable response fields, strict query/body guards, malformed JSON and safe errors. Generated application modules and frontend client/types/explorer compile; compiler assertions verify nullable fields and wire dates. Focused tests control external boundaries; separate persistence and commerce checks use real PostgreSQL and browser sessions |
-| Documentation/sketch suites | Sample syntax/links, typechecked authored module communication and executable policy propagation sketch; these do not stand in for generated modular integration |
+| `YAML_SYNTAX_ERROR` | Fix syntax or duplicate mapping keys |
+| `CONFIG_FIELD_UNKNOWN` | Remove an unsupported key; check the current reference |
+| `CONFIG_VERSION_UNSUPPORTED` | Use `schemaVersion: 2` |
+| `DATABASE_SHARED_ACROSS_BACKENDS` | Give each persisted backend a dedicated resource |
+| `ENTITY_OWNER_MISSING` / `ENTITY_OWNER_DUPLICATE` | Assign each entity to exactly one module |
+| `MODULE_IMPORT_NOT_EXPORTED` | Export the operation from its owning module |
+| `MODULE_DEPENDENCY_CYCLE` | Remove a synchronous import cycle |
+| `CROSS_MODULE_RELATION` / `CROSS_MODULE_JOIN` | Keep SQL relationships inside module ownership |
+| `RELATION_CYCLE` | Break the stored foreign-key cycle |
+| `RELATION_MAPPING_UNIMPLEMENTED` | Avoid unsupported many-to-many generation |
+| `MUTATION_GUARD_REQUIRED` | Add a required main-entity equality binding to update/delete |
+| `OPERATION_MAPPING_UNSUPPORTED` | Use a supported endpoint mapping or author behavior after generation |
+| `FRONTEND_IDENTITY_AMBIGUOUS` | Select `access.backend` explicitly |
+| Permission/access errors | Declare known grants and compatible identity policies |
 
-Retired IR, registry/capability and inferred-field assertions have been replaced with diagnostics and valid-model functional checks. Prototype-name references are rejected; undeclared frontend/backend roles fail closed. Internal concrete renderers remain ordinary functions, not selectable library implementations. Checks and CI jobs describe functionality, never issue numbers.
+Names are checked after generated normalization too. A case-sensitive YAML name may still collide with another generated file/symbol. Change the declaration instead of relying on automatic renaming.
 
-Coverage includes all core source files, including the resolver, without new exclusions. The existing gates remain unchanged: minimum 98% lines/statements/branches and 99% functions. Coverage supports functional evidence; it does not prove every generated-project behavior. The existing CI order remains aligned: lint, typecheck, package build and tests, rebuilding core before CLI integration.
+## Common limits
 
-TypeScript rejects unused locals and parameters in core/CLI production code. The documentation suite checks local links across maintained guides and READMEs; the public API suite generates both commerce applications through supported package entry points and rejects leaked renderer extension exports.
+Old schemas are rejected rather than converted. Stored-FK and synchronous module cycles are unsupported. Relations and joins stay module-local. Clean, Hexagonal and Onion may coexist; architecture does not relax ownership rules.
 
-CI runs lint, typecheck, build, unit tests, isolated PostgreSQL persistence tests, generated application acceptance and Docker verification. Run `pnpm test:acceptance` with Docker and Chromium available for fresh application verification; artifacts include revision, stages and behavior results. Omitted local persistence tests are not counted as database evidence.
+Generation requires a new/empty destination and does not overwrite edited applications. Run [application checks](../EXTENDING_PROJECTS.md) after continuing development.

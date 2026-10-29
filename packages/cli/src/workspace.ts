@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { type ResolvedProject, WORKSPACE_TOOLING } from "@nordixgen/core";
+import { type ResolvedProject, WORKSPACE_TOOLING } from "@nordix-tech/nordixgen-core";
 import { type ParseError, parse } from "jsonc-parser";
 import { authenticationReadme } from "./authentication-readme.js";
 import { deploymentFiles, deploymentReadme, deploymentScripts } from "./deployment.js";
@@ -69,7 +69,7 @@ export function applicationManifest(
           "db:generate": "drizzle-kit generate",
           "db:migrate": "tsx src/platform/database/migrate.ts",
           "db:seed": "tsx src/platform/database/seed.ts",
-          ...(app.runtime["better-auth"]
+          ...(app.globalAuthorization
             ? { "auth:create-admin": "tsx src/platform/authorization/create-admin.ts" }
             : {}),
         }
@@ -133,6 +133,7 @@ export async function finishWorkspace(
     );
   const manifestPath = join(directory, "package.json");
   const rootManifest = JSON.parse(await readFile(manifestPath, "utf8")) as Manifest;
+  rootManifest.pnpm = { overrides: WORKSPACE_TOOLING.overrides };
   const scripts = stringRecord(rootManifest.scripts, "scripts");
   for (const [name, command] of Object.entries({
     ...dockerScripts,
