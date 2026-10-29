@@ -60,6 +60,7 @@ export function pnpm(args, options) {
 export async function registryPackage(name, version) {
   const response = await fetch(
     `https://registry.npmjs.org/${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
+    { headers: { "cache-control": "no-cache" } },
   );
   if (response.status === 404) return null;
   if (!response.ok)
