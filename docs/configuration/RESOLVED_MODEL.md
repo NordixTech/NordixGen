@@ -1,12 +1,12 @@
 # Core API
 
-Use `@nordixgen/core` to validate configuration, resolve a typed project and prepare generated files in memory. The CLI adds filesystem changes and external commands.
+Use `@nordix-tech/nordixgen-core` to validate configuration, resolve a typed project and prepare generated files in memory. The CLI adds filesystem changes and external commands.
 
 ## Resolve YAML
 
 ```ts
 import { readFile } from "node:fs/promises";
-import { resolveProjectYaml, backendView, formatDiagnostic } from "@nordixgen/core";
+import { resolveProjectYaml, backendView, formatDiagnostic } from "@nordix-tech/nordixgen-core";
 
 const filename = "nordix.config.yaml";
 const result = resolveProjectYaml(await readFile(filename, "utf8"), filename, {

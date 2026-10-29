@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import type { ResolvedProject } from "@nordixgen/core";
+import type { ResolvedProject } from "@nordix-tech/nordixgen-core";
 import { stringify } from "yaml";
 
 type Repository = ResolvedProject["repositories"][number];

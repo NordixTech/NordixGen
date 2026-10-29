@@ -6,17 +6,18 @@ Create a small notes application, then add the features you need.
 
 Install Node.js 24.22.1+, pnpm 10.5.2 and Git. Set a Git author name and email; generation creates an initial commit. Network access is required to download scaffolders and dependencies.
 
-In the NordixGen checkout:
+Install the public CLI:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm build
+npm install -g @nordix-tech/nordixgen
 ```
+
+You can also run `npx @nordix-tech/nordixgen@latest init` without a global installation; use the same prefix for `validate` and `generate`. Use an explicit version instead of `latest` when you need repeatable generator behavior.
 
 ## 2. Create a configuration
 
 ```bash
-node packages/cli/dist/index.js init
+nordixgen init
 ```
 
 Choose a name and enable a frontend when prompted. The starter includes a database-backed example with public list/create operations. Keep its default filename, `nordix.config.yaml`, for the commands below.
@@ -72,8 +73,8 @@ The entity defines stored data. The endpoints define the API and the actions ava
 ## 3. Validate and generate
 
 ```bash
-node packages/cli/dist/index.js validate -f nordix.config.yaml
-node packages/cli/dist/index.js generate -f nordix.config.yaml -o ./my-project
+nordixgen validate -f nordix.config.yaml
+nordixgen generate -f nordix.config.yaml -o ./my-project
 ```
 
 The output directory must be new or empty. Generation installs dependencies, checks application types and backend boundaries, then initializes Git. It does not create cloud resources. If an external command fails, inspect its error and retry with an empty target after fixing the cause.

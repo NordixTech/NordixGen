@@ -2,6 +2,10 @@
 
 Use Node.js 24.22.1+ and pnpm 10.5.2. The workspace has two packages: [core](../packages/core/README.md) validates/resolves and renders; [CLI](../packages/cli/README.md) owns filesystem changes, processes and publication.
 
+For a source checkout, clone this repository and install its dependencies with `pnpm install --frozen-lockfile`; build with `pnpm build` and run `node packages/cli/dist/index.js init`. Public npm users do not need this checkout.
+
+Release setup and recovery are documented in [Publishing](PUBLISHING.md).
+
 ## Run checks
 
 From the repository root:
@@ -17,7 +21,7 @@ pnpm test
 For documentation-only changes:
 
 ```bash
-pnpm --filter @nordixgen/core exec vitest run tests/configuration-documentation.test.ts
+pnpm --filter @nordix-tech/nordixgen-core exec vitest run tests/configuration-documentation.test.ts
 ```
 
 The documentation suite checks examples, local links and the typed communication sample. Also review anchors, technical claims and whether partial snippets are clearly labeled.

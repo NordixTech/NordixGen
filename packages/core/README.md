@@ -1,9 +1,9 @@
-# @nordixgen/core
+# @nordix-tech/nordixgen-core
 
 The core library validates YAML v2, resolves a readonly project model and prepares backend/frontend output in memory.
 
 ```ts
-import { resolveProjectYaml, generateBackend } from "@nordixgen/core";
+import { resolveProjectYaml, generateBackend } from "@nordix-tech/nordixgen-core";
 
 const result = resolveProjectYaml(source, "nordix.config.yaml", {
   requireGeneration: true,

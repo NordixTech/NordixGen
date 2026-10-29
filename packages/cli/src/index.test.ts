@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { CLI_VERSION, checkNodeRuntime, createProgram } from "./index.js";
 
-describe("@nordixgen/cli", () => {
+describe("@nordix-tech/nordixgen", () => {
   it("rejects unpatched Node 24 releases before running generation", () => {
     const warning = vi.spyOn(console, "error").mockImplementation(() => {});
     try {

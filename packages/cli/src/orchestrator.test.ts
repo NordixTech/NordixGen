@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import * as prompts from "@clack/prompts";
-import { parseNordixYaml, stringifyNordixYaml } from "@nordixgen/core";
+import { parseNordixYaml, stringifyNordixYaml } from "@nordix-tech/nordixgen-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureCommand } from "../tests/scaffold-fixture.js";
 import { createProgram } from "./index.js";
@@ -39,6 +39,32 @@ afterEach(async () => {
 });
 
 describe("canonical configuration initialization and command preflight", () => {
+  it("initializes from explicit CLI options without prompts and preserves existing files", async () => {
+    const destination = join(await temporary(), "config.yaml");
+    const args = [
+      "node",
+      "nordixgen",
+      "init",
+      "--name",
+      "package-app",
+      "--frontend",
+      "no",
+      "--file",
+      destination,
+    ];
+    await createProgram().parseAsync(args);
+    const source = await readFile(destination, "utf8");
+    const parsed = parseNordixYaml(source);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.config.frontends).toHaveLength(0);
+    expect(prompts.text).not.toHaveBeenCalled();
+    expect(prompts.select).not.toHaveBeenCalled();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await createProgram().parseAsync(args);
+    expect(process.exitCode).toBe(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("File already exists"));
+    expect(await readFile(destination, "utf8")).toBe(source);
+  });
   it.each([
     ["cycle", "RELATION_CYCLE"],
     ["association", "RELATION_MAPPING_UNIMPLEMENTED"],
