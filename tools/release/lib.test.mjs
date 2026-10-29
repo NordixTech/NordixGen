@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareVersions, releaseVersion, verifyPublished } from "./lib.mjs";
+import { compareVersions, registryPackage, releaseVersion, verifyPublished } from "./lib.mjs";
 
 test("workflow runs produce increasing fixed versions and retries reuse the same version", () => {
   assert.equal(releaseVersion("0.1.0", "15"), "0.1.15");
@@ -13,6 +13,24 @@ test("invalid release inputs cannot allocate a version", () => {
   for (const value of [undefined, "", "0", "-1", "2.5", "abc"])
     assert.throws(() => releaseVersion("0.1.0", value));
   assert.throws(() => releaseVersion("0.1.0-beta.1", "1"));
+});
+
+test("registry checks refresh metadata and distinguish a missing version from registry failures", async (context) => {
+  let status = 404;
+  context.mock.method(globalThis, "fetch", async (_url, options) => {
+    assert.equal(options.headers["cache-control"], "no-cache");
+    return new Response(JSON.stringify({ version: "0.1.15" }), { status });
+  });
+  assert.equal(await registryPackage("@nordix-tech/nordixgen", "0.1.15"), null);
+  status = 200;
+  assert.deepEqual(await registryPackage("@nordix-tech/nordixgen", "0.1.15"), {
+    version: "0.1.15",
+  });
+  for (status of [403, 429, 500])
+    await assert.rejects(
+      registryPackage("@nordix-tech/nordixgen", "0.1.15"),
+      /npm registry returned/,
+    );
 });
 
 test("an older retry must not move latest backwards across patch, minor or major releases", () => {
