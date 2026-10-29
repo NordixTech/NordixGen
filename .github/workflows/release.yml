@@ -58,7 +58,7 @@ jobs:
           pnpm test:package
       - uses: actions/upload-artifact@v4
         with:
-          name: npm-release-${{ github.run_id }}
+          name: npm-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/release/*.tgz
             tmp/release/plan.json
