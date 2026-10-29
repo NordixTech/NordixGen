@@ -13,7 +13,7 @@ const result = spawnSync(
   [
     pnpm,
     "--filter",
-    "@nordixgen/core",
+    "@nordix-tech/nordixgen-core",
     "exec",
     "vitest",
     "run",

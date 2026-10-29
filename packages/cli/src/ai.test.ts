@@ -1,4 +1,4 @@
-import { parseNordixYaml, resolveProject } from "@nordixgen/core";
+import { parseNordixYaml, resolveProject } from "@nordix-tech/nordixgen-core";
 import { describe, expect, it } from "vitest";
 import { deploymentManifest } from "./deployment.js";
 import { dockerFiles } from "./docker.js";

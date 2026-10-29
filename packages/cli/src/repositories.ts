@@ -1,4 +1,4 @@
-import type { ResolvedProject } from "@nordixgen/core";
+import type { ResolvedProject } from "@nordix-tech/nordixgen-core";
 import { inside } from "./filesystem.js";
 import { type CommandRunner, checkedCommand, safeFailure } from "./process.js";
 interface PublicationSettings {

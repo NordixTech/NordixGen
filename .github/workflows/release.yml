@@ -2,57 +2,69 @@ name: Release & Publish NPM
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+# Keep pending pushes instead of replacing the previous pending release.
+concurrency:
+  group: npm-release-main
+  queue: max
+
+permissions:
+  contents: read
 
 jobs:
-  release:
-    name: Build & Publish to NPM (Provenance OIDC)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
+  checks:
+    uses: ./.github/workflows/ci.yml
 
+  release:
+    name: Verify packages and publish to npm
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GIT_AUTHOR_NAME: NordixGen release
+      GIT_AUTHOR_EMAIL: release@nordixgen.invalid
+      GIT_COMMITTER_NAME: NordixGen release
+      GIT_COMMITTER_EMAIL: release@nordixgen.invalid
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 10.5.2
-
-      - name: Setup Node.js (Active LTS 24)
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24.22.1
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'pnpm'
-
+          registry-url: https://registry.npmjs.org
       - name: Ensure npm supports trusted publishing
-        run: npm install --global 'npm@^11.5.1'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Validate code quality & run tests
+        run: npm install --global npm@11.19.0
+      - run: pnpm install --frozen-lockfile
+      - name: Allocate this workflow run's fixed version
+        run: pnpm release:prepare
+      - name: Build distributable packages
+        run: pnpm build
+      - name: Pack and test outside the repository
         run: |
-          pnpm lint
-          pnpm typecheck
-          pnpm build
-          pnpm test
-
-      - name: Pack workspace packages
+          git config --global user.name "$GIT_AUTHOR_NAME"
+          git config --global user.email "$GIT_AUTHOR_EMAIL"
+          pnpm release:pack
+          pnpm test:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-release-${{ github.run_id }}
+          path: |
+            tmp/release/*.tgz
+            tmp/release/plan.json
+      - name: Publish with OIDC, then promote latest and create GitHub Release
+        run: pnpm release:publish
+      - name: Verify the public registry installation
         run: |
-          mkdir -p "$RUNNER_TEMP/nordixgen-core" "$RUNNER_TEMP/nordixgen-cli"
-          pnpm --dir packages/core pack --pack-destination "$RUNNER_TEMP/nordixgen-core"
-          pnpm --dir packages/cli pack --pack-destination "$RUNNER_TEMP/nordixgen-cli"
-
-      - name: Publish packages to npm with Trusted Publishing
-        run: |
-          npm publish "$RUNNER_TEMP/nordixgen-core"/*.tgz --access public
-          npm publish "$RUNNER_TEMP/nordixgen-cli"/*.tgz --access public
+          VERSION=$(node -p 'JSON.parse(require("node:fs").readFileSync("tmp/release/plan.json", "utf8")).version')
+          pnpm test:package "$VERSION"

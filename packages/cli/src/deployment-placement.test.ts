@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { select } from "@clack/prompts";
-import { resolveProjectYaml } from "@nordixgen/core";
+import { resolveProjectYaml } from "@nordix-tech/nordixgen-core";
 import { execa } from "execa";
 import { parse } from "jsonc-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -1,5 +1,5 @@
 {
-  "name": "@nordixgen/core",
+  "name": "@nordix-tech/nordixgen-core",
   "version": "0.1.0",
   "description": "Configuration validation, shared resolved project model, and deterministic virtual file system for NordixGen",
   "repository": {
@@ -17,7 +17,8 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
   "engines": {
     "node": ">=24.22.1"
   },

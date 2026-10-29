@@ -38,7 +38,7 @@ importers:
       '@clack/prompts':
         specifier: ^0.11.0
         version: 0.11.0
-      '@nordixgen/core':
+      '@nordix-tech/nordixgen-core':
         specifier: workspace:*
         version: link:../core
       aws4fetch:

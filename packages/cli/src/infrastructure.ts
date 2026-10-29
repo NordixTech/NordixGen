@@ -1,5 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { type ResolvedProject, cloudflareWorkerName, r2BucketName } from "@nordixgen/core";
+import {
+  type ResolvedProject,
+  cloudflareWorkerName,
+  r2BucketName,
+} from "@nordix-tech/nordixgen-core";
 
 /** Infrastructure ownership is project-wide: shared buckets are never duplicated across repositories. */
 export function infrastructureManifest(project: ResolvedProject, repository: string) {

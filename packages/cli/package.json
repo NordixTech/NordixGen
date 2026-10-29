@@ -1,5 +1,5 @@
 {
-  "name": "@nordixgen/cli",
+  "name": "@nordix-tech/nordixgen",
   "version": "0.1.0",
   "description": "Command line interface and interactive project generator for NordixGen",
   "repository": {
@@ -13,7 +13,16 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/index.d.ts",
+    "dist/cicd-assistant.js",
+    "dist/infrastructure-runner.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
   "engines": {
     "node": ">=24.22.1"
   },
@@ -30,7 +39,7 @@
   "license": "MIT",
   "dependencies": {
     "@clack/prompts": "^0.11.0",
-    "@nordixgen/core": "workspace:*",
+    "@nordix-tech/nordixgen-core": "workspace:*",
     "aws4fetch": "1.0.20",
     "commander": "^14.0.0",
     "execa": "^9.6.0",

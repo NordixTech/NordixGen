@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { type ResolvedProject, WORKSPACE_TOOLING } from "@nordixgen/core";
+import { type ResolvedProject, WORKSPACE_TOOLING } from "@nordix-tech/nordixgen-core";
 import { type ParseError, parse } from "jsonc-parser";
 import { authenticationReadme } from "./authentication-readme.js";
 import { deploymentFiles, deploymentReadme, deploymentScripts } from "./deployment.js";

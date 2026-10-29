@@ -5,7 +5,7 @@ import {
   formatDiagnostic,
   generateBackend,
   generateFrontend,
-} from "@nordixgen/core";
+} from "@nordix-tech/nordixgen-core";
 import { ensureNewOrEmpty, existingParent, inside } from "./filesystem.js";
 import type { PreparedApplication } from "./generation-types.js";
 import { type CommandRunner, checkedCommand } from "./process.js";

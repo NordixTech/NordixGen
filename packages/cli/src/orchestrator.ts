@@ -1,7 +1,11 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { intro, isCancel, outro, select, text } from "@clack/prompts";
-import { formatDiagnostic, resolveProjectYaml, stringifyNordixYaml } from "@nordixgen/core";
+import {
+  formatDiagnostic,
+  resolveProjectYaml,
+  stringifyNordixYaml,
+} from "@nordix-tech/nordixgen-core";
 import { executeGeneration } from "./execution.js";
 import { type CommandRunner, runCommand } from "./process.js";
 
@@ -76,36 +80,44 @@ export function createStarterConfiguration(name: string, includeFrontend: boolea
     ],
   });
 }
-export async function runInit(): Promise<void> {
+export async function runInit(
+  options: { name?: string; frontend?: boolean; file?: string } = {},
+): Promise<void> {
   intro("Create a NordixGen configuration");
-  const name = await text({
-    message: "Project name",
-    placeholder: "my-project",
-    validate: (value) =>
-      /^[a-z][a-z0-9-]*$/.test(value)
-        ? undefined
-        : "Use lowercase letters, digits and hyphens; start with a letter.",
-  });
+  const name =
+    options.name ??
+    (await text({
+      message: "Project name",
+      placeholder: "my-project",
+      validate: (value) =>
+        /^[a-z][a-z0-9-]*$/.test(value)
+          ? undefined
+          : "Use lowercase letters, digits and hyphens; start with a letter.",
+    }));
   if (isCancel(name)) {
     outro("Setup cancelled.");
     return;
   }
-  const frontend = await select({
-    message: "Include a frontend?",
-    options: [
-      { value: true, label: "Yes" },
-      { value: false, label: "No" },
-    ],
-  });
+  const frontend =
+    options.frontend ??
+    (await select({
+      message: "Include a frontend?",
+      options: [
+        { value: true, label: "Yes" },
+        { value: false, label: "No" },
+      ],
+    }));
   if (isCancel(frontend)) {
     outro("Setup cancelled.");
     return;
   }
-  const output = await text({
-    message: "Configuration path",
-    defaultValue: "nordix.config.yaml",
-    placeholder: "nordix.config.yaml",
-  });
+  const output =
+    options.file ??
+    (await text({
+      message: "Configuration path",
+      defaultValue: "nordix.config.yaml",
+      placeholder: "nordix.config.yaml",
+    }));
   if (isCancel(output)) {
     outro("Setup cancelled.");
     return;

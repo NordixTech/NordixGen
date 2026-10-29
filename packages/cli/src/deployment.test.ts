@@ -5,7 +5,7 @@ import {
   parseNordixYaml,
   resolveProjectYaml,
   stringifyNordixYaml,
-} from "@nordixgen/core";
+} from "@nordix-tech/nordixgen-core";
 import { execa } from "execa";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

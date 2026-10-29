@@ -2,7 +2,11 @@ import { createHmac } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseNordixYaml, resolveProjectYaml, stringifyNordixYaml } from "@nordixgen/core";
+import {
+  parseNordixYaml,
+  resolveProjectYaml,
+  stringifyNordixYaml,
+} from "@nordix-tech/nordixgen-core";
 import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeploymentManifest } from "./deployment-model.js";

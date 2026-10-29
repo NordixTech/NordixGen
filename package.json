@@ -19,9 +19,14 @@
     }
   },
   "scripts": {
+    "release:prepare": "node tools/release/release.mjs prepare",
+    "release:pack": "node tools/release/release.mjs pack",
+    "release:publish": "node tools/release/release.mjs publish",
+    "test:release": "node --test tools/release/lib.test.mjs",
+    "test:package": "node tools/release/smoke.mjs",
     "build": "pnpm --filter \"./packages/*\" build",
     "test": "pnpm --filter \"./packages/*\" test",
-    "generate:schema": "pnpm --filter @nordixgen/core generate:schema",
+    "generate:schema": "pnpm --filter @nordix-tech/nordixgen-core generate:schema",
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "tsc --build",

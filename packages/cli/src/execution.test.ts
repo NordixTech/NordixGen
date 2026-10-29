@@ -6,7 +6,7 @@ import {
   parseNordixYaml,
   resolveProjectYaml,
   stringifyNordixYaml,
-} from "@nordixgen/core";
+} from "@nordix-tech/nordixgen-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureCommand } from "../tests/scaffold-fixture.js";
 import { createStarterConfiguration, runGenerate } from "./orchestrator.js";

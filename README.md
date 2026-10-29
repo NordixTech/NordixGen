@@ -9,12 +9,13 @@ NordixGen is built by Nordix to make client-project setup consistent. Define the
 Use Node.js 24.22.1+, pnpm 10.5.2 and Git with a configured author name and email.
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm build
-node packages/cli/dist/index.js init
-node packages/cli/dist/index.js validate -f nordix.config.yaml
-node packages/cli/dist/index.js generate -f nordix.config.yaml -o ./my-project
+npm install -g @nordix-tech/nordixgen
+nordixgen init
+nordixgen validate -f nordix.config.yaml
+nordixgen generate -f nordix.config.yaml -o ./my-project
 ```
+
+To run without a global install, use `npx @nordix-tech/nordixgen@latest init`. Pin a published version with `npx @nordix-tech/nordixgen@0.1.0 init`. No repository checkout or npm account is needed to use public packages.
 
 Generation requires network access and a new or empty output directory. Each generated repository starts with an initial commit on `main` and a `develop` branch. Creating a GitHub remote is optional.
 
