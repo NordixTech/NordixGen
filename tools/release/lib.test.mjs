@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareVersions, registryPackage, releaseVersion, verifyPublished } from "./lib.mjs";
+import {
+  compareVersions,
+  isPublicationConflict,
+  registryPackage,
+  releaseVersion,
+  verifyPublished,
+  waitForPackage,
+} from "./lib.mjs";
 
 test("workflow runs produce increasing fixed versions and retries reuse the same version", () => {
   assert.equal(releaseVersion("0.1.0", "15"), "0.1.15");
@@ -13,6 +20,54 @@ test("invalid release inputs cannot allocate a version", () => {
   for (const value of [undefined, "", "0", "-1", "2.5", "abc"])
     assert.throws(() => releaseVersion("0.1.0", value));
   assert.throws(() => releaseVersion("0.1.0-beta.1", "1"));
+});
+
+test("publication verification allows several minutes of npm processing without republishing", async () => {
+  let elapsed = 0;
+  let reads = 0;
+  const manifest = { version: "0.1.15" };
+  const result = await waitForPackage("example", "0.1.15", {
+    intervalMs: 60_000,
+    now: () => elapsed,
+    sleep: async (milliseconds) => {
+      elapsed += milliseconds;
+    },
+    read: async () => {
+      reads++;
+      return elapsed >= 180_000 ? manifest : null;
+    },
+  });
+  assert.equal(result, manifest);
+  assert.equal(reads, 4);
+  assert.equal(elapsed, 180_000);
+});
+
+test("processing timeouts are bounded and do not silently accept a missing package", async () => {
+  let elapsed = 0;
+  await assert.rejects(
+    waitForPackage("example", "0.1.15", {
+      timeoutMs: 20,
+      intervalMs: 10,
+      now: () => elapsed,
+      sleep: async (milliseconds) => {
+        elapsed += milliseconds;
+      },
+      read: async () => null,
+    }),
+    /still processing/,
+  );
+  assert.equal(elapsed, 20);
+});
+
+test("only an already submitted publication conflict is recoverable", () => {
+  for (const text of [
+    "EPUBLISHCONFLICT",
+    "E409",
+    "Cannot publish over previously published versions",
+  ])
+    assert.equal(isPublicationConflict({ stderr: text }), true);
+  for (const text of ["E403 forbidden", "E404 permission denied", "EOTP", "network timeout"])
+    assert.equal(isPublicationConflict({ stderr: text }), false);
 });
 
 test("registry checks refresh metadata and distinguish a missing version from registry failures", async (context) => {

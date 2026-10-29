@@ -67,3 +67,30 @@ export async function registryPackage(name, version) {
     throw new Error(`npm registry returned ${response.status} for ${name}@${version}`);
   return response.json();
 }
+
+export async function waitForPackage(name, version, options = {}) {
+  const {
+    timeoutMs = 10 * 60 * 1000,
+    intervalMs = 10 * 1000,
+    read = registryPackage,
+    now = Date.now,
+    sleep = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds)),
+  } = options;
+  const deadline = now() + timeoutMs;
+  while (true) {
+    const manifest = await read(name, version);
+    if (manifest) return manifest;
+    if (now() >= deadline)
+      throw new Error(
+        `npm is still processing ${name}@${version}; rerun this workflow after it becomes available`,
+      );
+    console.log(`Waiting for npm to process ${name}@${version}`);
+    await sleep(Math.min(intervalMs, deadline - now()));
+  }
+}
+
+export function isPublicationConflict(error) {
+  return /EPUBLISHCONFLICT|E409|cannot publish over|previously published versions/i.test(
+    String(error.stderr ?? error.message),
+  );
+}

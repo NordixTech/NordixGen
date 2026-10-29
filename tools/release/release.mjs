@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   compareVersions,
+  isPublicationConflict,
   npm,
   packages,
   pnpm,
@@ -12,6 +13,7 @@ import {
   releaseVersion,
   run,
   verifyPublished,
+  waitForPackage,
 } from "./lib.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -55,22 +57,36 @@ if (action === "prepare") {
   assert.equal(plan.commit, process.env.GITHUB_SHA);
   assert.equal(plan.runId, process.env.GITHUB_RUN_ID);
   assert.equal(process.env.GITHUB_REF, "refs/heads/main");
+  const archives = [];
   for (const pkg of packages) {
     const tarball = resolve(output, `${pkg.name.slice(1).replace("/", "-")}-${plan.version}.tgz`);
     const integrity = `sha512-${createHash("sha512")
       .update(await readFile(tarball))
       .digest("base64")}`;
-    let published = await registryPackage(pkg.name, plan.version);
-    if (!published) {
-      console.log(npm(["publish", tarball, "--access", "public", "--tag", "candidate"]));
-      for (let attempt = 0; attempt < 20; attempt++) {
-        published = await registryPackage(pkg.name, plan.version);
-        if (published) break;
-        await new Promise((done) => setTimeout(done, 2000));
+    archives.push({ ...pkg, integrity });
+    const published = await registryPackage(pkg.name, plan.version);
+    if (published) verifyPublished(published, plan, integrity);
+    else {
+      try {
+        console.log(
+          npm(["publish", tarball, "--access", "public", "--tag", "candidate"], {
+            stdio: ["ignore", "pipe", "pipe"],
+          }),
+        );
+      } catch (error) {
+        // A prior attempt can have submitted the same version while npm is still processing it.
+        // Only a publication conflict is recoverable; identity and integrity are verified below.
+        if (!isPublicationConflict(error)) throw error;
+        console.log(
+          `${pkg.name}@${plan.version} was already submitted; verifying the existing tarball`,
+        );
       }
     }
-    assert.ok(published, `npm did not expose ${pkg.name}@${plan.version}`);
-    verifyPublished(published, plan, integrity);
+  }
+  // Submit both packages first so registry processing can happen concurrently.
+  for (const pkg of archives) {
+    const published = await waitForPackage(pkg.name, plan.version);
+    verifyPublished(published, plan, pkg.integrity);
     console.log(`Verified ${pkg.name}@${plan.version}`);
   }
   // Publish both packages before changing the user-facing latest channel.
